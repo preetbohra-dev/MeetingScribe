@@ -1,0 +1,163 @@
+{
+  "engine": "kokoro",
+  "voice": "af_heart",
+  "speed": 1.0,
+  "rate": 178,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "lead_in": 0.6,
+  "tail": 0.9,
+  "gap": 0.28,
+  "scenes": [
+    {
+      "id": "title",
+      "min": 7.5,
+      "lines": [
+        "Meet MeetingScribe.",
+        "It turns every Teams meeting into clean notes, and now into Jira tickets.",
+        "Without anything leaving your Mac, unless you say so."
+      ]
+    },
+    {
+      "id": "problem",
+      "min": 8,
+      "lines": [
+        "Meetings create work.",
+        "But notes go unwritten, action items get lost, and the tickets never get raised."
+      ]
+    },
+    {
+      "id": "detect",
+      "min": 11,
+      "lines": [
+        "MeetingScribe runs quietly in the background.",
+        "When you join a Teams call, it starts recording two tracks: your microphone, and Teams' own audio.",
+        "No buttons to press, and no bot joining the meeting."
+      ]
+    },
+    {
+      "id": "pipeline",
+      "min": 14,
+      "lines": [
+        "When the call ends, everything runs right on the Mac.",
+        "Whisper transcribes both tracks.",
+        "Voiceprints tell the speakers apart, and recognise people it has heard before.",
+        "A local language model drops the small talk, then writes the summary and the action items."
+      ]
+    },
+    {
+      "id": "note",
+      "min": 11,
+      "lines": [
+        "A few minutes later, a Markdown note lands in your Meeting Notes folder.",
+        "Who was there, what was decided, and who owes what."
+      ]
+    },
+    {
+      "id": "voices",
+      "min": 8.5,
+      "lines": [
+        "An unknown voice? Name it once.",
+        "From the next meeting on, it is recognised automatically."
+      ]
+    },
+    {
+      "id": "jira",
+      "min": 6,
+      "lines": [
+        "And now, the new part.",
+        "MeetingScribe can turn those action items into Jira tickets, with you approving every one."
+      ]
+    },
+    {
+      "id": "signin",
+      "min": 11,
+      "lines": [
+        "Run control jira, and sign in with a personal access token, an API token, or your browser's session cookie for single sign-on sites.",
+        "It can stay in your macOS Keychain, and you are asked again when it expires."
+      ]
+    },
+    {
+      "id": "space",
+      "min": 6,
+      "lines": [
+        "Then tell it which Jira space new tickets should go to."
+      ]
+    },
+    {
+      "id": "extract",
+      "min": 8.5,
+      "lines": [
+        "The same local model reads the meeting, and pulls out the work that belongs in Jira.",
+        "Owners, due dates, and the keywords to search for."
+      ]
+    },
+    {
+      "id": "search",
+      "min": 12,
+      "lines": [
+        "Then it searches every Jira space you can see, not just your own.",
+        "Each ticket it finds is compared with the new work: the same deliverable, merely related, or unrelated."
+      ]
+    },
+    {
+      "id": "decide",
+      "min": 15,
+      "lines": [
+        "Work that already has an open ticket gets a comment, not a duplicate.",
+        "Genuinely new work gets a new ticket, linked to its relatives.",
+        "And if a closed ticket's problem is back, it opens a fresh one, and links the history."
+      ]
+    },
+    {
+      "id": "draft",
+      "min": 16,
+      "lines": [
+        "Every field is filled in from the conversation, and checked against what your Jira space allows.",
+        "Type, priority, assignee, due date, components, even required custom fields.",
+        "Nothing is pushed until you say yes, and you can edit any field first."
+      ]
+    },
+    {
+      "id": "board",
+      "min": 8.5,
+      "lines": [
+        "Say yes, and it is on the board.",
+        "The comments are posted, and the meeting note links to every ticket."
+      ]
+    },
+    {
+      "id": "usecases",
+      "min": 13,
+      "lines": [
+        "Use it for stand-ups, migration syncs, incident reviews, sprint planning, and stakeholder calls.",
+        "Anywhere talk turns into work."
+      ]
+    },
+    {
+      "id": "privacy",
+      "min": 10,
+      "lines": [
+        "Recording, transcription, and every model stay on your Mac.",
+        "The only thing that leaves is the Jira update you approved, sent straight to your own Jira site."
+      ]
+    },
+    {
+      "id": "windows",
+      "min": 9,
+      "lines": [
+        "MeetingScribe runs on Apple Silicon Macs today, and Windows support is coming.",
+        "First the Jira step, on any computer. Then recording and transcription on Windows PCs."
+      ]
+    },
+    {
+      "id": "outro",
+      "min": 9,
+      "lines": [
+        "Install it once, join your meetings as usual, and review the tickets when you are ready.",
+        "MeetingScribe. Meetings, written down, and followed up."
+      ]
+    }
+  ]
+}
