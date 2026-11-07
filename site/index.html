@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MeetingScribe: Teams meeting notes that write themselves</title>
-<meta name="description" content="MeetingScribe records your Microsoft Teams calls on your Mac and writes the notes for you: a summary, action items and a transcript that knows who said what. Nothing leaves the machine.">
+<meta name="description" content="MeetingScribe records your Microsoft Teams calls on your Mac or Windows PC and writes the notes for you: a summary, action items and a transcript that knows who said what. Nothing leaves the machine.">
 <meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="MeetingScribe">
-<meta property="og:description" content="Join the call. Hang up. The notes are already written. On-device Teams meeting notes for the Mac.">
+<meta property="og:description" content="Join the call. Hang up. The notes are already written. On-device Teams meeting notes for Mac and Windows.">
 <meta property="og:url" content="https://meetingscribe.preetbohra.com/">
 <meta property="og:image" content="https://meetingscribe.preetbohra.com/poster.jpg">
 <meta property="og:type" content="website">
@@ -153,11 +153,14 @@ pre .p{color:#ff8b7a}
 
 /* install */
 .install{background:var(--bg-alt);margin-top:112px;padding:96px 0}
-.install section{padding:0}
+.install section{padding-top:0;padding-bottom:0}
 .req{display:flex;flex-wrap:wrap;gap:8px 24px;margin:20px 0 32px;padding:0;list-style:none;color:var(--ink-2);font-size:.9375rem}
 .req li::before{content:"·";margin-right:10px;color:var(--ink-3)}
 .req li:first-child::before{content:none}
 .after-install{margin-top:20px;color:var(--ink-2);font-size:.9688rem}
+.os{display:grid;grid-template-columns:minmax(0,1fr);gap:22px}
+.os h3{margin:0 0 10px;font-size:.9375rem;color:var(--ink-2)}
+@media (max-width:600px){#install pre{padding-top:48px}}
 
 .fine{padding:72px 0 0;color:var(--ink-3);font-size:.8438rem;max-width:720px}
 footer{border-top:1px solid var(--line);margin-top:72px;padding:28px 0 calc(40px + env(safe-area-inset-bottom));font-size:.8438rem;color:var(--ink-3)}
@@ -191,14 +194,14 @@ footer a{color:var(--ink-2)}
 
 <main id="top">
   <div class="wrap hero">
-    <p class="kicker">For Microsoft Teams on the Mac</p>
+    <p class="kicker">For Microsoft Teams on Mac and Windows</p>
     <h1><span>Join the call. Hang up.</span> <span>The notes are written.</span></h1>
-    <p class="lede">MeetingScribe sits quietly in the background. When Teams picks up your microphone it starts recording, and a few minutes after you leave it saves a note with a summary, action items and a transcript that knows who said what. Everything runs on your Mac.</p>
+    <p class="lede">MeetingScribe sits quietly in the background. When Teams picks up your microphone it starts recording, and a few minutes after you leave it saves a note with a summary, action items and a transcript that knows who said what. Everything runs on your own computer.</p>
     <div class="ctas">
       <a class="btn primary" href="#film">Watch the demo</a>
       <a class="btn ghost" href="https://github.com/preetbohra-dev/MeetingScribe">Source on GitHub</a>
     </div>
-    <p class="meta">Free and open source &middot; Apple silicon, macOS 14.4 or later</p>
+    <p class="meta">Free and open source &middot; Apple silicon Macs and Windows 11 PCs</p>
   </div>
 
   <figure class="wrap film" id="film">
@@ -259,7 +262,7 @@ footer a{color:var(--ink-2)}
     <div class="rise">
       <p class="eyebrow">How it works</p>
       <h2>There's no record button.</h2>
-      <p class="intro">macOS can tell which apps are using the microphone. MeetingScribe checks once a second, and when it's Teams, the call is on.</p>
+      <p class="intro">Your computer knows which apps are using the microphone. MeetingScribe checks once a second, and when it's Teams, the call is on.</p>
     </div>
     <div class="track rise">
       <div>
@@ -275,7 +278,7 @@ footer a{color:var(--ink-2)}
         <ol>
           <li><b>Transcribes</b><span>Whisper large-v3-turbo on each track, with long silences cut first so it doesn&rsquo;t invent text.</span></li>
           <li><b>Works out who spoke</b><span>Every second of remote audio gets a voice fingerprint. Similar ones are grouped and matched against people it has heard before.</span></li>
-          <li><b>Keeps the work</b><span>Qwen 2.5 14B reads the transcript and drops the personal chat, then writes the summary and action items.</span></li>
+          <li><b>Keeps the work</b><span>Qwen 2.5 reads the transcript and drops the personal chat, then writes the summary and action items.</span></li>
           <li><b>Saves the note</b><span>You get a notification. Raw audio is deleted once the note is safely written.</span></li>
         </ol>
       </div>
@@ -305,7 +308,7 @@ footer a{color:var(--ink-2)}
       <div>
         <p class="eyebrow">Jira, if you use it</p>
         <h2>Action items become tickets. You approve each one.</h2>
-        <p class="intro" style="margin-bottom:14px">Run <code>./ctl.sh jira</code> after a meeting. It drafts each piece of work, searches every Jira space you can see for tickets that already cover it, and suggests what to do.</p>
+        <p class="intro" style="margin-bottom:14px">Run <code>ctl jira</code> after a meeting. It drafts each piece of work, searches every Jira space you can see for tickets that already cover it, and suggests what to do.</p>
         <p>Nothing is sent until you press <b>y</b>. You can edit any field first, and it remembers what it pushed, so running it twice doesn&rsquo;t create duplicates.</p>
       </div>
       <ul class="jira">
@@ -319,14 +322,14 @@ footer a{color:var(--ink-2)}
   <section class="wrap" id="privacy">
     <div class="rise">
       <p class="eyebrow">Privacy</p>
-      <h2>Your meetings stay on your Mac.</h2>
+      <h2>Your meetings stay on your computer.</h2>
       <p class="intro">The models are downloaded once. After that MeetingScribe runs with the network switched off for them, and Jira is the only thing that ever talks to the internet, and only when you start it.</p>
     </div>
     <div class="facts rise">
-      <div><h3>Audio</h3><p>Written to your Library folder while the call runs, and deleted as soon as the note is saved.</p></div>
-      <div><h3>Models</h3><p>Whisper and Qwen run on the Mac&rsquo;s GPU through MLX. If you&rsquo;d rather use Ollama, it has to be on your own machine.</p></div>
-      <div><h3>Voiceprints</h3><p>192 numbers per person in a local file. They can&rsquo;t be turned back into audio, and you can delete any of them.</p></div>
-      <div><h3>Check for yourself</h3><p>Watch <code>nettop</code> while a meeting is being processed. There are no connections to see.</p></div>
+      <div><h3>Audio</h3><p>Written to a local app folder while the call runs, and deleted as soon as the note is saved.</p></div>
+      <div><h3>Models</h3><p>Whisper and Qwen run on your own hardware: MLX on a Mac, faster-whisper and llama.cpp on Windows. Ollama works too, if it&rsquo;s on your machine.</p></div>
+      <div><h3>Voiceprints</h3><p>A few hundred numbers per person in a local file. They can&rsquo;t be turned back into audio, and you can delete any of them.</p></div>
+      <div><h3>Check for yourself</h3><p>Watch <code>nettop</code> on a Mac, or Resource Monitor on Windows, while a meeting is being processed. There are no connections to see.</p></div>
     </div>
   </section>
 </main>
@@ -334,20 +337,28 @@ footer a{color:var(--ink-2)}
 <div class="install" id="install">
   <section class="wrap narrow">
     <p class="eyebrow">Install</p>
-    <h2>About fifteen minutes, most of it downloading.</h2>
+    <h2>One command. About fifteen minutes, most of it downloading.</h2>
     <ul class="req">
-      <li>Apple silicon Mac</li>
-      <li>macOS 14.4 or later</li>
-      <li>Python 3.12&ndash;3.14</li>
-      <li>About 10 GB free</li>
+      <li>Apple silicon Mac on macOS 14.4+, or Windows 11</li>
+      <li>6&ndash;10 GB free</li>
       <li>No admin rights</li>
+      <li>Python is set up for you</li>
     </ul>
+    <div class="os">
+      <div>
+        <h3>Mac</h3>
 <pre><code><span class="p">$</span> git clone https://github.com/preetbohra-dev/MeetingScribe.git
 <span class="p">$</span> cd MeetingScribe
-<span class="p">$</span> python3 -m venv .venv &amp;&amp; .venv/bin/pip install -r requirements.txt
-<span class="p">$</span> .venv/bin/python meeting_scribe.py download-models
 <span class="p">$</span> ./install.sh</code></pre>
-    <p class="after-install">Then allow the microphone and system audio when macOS asks, and join a Teams call. The <a href="https://github.com/preetbohra-dev/MeetingScribe#readme">README</a> covers permissions, settings and what to do if something doesn&rsquo;t work.</p>
+      </div>
+      <div>
+        <h3>Windows</h3>
+<pre><code><span class="p">&gt;</span> git clone https://github.com/preetbohra-dev/MeetingScribe.git
+<span class="p">&gt;</span> cd MeetingScribe
+<span class="p">&gt;</span> .\install</code></pre>
+      </div>
+    </div>
+    <p class="after-install">Type <b>I agree</b> when it shows the terms. A Mac asks once for the microphone and system audio; Windows asks for nothing. Then join a Teams call. The <a href="https://github.com/preetbohra-dev/MeetingScribe#readme">README</a> covers permissions, settings and what to do if something doesn&rsquo;t work.</p>
   </section>
 </div>
 
@@ -384,7 +395,7 @@ footer a{color:var(--ink-2)}
     b.className = 'copy'; b.type = 'button'; b.textContent = 'Copy';
     b.addEventListener('click', function () {
       var text = pre.innerText.replace(/^Copy$/m, '').split('\n')
-        .map(function (l) { return l.replace(/^\$\s?/, ''); }).filter(Boolean).join('\n');
+        .map(function (l) { return l.replace(/^[$>]\s?/, ''); }).filter(Boolean).join('\n');
       navigator.clipboard.writeText(text).then(function () {
         b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1400);
       });

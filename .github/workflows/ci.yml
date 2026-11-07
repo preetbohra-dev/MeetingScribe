@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  mac:
+    runs-on: macos-14  # Apple silicon, like the users'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install (the same requirements install.sh uses)
+        run: |
+          python -m pip install -r requirements.txt pytest pyflakes torchaudio
+      - name: Lint
+        run: python -m pyflakes meeting_scribe.py platforms tests
+      - name: Shell scripts parse
+        run: bash -n install.sh uninstall.sh ctl.sh
+      - name: Imports and CLI
+        run: |
+          python -c "import meeting_scribe as m; assert m.DEFAULTS['asr_backend'] == 'mlx'"
+          python meeting_scribe.py --help > /dev/null
+      - name: Windows stand-ins match scipy and torchaudio
+        run: python -m pytest tests -q
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install (the same requirements install.cmd uses)
+        run: python -m pip install -r requirements.txt pytest pyflakes
+      - name: No scipy or torch (Smart App Control would block them)
+        shell: python
+        run: |
+          import importlib.util
+          for m in ("scipy", "torch", "speechbrain"):
+              assert importlib.util.find_spec(m) is None, f"{m} must not be a Windows dependency"
+      - name: Lint
+        run: python -m pyflakes meeting_scribe.py platforms tests
+      - name: PowerShell scripts parse
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem windows\*.ps1) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { throw "$($f.Name): $errors" }
+          }
+      - name: Imports and CLI
+        run: |
+          python -c "import meeting_scribe as m; assert m.DEFAULTS['asr_backend'] == 'faster-whisper'; import llama_cpp, faster_whisper, onnxruntime, comtypes"
+          python meeting_scribe.py --help
+          python meeting_scribe.py voices
+      - name: Tests
+        run: python -m pytest tests -q

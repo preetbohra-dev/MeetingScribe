@@ -1,6 +1,9 @@
 """Operating-system layer. macos.py and windows.py expose the same names:
 
+  CTL, INSTALL, DEVICE, SECRET_STORE  how messages name the control script, installer,
+                            computer and secret store
   DIRS                      default work_dir and log_dir
+  MODEL_DEFAULTS            transcription / LLM backends and models for this machine
   notify(text)              desktop notification
   background_process()      keep the daemon out of the Dock / taskbar
   lower_priority()          let meeting processing yield to the foreground

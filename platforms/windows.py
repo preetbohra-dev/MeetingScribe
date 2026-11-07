@@ -1,31 +1,101 @@
-"""Windows side of MeetingScribe.
+"""Windows side of MeetingScribe (Windows 10 build 20348+ / Windows 11, new or classic Teams).
 
-Speakers, notes and Jira are shared with macOS; transcription and the LLM still
-use mlx, which is Apple-only. Call detection and Teams audio capture are still
-to come: the microphone consent store in the registry will tell when Teams
-holds the mic, and WASAPI process loopback on ms-teams.exe will record its
-audio. Until then run, status and test-capture stop with a clear message.
+  Call detection   The privacy consent store in the registry records when each app
+                   opens the microphone; LastUsedTimeStop is 0 while Teams holds it.
+                   Whether Teams is playing call audio comes from the WASAPI audio
+                   sessions of the Teams process tree.
+  Teams' audio     WASAPI process loopback on the Teams process tree: audio only,
+                   from Teams only, no permission prompt. "all" mode uses the same
+                   loopback on every process except this one.
+  Window titles    EnumWindows on the Teams processes; no permission needed.
+
+Only ctypes, winreg and comtypes (pure Python): Smart App Control, on by default on
+new Windows 11 installs, blocks unsigned native DLLs such as scipy's and torch's.
 """
 
-import ctypes
-import logging
-import msvcrt
-import os
-import time
+import sys
+
+sys.coinit_flags = 0  # COINIT_MULTITHREADED, read by comtypes when it initialises COM
+
+import ctypes  # noqa: E402
+import glob  # noqa: E402
+import logging  # noqa: E402
+import msvcrt  # noqa: E402
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+import winreg  # noqa: E402
+from ctypes import POINTER, Structure, byref, c_int, c_longlong, c_uint32, c_uint64, c_ushort, c_void_p  # noqa: E402
+from ctypes.wintypes import BOOL, DWORD, HANDLE, HWND, LPARAM, LPCWSTR, LPWSTR  # noqa: E402
+
+import numpy as np  # noqa: E402
 
 log = logging.getLogger("meetingscribe")
 
+# cuBLAS / cuDNN from the nvidia-* wheels the installer adds on NVIDIA PCs, for GPU Whisper.
+_site_packages = os.path.dirname(os.path.dirname(os.path.abspath(np.__file__)))
+for _dll_dir in glob.glob(os.path.join(_site_packages, "nvidia", "*", "bin")):
+    os.add_dll_directory(_dll_dir)
+    os.environ["PATH"] = _dll_dir + os.pathsep + os.environ["PATH"]
+
 _LOCAL = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~/AppData/Local")
+# How messages name things on this system.
+CTL, INSTALL, DEVICE, SECRET_STORE = r".\ctl", r".\install", "PC", "Windows Credential Manager"
+
 DIRS = {
     "work_dir": os.path.join(_LOCAL, "MeetingScribe"),
     "log_dir": os.path.join(_LOCAL, "MeetingScribe", "Logs"),
 }
 
-NOT_YET = "Recording Teams calls on Windows is not built yet."
+
+def _ram_gb():
+    class MEMORYSTATUSEX(Structure):
+        _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+    m = MEMORYSTATUSEX()
+    m.dwLength = ctypes.sizeof(m)
+    ctypes.windll.kernel32.GlobalMemoryStatusEx(byref(m))
+    return m.ullTotalPhys / 2**30
+
+
+# Qwen 2.5 14B (about 9 GB) needs room next to Teams and the browser; smaller PCs get 7B.
+_QWEN = "bartowski/Qwen2.5-{0}-Instruct-GGUF/Qwen2.5-{0}-Instruct-Q4_K_M.gguf"
+MODEL_DEFAULTS = {
+    "asr_backend": "faster-whisper",
+    "whisper_model": "dropbox-dash/faster-whisper-large-v3-turbo",
+    "llm_backend": "llamacpp",
+    "gguf_model": _QWEN.format("14B" if _ram_gb() >= 24 else "7B"),
+    # Smart App Control blocks torch, so voices come from an ONNX model instead of SpeechBrain.
+    "voice_model": "Wespeaker/wespeaker-voxceleb-resnet34-LM",
+}
+
+TEAMS_EXES = ("ms-teams.exe", "teams.exe")  # new Teams, classic Teams
+CONSENT = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"
 
 
 def notify(text):
-    log.info("notification: %s", text)
+    """A toast from PowerShell's built-in WinRT bridge; the text travels in the environment,
+    so nothing in it is ever parsed as script."""
+    script = (
+        "[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]>$null;"
+        "$x=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(1);"
+        "$t=$x.GetElementsByTagName('text');"
+        "$t.Item(0).AppendChild($x.CreateTextNode('MeetingScribe'))>$null;"
+        "$t.Item(1).AppendChild($x.CreateTextNode($env:MEETINGSCRIBE_TEXT))>$null;"
+        "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
+        "'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe')"
+        ".Show([Windows.UI.Notifications.ToastNotification]::new($x))")
+    try:
+        subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                         env={**os.environ, "MEETINGSCRIBE_TEXT": text},
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=subprocess.CREATE_NO_WINDOW)
+    except OSError as e:
+        log.warning("notification failed: %s", e)
 
 
 def background_process():
@@ -56,22 +126,461 @@ def play_audio(path):
     winsound.PlaySound(str(path), winsound.SND_FILENAME)
 
 
+def _consent(path, hive=winreg.HKEY_CURRENT_USER):
+    try:
+        with winreg.OpenKey(hive, path) as k:
+            return winreg.QueryValueEx(k, "Value")[0]
+    except OSError:
+        return None
+
+
+def _mic_blocked():
+    """What stops desktop apps from opening the mic, or None."""
+    if _consent(CONSENT, winreg.HKEY_LOCAL_MACHINE) == "Deny":
+        return "Microphone access is off for this device (Settings > Privacy & security > Microphone)"
+    if _consent(CONSENT) == "Deny":
+        return "Microphone access is off (Settings > Privacy & security > Microphone)"
+    if _consent(CONSENT + r"\NonPackaged") == "Deny":
+        return ("'Let desktop apps access your microphone' is off "
+                "(Settings > Privacy & security > Microphone)")
+    return None
+
+
 def request_permissions(cfg):
-    pass
+    blocked = _mic_blocked()
+    if blocked:
+        log.error("%s: your side of meetings will be silent", blocked)
 
 
 def permission_report():
-    return []
+    return [f"Microphone for desktop apps: {_mic_blocked() or 'allowed'}"]
 
 
-class AudioProbe:
-    def __init__(self):
-        raise NotImplementedError(NOT_YET)
+# --------------------------------------------------------------------------
+# Processes and windows
+# --------------------------------------------------------------------------
+
+class _PROCESSENTRY32W(Structure):
+    _fields_ = [("dwSize", DWORD), ("cntUsage", DWORD), ("th32ProcessID", DWORD),
+                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", DWORD),
+                ("cntThreads", DWORD), ("th32ParentProcessID", DWORD), ("pcPriClassBase", ctypes.c_long),
+                ("dwFlags", DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+
+def _processes():
+    """{pid: (exe name, parent pid)} from a Toolhelp snapshot."""
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateToolhelp32Snapshot.restype = HANDLE
+    snap = k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    out = {}
+    e = _PROCESSENTRY32W()
+    e.dwSize = ctypes.sizeof(e)
+    try:
+        ok = k32.Process32FirstW(HANDLE(snap), byref(e))
+        while ok:
+            out[e.th32ProcessID] = (e.szExeFile, e.th32ParentProcessID)
+            ok = k32.Process32NextW(HANDLE(snap), byref(e))
+    finally:
+        k32.CloseHandle(HANDLE(snap))
+    return out
+
+
+def _teams_tree():
+    """(root pids, every pid in their trees, {pid: exe}). Roots are Teams processes whose
+    parent is not Teams; the trees include Teams' WebView2 children, which play the audio."""
+    procs = _processes()
+    names = {pid: n for pid, (n, _) in procs.items()}
+    roots = [pid for pid, (n, parent) in procs.items()
+             if n.lower() in TEAMS_EXES and names.get(parent, "").lower() not in TEAMS_EXES]
+    children = {}
+    for pid, (_, parent) in procs.items():
+        children.setdefault(parent, []).append(pid)
+    tree, todo = set(), list(roots)
+    while todo:
+        pid = todo.pop()
+        if pid not in tree:
+            tree.add(pid)
+            todo += children.get(pid, [])
+    return sorted(roots, key=lambda p: names[p].lower() != "ms-teams.exe"), tree, names
+
+
+_user32 = ctypes.WinDLL("user32", use_last_error=True)
+_WNDENUMPROC = ctypes.WINFUNCTYPE(BOOL, HWND, LPARAM)
 
 
 def teams_windows():
-    raise NotImplementedError(NOT_YET)
+    """(owner, title) for every visible, titled top-level window of the Teams processes."""
+    _, tree, names = _teams_tree()
+    out = []
+
+    def visit(hwnd, _):
+        pid = DWORD()
+        _user32.GetWindowThreadProcessId(hwnd, byref(pid))
+        if pid.value in tree and _user32.IsWindowVisible(hwnd):
+            n = _user32.GetWindowTextLengthW(hwnd)
+            if n:
+                buf = ctypes.create_unicode_buffer(n + 1)
+                _user32.GetWindowTextW(hwnd, buf, n + 1)
+                if buf.value.strip():
+                    out.append((names.get(pid.value, "Teams"), buf.value.strip()))
+        return True
+
+    _user32.EnumWindows(_WNDENUMPROC(visit), 0)
+    return out
+
+
+# --------------------------------------------------------------------------
+# Core Audio (WASAPI) interfaces, via comtypes
+# --------------------------------------------------------------------------
+
+import comtypes  # noqa: E402
+from comtypes import COMMETHOD, GUID, HRESULT, IUnknown  # noqa: E402
+
+CLSID_MMDeviceEnumerator = GUID("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
+E_RENDER, E_CAPTURE, E_CONSOLE, DEVICE_STATE_ACTIVE = 0, 1, 0, 1
+
+
+class IMMDevice(IUnknown):
+    _iid_ = GUID("{D666063F-1587-4E43-81F1-B948E807363F}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "Activate", (["in"], POINTER(GUID), "iid"), (["in"], DWORD, "ctx"),
+                  (["in"], c_void_p, "params"), (["out"], POINTER(POINTER(IUnknown)), "iface")),
+        COMMETHOD([], HRESULT, "OpenPropertyStore", (["in"], DWORD, "access"), (["out"], POINTER(c_void_p), "store")),
+        COMMETHOD([], HRESULT, "GetId", (["out"], POINTER(LPWSTR), "id")),
+        COMMETHOD([], HRESULT, "GetState", (["out"], POINTER(DWORD), "state")),
+    ]
+
+
+class IMMDeviceCollection(IUnknown):
+    _iid_ = GUID("{0BD7A1BE-7A1A-44DB-8397-CC5392387B5E}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "GetCount", (["out"], POINTER(c_uint32), "count")),
+        COMMETHOD([], HRESULT, "Item", (["in"], c_uint32, "i"), (["out"], POINTER(POINTER(IMMDevice)), "device")),
+    ]
+
+
+class IMMDeviceEnumerator(IUnknown):
+    _iid_ = GUID("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "EnumAudioEndpoints", (["in"], c_int, "flow"), (["in"], DWORD, "mask"),
+                  (["out"], POINTER(POINTER(IMMDeviceCollection)), "devices")),
+        COMMETHOD([], HRESULT, "GetDefaultAudioEndpoint", (["in"], c_int, "flow"), (["in"], c_int, "role"),
+                  (["out"], POINTER(POINTER(IMMDevice)), "device")),
+    ]
+
+
+class IAudioSessionControl2(IUnknown):
+    _iid_ = GUID("{bfb7ff88-7239-4fc9-8fa2-07c950be9c6d}")
+    _methods_ = [  # IAudioSessionControl first, then the 2 additions
+        COMMETHOD([], HRESULT, "GetState", (["out"], POINTER(c_int), "state")),
+        COMMETHOD([], HRESULT, "GetDisplayName", (["out"], POINTER(LPWSTR), "name")),
+        COMMETHOD([], HRESULT, "SetDisplayName", (["in"], LPCWSTR, "name"), (["in"], POINTER(GUID), "ctx")),
+        COMMETHOD([], HRESULT, "GetIconPath", (["out"], POINTER(LPWSTR), "path")),
+        COMMETHOD([], HRESULT, "SetIconPath", (["in"], LPCWSTR, "path"), (["in"], POINTER(GUID), "ctx")),
+        COMMETHOD([], HRESULT, "GetGroupingParam", (["out"], POINTER(GUID), "param")),
+        COMMETHOD([], HRESULT, "SetGroupingParam", (["in"], POINTER(GUID), "param"), (["in"], POINTER(GUID), "ctx")),
+        COMMETHOD([], HRESULT, "RegisterAudioSessionNotification", (["in"], c_void_p, "client")),
+        COMMETHOD([], HRESULT, "UnregisterAudioSessionNotification", (["in"], c_void_p, "client")),
+        COMMETHOD([], HRESULT, "GetSessionIdentifier", (["out"], POINTER(LPWSTR), "id")),
+        COMMETHOD([], HRESULT, "GetSessionInstanceIdentifier", (["out"], POINTER(LPWSTR), "id")),
+        COMMETHOD([], HRESULT, "GetProcessId", (["out"], POINTER(DWORD), "pid")),
+    ]
+
+
+class IAudioSessionEnumerator(IUnknown):
+    _iid_ = GUID("{E2F5BB11-0570-40CA-ACDD-3AA01277DEE8}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "GetCount", (["out"], POINTER(c_int), "count")),
+        COMMETHOD([], HRESULT, "GetSession", (["in"], c_int, "i"), (["out"], POINTER(POINTER(IUnknown)), "session")),
+    ]
+
+
+class IAudioSessionManager2(IUnknown):
+    _iid_ = GUID("{77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "GetAudioSessionControl", (["in"], POINTER(GUID), "guid"), (["in"], DWORD, "flags"),
+                  (["out"], POINTER(c_void_p), "control")),
+        COMMETHOD([], HRESULT, "GetSimpleAudioVolume", (["in"], POINTER(GUID), "guid"), (["in"], DWORD, "flags"),
+                  (["out"], POINTER(c_void_p), "volume")),
+        COMMETHOD([], HRESULT, "GetSessionEnumerator",
+                  (["out"], POINTER(POINTER(IAudioSessionEnumerator)), "sessions")),
+    ]
+
+
+class WAVEFORMATEX(Structure):
+    _fields_ = [("wFormatTag", c_ushort), ("nChannels", c_ushort), ("nSamplesPerSec", DWORD),
+                ("nAvgBytesPerSec", DWORD), ("nBlockAlign", c_ushort), ("wBitsPerSample", c_ushort),
+                ("cbSize", c_ushort)]
+
+
+class IAudioClient(IUnknown):
+    _iid_ = GUID("{1CB9AD4C-DBFA-4c32-B178-C2F568A703B2}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "Initialize", (["in"], c_int, "mode"), (["in"], DWORD, "flags"),
+                  (["in"], c_longlong, "duration"), (["in"], c_longlong, "period"),
+                  (["in"], POINTER(WAVEFORMATEX), "fmt"), (["in"], POINTER(GUID), "session")),
+        COMMETHOD([], HRESULT, "GetBufferSize", (["out"], POINTER(c_uint32), "frames")),
+        COMMETHOD([], HRESULT, "GetStreamLatency", (["out"], POINTER(c_longlong), "latency")),
+        COMMETHOD([], HRESULT, "GetCurrentPadding", (["out"], POINTER(c_uint32), "frames")),
+        COMMETHOD([], HRESULT, "IsFormatSupported", (["in"], c_int, "mode"), (["in"], POINTER(WAVEFORMATEX), "fmt"),
+                  (["out"], POINTER(POINTER(WAVEFORMATEX)), "closest")),
+        COMMETHOD([], HRESULT, "GetMixFormat", (["out"], POINTER(POINTER(WAVEFORMATEX)), "fmt")),
+        COMMETHOD([], HRESULT, "GetDevicePeriod", (["out"], POINTER(c_longlong), "default"),
+                  (["out"], POINTER(c_longlong), "minimum")),
+        COMMETHOD([], HRESULT, "Start"),
+        COMMETHOD([], HRESULT, "Stop"),
+        COMMETHOD([], HRESULT, "Reset"),
+        COMMETHOD([], HRESULT, "SetEventHandle", (["in"], HANDLE, "event")),
+        COMMETHOD([], HRESULT, "GetService", (["in"], POINTER(GUID), "iid"), (["out"], POINTER(POINTER(IUnknown)), "svc")),
+    ]
+
+
+class IAudioCaptureClient(IUnknown):
+    _iid_ = GUID("{C8ADBD64-E71E-48a0-A4DE-185C395CD317}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "GetBuffer", (["out"], POINTER(c_void_p), "data"), (["out"], POINTER(c_uint32), "frames"),
+                  (["out"], POINTER(DWORD), "flags"), (["out"], POINTER(c_uint64), "position"),
+                  (["out"], POINTER(c_uint64), "qpc")),
+        COMMETHOD([], HRESULT, "ReleaseBuffer", (["in"], c_uint32, "frames")),
+        COMMETHOD([], HRESULT, "GetNextPacketSize", (["out"], POINTER(c_uint32), "frames")),
+    ]
+
+
+class IActivateAudioInterfaceAsyncOperation(IUnknown):
+    _iid_ = GUID("{72A22D78-CDE4-431D-B8CC-843A71199B6D}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "GetActivateResult", (["out"], POINTER(ctypes.c_long), "hr"),
+                  (["out"], POINTER(POINTER(IUnknown)), "iface")),
+    ]
+
+
+class IActivateAudioInterfaceCompletionHandler(IUnknown):
+    _iid_ = GUID("{41D949AB-9862-444A-80F6-C261334DA5EB}")
+    _methods_ = [
+        COMMETHOD([], HRESULT, "ActivateCompleted",
+                  (["in"], POINTER(IActivateAudioInterfaceAsyncOperation), "operation")),
+    ]
+
+
+class IAgileObject(IUnknown):
+    _iid_ = GUID("{94ea2b94-e9cc-49e0-c0ff-ee64ca8f5b90}")
+    _methods_ = []
+
+
+def _enumerator():
+    return comtypes.CoCreateInstance(CLSID_MMDeviceEnumerator, IMMDeviceEnumerator, comtypes.CLSCTX_ALL)
+
+
+class AudioProbe:
+    """Whether Teams holds the mic (privacy consent store) and is playing call audio
+    (an active WASAPI session in its process tree). Our own capture shows up under
+    python.exe, which never matches."""
+
+    def __init__(self):
+        self.devices = _enumerator()
+
+    def mic_in_use(self):
+        """{consent-store key: in use} for Teams entries: packaged new/classic Teams, or a
+        desktop Teams.exe / ms-teams.exe under NonPackaged."""
+        out = {}
+        try:
+            root = winreg.OpenKey(winreg.HKEY_CURRENT_USER, CONSENT)
+        except OSError:
+            return out
+        keys = []
+        with root:
+            for i in range(10_000):
+                try:
+                    keys.append(winreg.EnumKey(root, i))
+                except OSError:
+                    break
+        names = [k for k in keys if k.lower().startswith(("msteams_", "microsoftteams_"))]
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CONSENT + r"\NonPackaged") as np_key:
+                for i in range(10_000):
+                    try:
+                        k = winreg.EnumKey(np_key, i)
+                    except OSError:
+                        break
+                    if k.lower().rsplit("#", 1)[-1] in TEAMS_EXES:
+                        names.append("NonPackaged\\" + k)
+        except OSError:
+            pass
+        for name in names:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CONSENT + "\\" + name) as k:
+                    start = winreg.QueryValueEx(k, "LastUsedTimeStart")[0]
+                    stop = winreg.QueryValueEx(k, "LastUsedTimeStop")[0]
+                out[name] = bool(start) and stop == 0
+            except OSError:
+                out[name] = False
+        return out
+
+    def active_output_pids(self):
+        """Processes with a running (not just open) playback session on any output device."""
+        pids = set()
+        coll = self.devices.EnumAudioEndpoints(E_RENDER, DEVICE_STATE_ACTIVE)
+        for i in range(coll.GetCount()):
+            try:
+                mgr = coll.Item(i).Activate(IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None) \
+                    .QueryInterface(IAudioSessionManager2)
+                sessions = mgr.GetSessionEnumerator()
+                for j in range(sessions.GetCount()):
+                    s = sessions.GetSession(j).QueryInterface(IAudioSessionControl2)
+                    if s.GetState() == 1:  # AudioSessionStateActive
+                        pids.add(s.GetProcessId())
+            except comtypes.COMError as e:
+                log.debug("audio sessions on device %d: %s", i, e)
+        return pids
+
+    def teams_state(self, cfg):
+        """(Teams holds the mic, Teams plays audio)."""
+        _, tree, _ = _teams_tree()
+        return any(self.mic_in_use().values()), bool(tree & self.active_output_pids())
+
+    def teams_processes(self, cfg):
+        roots, tree, names = _teams_tree()
+        mic, playing = any(self.mic_in_use().values()), self.active_output_pids()
+        return [{"name": names[p], "pid": p, "input": mic and p in roots, "output": p in playing}
+                for p in sorted(tree) if p in roots or p in playing]
+
+    def default_input_device(self):
+        try:
+            return self.devices.GetDefaultAudioEndpoint(E_CAPTURE, E_CONSOLE).GetId()
+        except comtypes.COMError:
+            return None
+
+
+# --------------------------------------------------------------------------
+# Teams' audio: WASAPI process loopback
+# --------------------------------------------------------------------------
+
+class _ActivationParams(Structure):
+    _fields_ = [("ActivationType", c_int), ("TargetProcessId", DWORD), ("ProcessLoopbackMode", c_int)]
+
+
+class _Blob(Structure):
+    _fields_ = [("cbSize", ctypes.c_ulong), ("pBlobData", c_void_p)]
+
+
+class _PropVariant(Structure):
+    _fields_ = [("vt", c_ushort), ("r1", c_ushort), ("r2", c_ushort), ("r3", c_ushort), ("blob", _Blob)]
+
+
+class _ActivationDone(comtypes.COMObject):
+    _com_interfaces_ = [IActivateAudioInterfaceCompletionHandler, IAgileObject]
+
+    def __init__(self):
+        super().__init__()
+        self.event = threading.Event()
+        self.result = None
+
+    def ActivateCompleted(self, operation):
+        try:
+            hr, iface = operation.GetActivateResult()
+            self.result = (hr, iface)
+        except Exception as e:
+            self.result = (e, None)
+        finally:
+            self.event.set()
+        return 0
+
+
+def _activate_loopback(pid, include_tree):
+    """An IAudioClient that records what the process tree of pid plays (include_tree) or
+    everything except it."""
+    mmdev = ctypes.WinDLL("Mmdevapi.dll")
+    fn = mmdev.ActivateAudioInterfaceAsync
+    fn.argtypes = [LPCWSTR, POINTER(GUID), POINTER(_PropVariant),
+                   POINTER(IActivateAudioInterfaceCompletionHandler),
+                   POINTER(POINTER(IActivateAudioInterfaceAsyncOperation))]
+    fn.restype = HRESULT
+    params = _ActivationParams(1, pid, 0 if include_tree else 1)  # PROCESS_LOOPBACK; INCLUDE/EXCLUDE tree
+    pv = _PropVariant(vt=65)  # VT_BLOB
+    pv.blob = _Blob(ctypes.sizeof(params), ctypes.cast(byref(params), c_void_p))
+    done = _ActivationDone()
+    op = POINTER(IActivateAudioInterfaceAsyncOperation)()
+    iid = IAudioClient._iid_
+    fn("VAD\\Process_Loopback", byref(iid), byref(pv),
+       done.QueryInterface(IActivateAudioInterfaceCompletionHandler), byref(op))
+    if not done.event.wait(10):
+        raise TimeoutError("process loopback activation timed out")
+    hr, iface = done.result
+    if isinstance(hr, Exception):
+        raise hr
+    if hr < 0:
+        raise OSError(f"process loopback activation failed (0x{hr & 0xFFFFFFFF:08X}); "
+                      "needs Windows 10 build 20348 or Windows 11")
+    return iface.QueryInterface(IAudioClient)
+
+
+class ProcessLoopbackCapture:
+    """Teams' audio via WASAPI process loopback: 48 kHz 16-bit stereo, mixed to mono and
+    handed to the writer from a polling thread. In "all" mode it records every process
+    except this one."""
+
+    SR = 48000
+
+    def __init__(self, writer, mode):
+        self.writer, self.mode = writer, mode
+        self.stopped = False
+        self.running = False
+        self.thread = None
+
+    def start(self):
+        roots, _, names = _teams_tree()
+        if self.mode == "teams" and roots:
+            pid, include = roots[0], True
+            log.info("system audio: process loopback on %s (pid %d) and its children", names[pid], pid)
+        else:
+            if self.mode == "teams":
+                log.warning("no Teams process found; recording all system audio")
+            pid, include = os.getpid(), False
+            log.info("system audio: process loopback on everything except MeetingScribe")
+        client = _activate_loopback(pid, include)
+        fmt = WAVEFORMATEX(1, 2, self.SR, self.SR * 4, 4, 16, 0)  # WAVE_FORMAT_PCM
+        flags = 0x00020000 | 0x80000000 | 0x08000000  # LOOPBACK | AUTOCONVERTPCM | SRC_DEFAULT_QUALITY
+        client.Initialize(0, flags, 2_000_000, 0, byref(fmt), None)  # shared mode, 200 ms buffer
+        self.client = client
+        self.capture = client.GetService(IAudioCaptureClient._iid_).QueryInterface(IAudioCaptureClient)
+        client.Start()
+        self.running, self.stopped = True, False
+        self.thread = threading.Thread(target=self._pump, daemon=True)
+        self.thread.start()
+
+    def _pump(self):
+        comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
+        try:
+            while self.running:
+                time.sleep(0.01)
+                while self.running and self.capture.GetNextPacketSize():
+                    data, frames, flags, _, _ = self.capture.GetBuffer()
+                    arrived = time.monotonic()
+                    if flags & 0x2 or not data:  # AUDCLNT_BUFFERFLAGS_SILENT
+                        x = np.zeros(frames, np.float32)
+                    else:
+                        pcm = np.frombuffer(ctypes.string_at(data, frames * 4), np.int16)
+                        x = pcm.reshape(-1, 2).mean(axis=1, dtype=np.float32) / 32768
+                    self.capture.ReleaseBuffer(frames)
+                    self.writer.write(x, self.SR, arrived)
+        except Exception as e:  # device lost, Teams quit: the recording's watchdog restarts us
+            log.warning("system audio capture stopped: %s", e)
+            self.stopped = True
+        finally:
+            comtypes.CoUninitialize()
+
+    def stop(self):
+        self.running = False
+        if self.thread:
+            self.thread.join(3)
+            self.thread = None
+        if getattr(self, "client", None) is not None:
+            try:
+                self.client.Stop()
+            except comtypes.COMError as e:
+                log.warning("system audio stop: %s", e)
+            self.client = self.capture = None
 
 
 def system_audio_capture(cfg, writer):
-    raise NotImplementedError(NOT_YET)
+    return ProcessLoopbackCapture(writer, cfg["capture_mode"])

@@ -25,6 +25,7 @@ if not (len(sys.argv) > 1 and sys.argv[1] == "download-models"):
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"  # every model is public; never send a saved token
 
 import argparse
 import base64
@@ -76,9 +77,9 @@ DEFAULTS = {
     "my_name": "Me",
     "others_name": "Others",
     "language": "",  # "" = auto-detect, or e.g. "en"
-    "whisper_model": "mlx-community/whisper-large-v3-turbo",
-    "llm_backend": "mlx",  # "mlx" or "ollama"
     "mlx_llm_model": "mlx-community/Qwen2.5-14B-Instruct-4bit",
+    # llamacpp: Hugging Face repo + file of a GGUF model.
+    "gguf_model": "bartowski/Qwen2.5-14B-Instruct-GGUF/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
     "ollama_model": "qwen2.5:14b",
     "ollama_url": "http://127.0.0.1:11434",
     "llm_chunk_chars": 32000,
@@ -93,15 +94,21 @@ DEFAULTS = {
     # note. Set True to delete them instead.
     "drop_suspect_lines": False,
     "speaker_id": True,  # split the Others track by voice and match known voiceprints
+    "voice_model": "speechbrain/spkrec-ecapa-voxceleb",  # Windows: WeSpeaker ResNet34 (ONNX)
     "speaker_cluster_threshold": 0.6,  # cosine distance; lower = more, finer speakers
     "speaker_match_threshold": 0.5,  # cosine similarity needed to reuse a stored name
     "speaker_merge_similarity": 0.7,  # clusters whose voices are this similar are one person
     "speaker_min_seconds": 15,  # voices with less talk time are folded into the closest voice
     "max_speakers": 0,  # hard cap on remote speakers; 0 = no cap
     "meeting_window_exclude_regex": r"^(Chat|Activity|Calendar|Teams|Calls|Files|Apps|OneDrive|Copilot|Settings|Assignments|Approvals|People|Notifications|Window)\b",
+    # Last, so they win: per-OS asr_backend ("mlx" / "faster-whisper"), whisper_model,
+    # llm_backend ("mlx" / "llamacpp" / "ollama"), and on Windows gguf_model (sized to
+    # RAM) and voice_model. See platforms/macos.py and platforms/windows.py.
+    **plat.MODEL_DEFAULTS,
 }
 
-# [jira] table in config.toml. Secrets never live here, only in the macOS Keychain.
+# [jira] table in config.toml. Secrets never live here, only in the macOS Keychain or
+# Windows Credential Manager (keyring).
 JIRA_DEFAULTS = {
     "base_url": "",  # e.g. "https://yourcompany.atlassian.net"
     "deployment": "cloud",  # "cloud" (*.atlassian.net) or "server" (Server / Data Center)
@@ -194,9 +201,35 @@ def notify(cfg, text):
 def resample(x, sr_in, sr_out):
     if sr_in == sr_out or len(x) == 0:
         return x
-    from scipy.signal import resample_poly
     g = math.gcd(int(sr_in), int(sr_out))
-    return resample_poly(x, int(sr_out) // g, int(sr_in) // g).astype(np.float32)
+    up, down = int(sr_out) // g, int(sr_in) // g
+    try:
+        from scipy.signal import resample_poly
+        return resample_poly(x, up, down).astype(np.float32)
+    except ImportError:  # Windows: Smart App Control blocks scipy's DLLs
+        return resample_poly_np(x, up, down).astype(np.float32)
+
+
+def resample_poly_np(x, up, down):
+    """scipy.signal.resample_poly(x, up, down) in numpy: same Kaiser(5) low-pass, same
+    delay compensation and output length, computed one polyphase branch per output."""
+    x = np.asarray(x, np.float64)
+    half = 10 * max(up, down)
+    k = np.arange(-half, half + 1)
+    h = np.sinc(k / max(up, down)) * np.kaiser(2 * half + 1, 5.0)
+    h = h / h.sum() * up
+    n_out = -(-len(x) * up // down)
+    pre = down - half % down
+    h = np.concatenate([np.zeros(pre), h])
+    start = (half + pre) // down
+    taps = -(-len(h) // up)
+    phases = np.zeros(taps * up)
+    phases[:len(h)] = h
+    phases = phases.reshape(taps, up).T  # phases[p, m] = h[p + m * up]
+    pos = np.arange(start, start + n_out) * down
+    j = (pos // up)[:, None] - np.arange(taps)[None, :]
+    xs = np.where((j >= 0) & (j < len(x)), x[np.clip(j, 0, len(x) - 1)], 0.0)
+    return (phases[pos % up] * xs).sum(axis=1)
 
 
 def meeting_window_title(cfg):
@@ -429,7 +462,7 @@ class Daemon:
     def recover(self):
         for meta_path in sorted(self.sessions.glob("*/session.json")):
             meta = json.loads(meta_path.read_text())
-            if meta.get("status") == "recording":  # we crashed or the Mac lost power mid-call
+            if meta.get("status") == "recording":  # we crashed or the computer lost power mid-call
                 sizes = [p.stat().st_size for p in meta_path.parent.glob("*.pcm")]
                 meta["status"] = "recorded"
                 meta["duration_s"] = round(max(sizes, default=0) / 2 / TARGET_SR, 1)
@@ -560,20 +593,67 @@ def speech_regions(x, sr=TARGET_SR, frame_s=0.03, pad_s=1.0, merge_gap_s=1.5):
     return out
 
 
+_whisper = {}  # faster-whisper model, loaded once per process
+
+
+def faster_whisper_model(cfg):
+    if "model" not in _whisper:
+        import ctranslate2
+        from faster_whisper import WhisperModel
+        if ctranslate2.get_cuda_device_count() > 0:
+            try:
+                log.info("loading %s on the GPU", cfg["whisper_model"])
+                _whisper["model"] = WhisperModel(cfg["whisper_model"], device="cuda",
+                                                 compute_type="float16", local_files_only=True)
+                return _whisper["model"]
+            except Exception as e:  # e.g. cuBLAS / cuDNN libraries missing
+                log.warning("GPU Whisper failed (%s); using the CPU", e)
+        log.info("loading %s on the CPU", cfg["whisper_model"])
+        _whisper["model"] = WhisperModel(cfg["whisper_model"], device="cpu", compute_type="int8",
+                                         local_files_only=True)
+    return _whisper["model"]
+
+
+def whisper_transcribe(cfg, audio, **kwargs):
+    """{"segments": [...]} in mlx-whisper's shape, from whichever backend is configured."""
+    if cfg["asr_backend"] == "mlx":
+        import mlx_whisper
+        return mlx_whisper.transcribe(audio, path_or_hf_repo=cfg["whisper_model"], verbose=None,
+                                      **kwargs)
+    if cfg["asr_backend"] != "faster-whisper":
+        raise ValueError(f"unknown asr_backend {cfg['asr_backend']!r}")
+    segments, _ = faster_whisper_model(cfg).transcribe(audio, vad_filter=False, **kwargs)
+    return {"segments": [{"start": s.start, "end": s.end, "text": s.text,
+                          "no_speech_prob": s.no_speech_prob, "avg_logprob": s.avg_logprob,
+                          "words": [{"start": w.start, "end": w.end, "word": w.word}
+                                    for w in s.words or []]}
+                         for s in segments]}
+
+
+def release_whisper():
+    """Free Whisper's memory before the LLM loads."""
+    _whisper.clear()
+    try:
+        import mlx.core as mx
+        from mlx_whisper.transcribe import ModelHolder
+        ModelHolder.model = None
+        mx.clear_cache()
+    except Exception:
+        pass
+
+
 def transcribe_track(cfg, audio, speaker):
-    import mlx_whisper
     clips = speech_regions(audio)
     if not clips:
         log.info("%s track: no speech detected", speaker)
         return []
     log.info("%s track: transcribing %.0f s of speech", speaker,
              sum(clips[i + 1] - clips[i] for i in range(0, len(clips), 2)))
-    kwargs = dict(path_or_hf_repo=cfg["whisper_model"], condition_on_previous_text=False,
-                  clip_timestamps=clips, word_timestamps=True,
-                  hallucination_silence_threshold=2.0, verbose=None)
+    kwargs = dict(condition_on_previous_text=False, clip_timestamps=clips, word_timestamps=True,
+                  hallucination_silence_threshold=2.0)
     if cfg["language"]:
         kwargs["language"] = cfg["language"]
-    result = mlx_whisper.transcribe(audio, **kwargs)
+    result = whisper_transcribe(cfg, audio, **kwargs)
     segs = []
     for s in result.get("segments", []):
         text = s["text"].strip()
@@ -599,7 +679,6 @@ def transcribe_track(cfg, audio, speaker):
 # Speaker identification: voice embeddings -> clusters -> voiceprint library
 # --------------------------------------------------------------------------
 
-VOICE_MODEL = "speechbrain/spkrec-ecapa-voxceleb"
 EMBED_WIN_S, EMBED_HOP_S = 2.0, 1.0
 # A window needs this much actual speech to shape a voice or a voiceprint. Shorter
 # ones ("okay", "mm-hmm", a breath) mostly fingerprint the Teams codec and room
@@ -607,24 +686,58 @@ EMBED_WIN_S, EMBED_HOP_S = 2.0, 1.0
 SOLID_VOICED_S = 1.2
 
 
+def kaldi_fbank(x, sr=TARGET_SR, n_mels=80):
+    """Kaldi log-mel filterbank (25 ms Hamming frames every 10 ms, no dither), mean
+    removed per window: the input WeSpeaker models were trained on, in numpy."""
+    x = np.asarray(x, np.float64) * 32768
+    flen, shift, nfft = int(0.025 * sr), int(0.010 * sr), 512
+    n = 1 + (len(x) - flen) // shift
+    fr = x[np.arange(flen)[None, :] + shift * np.arange(n)[:, None]]
+    fr = fr - fr.mean(axis=1, keepdims=True)
+    fr = fr - 0.97 * np.concatenate([fr[:, :1], fr[:, :-1]], axis=1)  # pre-emphasis
+    power = np.abs(np.fft.rfft(fr * np.hamming(flen), nfft)) ** 2
+    mel = lambda f: 1127 * np.log(1 + f / 700)  # noqa: E731
+    lo, hi = mel(20.0), mel(sr / 2)
+    left = lo + np.arange(n_mels)[:, None] * (hi - lo) / (n_mels + 1)
+    width = (hi - lo) / (n_mels + 1)
+    bins = mel(sr / nfft * np.arange(nfft // 2))[None, :]
+    banks = np.maximum(0, np.minimum((bins - left) / width, (left + 2 * width - bins) / width))
+    banks = np.pad(banks, ((0, 0), (0, 1)))  # the Nyquist bin gets no weight
+    fb = np.log(np.maximum(power @ banks.T, np.finfo(np.float32).eps))
+    return (fb - fb.mean(axis=0)).astype(np.float32)
+
+
 class VoiceEncoder:
-    """ECAPA-TDNN speaker embeddings (SpeechBrain), loaded from the local HF cache."""
+    """Speaker embeddings from cfg["voice_model"] in the local HF cache: ECAPA-TDNN
+    (SpeechBrain, torch) on macOS; WeSpeaker ResNet34 (ONNX Runtime) on Windows, where
+    Smart App Control blocks torch's DLLs."""
 
     def __init__(self, cfg):
         from huggingface_hub import snapshot_download
-        from speechbrain.inference.speaker import EncoderClassifier
-        src = snapshot_download(VOICE_MODEL, local_files_only=True)
-        self.model = EncoderClassifier.from_hparams(
-            source=src, savedir=str(cfg["work_dir"] / "models" / "ecapa"),
-            run_opts={"device": "cpu"})
+        src = Path(snapshot_download(cfg["voice_model"], local_files_only=True))
+        self.onnx = next(src.glob("*.onnx"), None)
+        if self.onnx:
+            import onnxruntime as ort
+            self.model = ort.InferenceSession(str(self.onnx), providers=["CPUExecutionProvider"])
+            self.input = self.model.get_inputs()[0].name
+        else:
+            from speechbrain.inference.speaker import EncoderClassifier
+            self.model = EncoderClassifier.from_hparams(
+                source=str(src), savedir=str(cfg["work_dir"] / "models" / "ecapa"),
+                run_opts={"device": "cpu"})
 
     def embed(self, windows):
-        import torch
         out = []
-        with torch.no_grad():
+        if self.onnx:
             for i in range(0, len(windows), 64):
-                batch = torch.from_numpy(np.stack(windows[i:i + 64]))
-                out.append(self.model.encode_batch(batch).squeeze(1).numpy())
+                feats = np.stack([kaldi_fbank(w) for w in windows[i:i + 64]])
+                out.append(self.model.run(None, {self.input: feats})[0])
+        else:
+            import torch
+            with torch.no_grad():
+                for i in range(0, len(windows), 64):
+                    batch = torch.from_numpy(np.stack(windows[i:i + 64]))
+                    out.append(self.model.encode_batch(batch).squeeze(1).numpy())
         e = np.concatenate(out)
         return e / np.linalg.norm(e, axis=1, keepdims=True)
 
@@ -637,6 +750,7 @@ class VoiceLibrary:
         self.voices = json.loads(self.path.read_text()) if self.path.exists() else {}
 
     def save(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.voices))
         tmp.replace(self.path)
@@ -660,10 +774,49 @@ class VoiceLibrary:
         return best, sim
 
 
+def average_linkage_clusters(emb, t):
+    """Labels 0..k-1 for fcluster(linkage(emb, "average", metric="cosine"), t,
+    criterion="distance"): unit vectors joined while their groups' mean cosine distance
+    is at most t. scipy where it loads; on Windows, where Smart App Control blocks
+    scipy's DLLs, the same clustering by nearest-neighbour chain in numpy."""
+    try:
+        from scipy.cluster.hierarchy import fcluster, linkage
+        return fcluster(linkage(emb, "average", metric="cosine"), t=t, criterion="distance") - 1
+    except ImportError:
+        return average_linkage_np(emb, t)
+
+
+def average_linkage_np(emb, t):
+    n = len(emb)
+    d = 1 - np.clip(emb @ emb.T, -1, 1)
+    np.fill_diagonal(d, np.inf)
+    size, parent, alive, chain = np.ones(n), np.arange(n), np.ones(n, bool), []
+    for _ in range(n - 1):
+        if not chain:
+            chain = [int(np.argmax(alive))]
+        while True:
+            a = chain[-1]
+            b = int(np.argmin(d[a]))
+            if len(chain) > 1 and d[a, chain[-2]] <= d[a, b]:
+                b = chain[-2]
+            if len(chain) > 1 and b == chain[-2]:
+                break
+            chain.append(b)
+        chain = chain[:-2]
+        if d[a, b] <= t:
+            parent[parent == b] = a
+        row = (size[a] * d[a] + size[b] * d[b]) / (size[a] + size[b])
+        d[a], d[:, a] = row, row
+        d[b], d[:, b] = np.inf, np.inf
+        d[a, a] = np.inf
+        alive[b] = False
+        size[a] += size[b]
+    return np.unique(parent, return_inverse=True)[1]
+
+
 def diarize(cfg, audio, encoder):
     """Cluster 2 s voice-embedding windows over the speech regions.
     Returns (window_centers, window_labels, {label: centroid}, {label: seconds})."""
-    from scipy.cluster.hierarchy import fcluster, linkage
     clips = speech_regions(audio)
     centers = []
     for s, e in zip(clips[::2], clips[1::2]):
@@ -692,8 +845,7 @@ def diarize(cfg, audio, encoder):
     if len(se) == 1:
         sl = np.zeros(1, int)
     else:
-        sl = fcluster(linkage(se, "average", metric="cosine"),
-                      t=cfg["speaker_cluster_threshold"], criterion="distance") - 1
+        sl = average_linkage_clusters(se, cfg["speaker_cluster_threshold"])
     sl = tidy_clusters(cfg, se, sl)
     cents = np.stack([se[sl == k].mean(axis=0) for k in range(sl.max() + 1)])
     labels = np.empty(len(emb), int)
@@ -809,7 +961,7 @@ def voices_section(speakers):
           "| Voice | First heard | They said |", "|---|---|---|"]
     md += [f"| {n} | {ts(speakers[n]['first'][0])} | “{speakers[n]['first'][1]}” |"
            for n in unknown if speakers[n].get("first")]
-    md += ["", f"Run `./ctl.sh listen` to hear each voice, then `./ctl.sh name \"{unknown[0]}\" "
+    md += ["", f"Run `{plat.CTL} listen` to hear each voice, then `{plat.CTL} name \"{unknown[0]}\" "
            "\"Full Name\"`. Named voices are recognized automatically in future meetings.",
            VOICES_END, ""]
     return md
@@ -952,6 +1104,11 @@ class LLM:
             mlx_model = mlx_model or cfg["mlx_llm_model"]
             log.info("loading %s", mlx_model)
             self.model, self.tok = load(mlx_model)
+        elif self.backend == "llamacpp":
+            from llama_cpp import Llama
+            path = gguf_path(cfg)
+            log.info("loading %s", path.name)
+            self.model = Llama(model_path=str(path), n_ctx=16384, n_gpu_layers=-1, verbose=False)
         elif self.backend == "ollama":
             host = urllib.parse.urlparse(cfg["ollama_url"]).hostname
             if host not in ("127.0.0.1", "localhost", "::1"):
@@ -967,6 +1124,9 @@ class LLM:
             prompt = self.tok.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
             return generate(self.model, self.tok, prompt=prompt, max_tokens=max_tokens,
                             sampler=make_sampler(temp=0.2), verbose=False).strip()
+        if self.backend == "llamacpp":
+            r = self.model.create_chat_completion(messages=msgs, temperature=0.2, max_tokens=max_tokens)
+            return r["choices"][0]["message"]["content"].strip()
         body = json.dumps({"model": self.cfg["ollama_model"], "messages": msgs, "stream": False,
                            "options": {"temperature": 0.2, "num_ctx": 16384,
                                        "num_predict": max_tokens}}).encode()
@@ -974,6 +1134,13 @@ class LLM:
                                      {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=1800) as r:
             return json.loads(r.read())["message"]["content"].strip()
+
+
+def gguf_path(cfg, download=False):
+    """Local file of cfg["gguf_model"] ("owner/repo/file.gguf") in the Hugging Face cache."""
+    from huggingface_hub import hf_hub_download
+    owner, repo, filename = cfg["gguf_model"].split("/", 2)
+    return Path(hf_hub_download(f"{owner}/{repo}", filename, local_files_only=not download))
 
 
 def filter_is_summary_model(cfg):
@@ -1049,7 +1216,6 @@ def safe_filename(s):
 def process_session(cfg, session_dir):
     meta_path = session_dir / "session.json"
     meta = json.loads(meta_path.read_text())
-    started = dt.datetime.fromisoformat(meta["started_at"])
     duration = meta.get("duration_s", 0)
     log.info("processing %s (%s, %.0f min)", session_dir.name, meta["title"], duration / 60)
 
@@ -1062,13 +1228,7 @@ def process_session(cfg, session_dir):
 
     me = transcribe_track(cfg, mic, cfg["my_name"])
     others = transcribe_track(cfg, sysa, cfg["others_name"])
-    try:  # free Whisper's GPU memory before loading the LLM
-        import mlx.core as mx
-        from mlx_whisper.transcribe import ModelHolder
-        ModelHolder.model = None
-        mx.clear_cache()
-    except Exception:
-        pass
+    release_whisper()
     me = mark_echo(cfg, me, others)
 
     speakers = {}
@@ -1134,7 +1294,7 @@ def process_session(cfg, session_dir):
     meta_path.write_text(json.dumps(meta, indent=2))
     log.info("wrote %s", out)
     notify(cfg, f"Meeting notes ready: {out.name}" +
-           (". Run ./ctl.sh jira to review tickets." if cfg["jira"]["base_url"] else ""))
+           (f". Run {plat.CTL} jira to review tickets." if cfg["jira"]["base_url"] else ""))
 
 
 def write_note(cfg, meta, turns, speakers, llm=None, dropped=None):
@@ -1158,7 +1318,7 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None):
     title = meta["title"]
     md = [f"# {title}", "",
           f"**Date:** {started:%A %d %B %Y, %H:%M}–{end:%H:%M} ({round(duration / 60)} min)  ",
-          "**Source:** Microsoft Teams · recorded, transcribed and summarized on this Mac  "]
+          f"**Source:** Microsoft Teams · recorded, transcribed and summarized on this {plat.DEVICE}  "]
     if speakers:
         md.append("**Participants:** " + ", ".join(
             [cfg["my_name"]] + [n if s["known"] else f"{n} (unrecognized)"
@@ -1291,7 +1451,7 @@ def keychain(action, account, secret=None):
 
 
 def require_https(url):
-    """Tokens and cookies only travel over HTTPS. Plain http is allowed for this Mac alone (tests)."""
+    """Tokens and cookies only travel over HTTPS. Plain http is allowed for this computer alone (tests)."""
     u = urllib.parse.urlparse(url)
     if u.scheme == "https" and u.hostname:
         return
@@ -1311,7 +1471,7 @@ COOKIE_HELP = """  To copy your session cookie: open Jira in your browser while 
 
 
 def jira_credentials(j, ask=False):
-    """(auth, secret, email, source). Uses the macOS Keychain, otherwise asks (input hidden)."""
+    """(auth, secret, email, source). Uses the system keyring, otherwise asks (input hidden)."""
     base = j["base_url"].rstrip("/")
     auth = j["auth"].lower()
     if not auth and not ask:
@@ -1798,8 +1958,8 @@ def connect_jira(j):
             keychain("set", f"{base}#{auth}", secret)
             if email:
                 keychain("set", f"{base}#email", email)
-            print(f"Saved in your macOS Keychain (\"{KEYCHAIN_SERVICE}\"). "
-                  "Remove it any time with: ./ctl.sh jira --forget")
+            print(f"Saved in your {plat.SECRET_STORE} (\"{KEYCHAIN_SERVICE}\"). "
+                  f"Remove it any time with: {plat.CTL} jira --forget")
         return client, me
 
 
@@ -1829,7 +1989,7 @@ def cmd_jira(cfg, args):
     """Turn a meeting's work items into Jira tickets: the local model drafts, you approve."""
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     if not sys.stdin.isatty():
-        sys.exit("`jira` asks you to approve every ticket, so run it in a terminal: ./ctl.sh jira")
+        sys.exit(f"`jira` asks you to approve every ticket, so run it in a terminal: {plat.CTL} jira")
     if not accept_terms(cfg):
         sys.exit("terms of use not accepted")
     j = cfg["jira"]
@@ -1837,7 +1997,7 @@ def cmd_jira(cfg, args):
         base = j["base_url"].rstrip("/")
         for k in ("bearer", "basic", "cookie", "email"):
             keychain("delete", f"{base}#{k}")
-        print(f"Removed every saved Jira secret for {base or '(no base_url)'} from the Keychain.")
+        print(f"Removed every saved Jira secret for {base or '(no base_url)'} from the {plat.SECRET_STORE}.")
         return
     d = find_session(cfg, args.session)
     meta = json.loads((d / "session.json").read_text())
@@ -2003,8 +2163,8 @@ def cmd_run(cfg, args):
     setup_logging(cfg, "daemon")
     plat.background_process()
     if not terms_accepted(cfg):
-        log.error("terms of use not accepted; run ./ctl.sh terms (or ./install.sh) first")
-        notify(cfg, "MeetingScribe is not recording: run ./ctl.sh terms to accept the terms of use.")
+        log.error("terms of use not accepted; run %s terms (or %s) first", plat.CTL, plat.INSTALL)
+        notify(cfg, f"MeetingScribe is not recording: run {plat.CTL} terms to accept the terms of use.")
         time.sleep(3600)  # launchd would otherwise restart us every few seconds
         sys.exit(0)
     cfg["work_dir"].mkdir(parents=True, exist_ok=True)
@@ -2138,7 +2298,7 @@ def cmd_listen(cfg, args):
             plat.play_audio(d / "voices" / speakers[n]["sample"])
         except KeyboardInterrupt:
             print("   (skipped)")
-        print(f'   name it:  ./ctl.sh name "{n}" "Full Name"')
+        print(f'   name it:  {plat.CTL} name "{n}" "Full Name"')
 
 
 def cmd_voices(cfg, args):
@@ -2150,7 +2310,7 @@ def cmd_voices(cfg, args):
         print("forgot", args.forget)
         return
     if not lib.voices:
-        print("No voiceprints yet. Name a voice with: ./ctl.sh name \"Speaker 1\" \"Full Name\"")
+        print(f"No voiceprints yet. Name a voice with: {plat.CTL} name \"Speaker 1\" \"Full Name\"")
     for name, v in sorted(lib.voices.items()):
         print(f"  {name:30} learned from {v['n']} meeting(s)")
 
@@ -2208,9 +2368,12 @@ def cmd_download(cfg, args):
     from huggingface_hub import snapshot_download
     print("Downloading", cfg["whisper_model"])
     snapshot_download(cfg["whisper_model"])
-    print("Downloading", VOICE_MODEL)
-    snapshot_download(VOICE_MODEL)
-    if cfg["llm_backend"] == "mlx":
+    print("Downloading", cfg["voice_model"])
+    snapshot_download(cfg["voice_model"])
+    if cfg["llm_backend"] == "llamacpp":
+        print("Downloading", cfg["gguf_model"])
+        gguf_path(cfg, download=True)
+    elif cfg["llm_backend"] == "mlx":
         print("Downloading", cfg["mlx_llm_model"])
         snapshot_download(cfg["mlx_llm_model"])
         if cfg["work_only"] and not filter_is_summary_model(cfg):
@@ -2254,10 +2417,12 @@ def main():
     p.add_argument("--project", help="Jira space (project) key; asked if not given")
     p.add_argument("--refresh", action="store_true", help="re-read the meeting and review every item again")
     p.add_argument("--dry-run", action="store_true", help="search and draft, but write nothing to Jira")
-    p.add_argument("--forget", action="store_true", help="delete the saved Jira token / cookie from the Keychain")
+    p.add_argument("--forget", action="store_true", help=f"delete the saved Jira token / cookie from the {plat.SECRET_STORE}")
     p.set_defaults(fn=cmd_jira)
     sub.add_parser("terms", help="show and accept the terms of use").set_defaults(fn=cmd_terms)
     args = ap.parse_args()
+    if sys.stderr is None:  # pythonw.exe (Windows background task) has no console streams
+        sys.stdout = sys.stderr = open(os.devnull, "w")
     try:
         args.fn(load_config(), args)
     except NotImplementedError as e:  # a platform piece that is not built yet

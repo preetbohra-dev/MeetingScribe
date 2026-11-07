@@ -1,6 +1,9 @@
 #!/bin/bash
-# Installs MeetingScribe as a per-user background agent. No admin rights needed.
+# Installs MeetingScribe as a per-user background agent: ./install.sh, nothing else.
+# No admin rights needed. Safe to run again; it reuses what is already there.
 #
+#  0. Python 3.11-3.14 (Homebrew's, or one fetched with uv), .venv with requirements.txt,
+#     the terms of use, and the models (~10 GB, the only step that uses the network).
 #  1. ~/Applications/MeetingScribe.app: a tiny AppleScript applet (built with the
 #     stock `osacompile`) that launches the Python daemon. macOS privacy
 #     permissions attach to this app, so Screen Recording / Microphone are granted
@@ -16,8 +19,43 @@ LABEL="local.meetingscribe"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOGDIR="$HOME/Library/Logs/MeetingScribe"
 
-[[ -x "$PY" ]] || { echo "No virtualenv at $PY. Run the setup steps in the Readme first."; exit 1; }
+[[ "$(uname -m)" == "arm64" ]] || { echo "MeetingScribe needs an Apple silicon Mac (MLX)."; exit 1; }
+
+find_python() {  # MLX has wheels for 3.11-3.14; stock /usr/bin/python3 is too old
+  local v p
+  for v in 3.13 3.12 3.14 3.11; do
+    for p in "/opt/homebrew/bin/python$v" "$(command -v "python$v" 2>/dev/null)"; do
+      [[ -n "$p" && -x "$p" ]] && { echo "$p"; return; }
+    done
+  done
+}
+
+if [[ ! -x "$PY" ]]; then
+  echo "== Python"
+  BASE="$(find_python)"
+  if [[ -z "$BASE" ]] && command -v brew >/dev/null; then
+    brew install python@3.12 && BASE=/opt/homebrew/bin/python3.12
+  fi
+  if [[ -z "$BASE" ]]; then  # no Homebrew either: uv fetches a standalone Python for this user
+    command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
+    UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
+    "$UV" python install 3.12 && BASE="$("$UV" python find 3.12)"
+  fi
+  [[ -n "$BASE" ]] || { echo "Could not find or install Python 3.12. Install it from python.org and run ./install.sh again."; exit 1; }
+  "$BASE" -m venv "$HERE/.venv"
+fi
+
+echo "== Packages"
+"$PY" -m pip install --quiet --upgrade pip
+"$PY" -m pip install --quiet -r "$HERE/requirements.txt"
+
+echo "== Terms of use"
 "$PY" "$HERE/meeting_scribe.py" terms || { echo "Not installed: the terms of use were not accepted."; exit 1; }
+
+echo "== Models (~10 GB, once)"
+"$PY" "$HERE/meeting_scribe.py" download-models || { echo "Model download failed; run ./install.sh again to resume."; exit 1; }
+
+echo "== Background agent"
 mkdir -p "$HOME/Applications" "$HOME/Library/LaunchAgents" "$LOGDIR"
 
 cat > "$HERE/run.sh" <<EOF
