@@ -2,7 +2,7 @@
 # After editing: ./ctl.sh restart
 
 output_dir = "~/Documents/Meeting Notes"
-my_name = "Preet"
+my_name = "Me"
 others_name = "Others"
 language = ""                 # "" = auto-detect, or "en", "de", ...
 keep_audio = false             # stereo WAV (L = Me, R = Others) saved next to each note

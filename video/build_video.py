@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Builds MeetingScribe_Demo.mp4 entirely on this Mac.
+Builds site/demo.mp4 (the demo on the homepage) entirely offline, on macOS or Windows.
 
   1. Narration: every line in script.json is spoken by Kokoro-82M, an open neural voice
      running offline (models/), and timed. `"engine": "say"` falls back to macOS `say`.
   2. timeline.js: scene and caption timings derived from the narration, read by motion.html.
-  3. Frames: an off-screen WebKit view (Safari's engine, via pyobjc) renders motion.html frame
-     by frame (renderAt(t)), so every frame is exact regardless of machine speed. Nothing is
-     fetched from the network: the page is self-contained.
+  3. Frames: motion.html is rendered frame by frame (renderAt(t)), so every frame is exact
+     regardless of machine speed: in an off-screen WebKit view (Safari's engine, via pyobjc) on
+     macOS, or in headless Chromium (Playwright) elsewhere. Nothing is fetched from the network:
+     the page is self-contained.
   4. Encoding: the ffmpeg binary bundled with imageio-ffmpeg muxes frames and narration.
 
   video/.venv/bin/python video/build_video.py                 # full build
   video/.venv/bin/python video/build_video.py --stills 5,40   # PNG previews at those seconds
+  On Windows the interpreter is video/.venv/Scripts/python.
 """
 import argparse
 import base64
@@ -53,7 +55,8 @@ class Voice:
         else:
             raw = raw.with_suffix(".aiff")
             subprocess.run(["/usr/bin/say", "-v", self.script["voice"], "-r", str(self.script["rate"]), "-o", str(raw), text], check=True)
-        subprocess.run(["/usr/bin/afconvert", "-f", "WAVE", "-d", f"LEI16@{SR}", "-c", "1", str(raw), str(out)], check=True)
+        subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(raw),
+                        "-ac", "1", "-ar", str(SR), "-c:a", "pcm_s16le", str(out)], check=True)
         raw.unlink()
         with wave.open(str(out)) as w:
             return w.readframes(w.getnframes()), w.getnframes() / SR
@@ -172,11 +175,35 @@ class Renderer:
         self.win.close()
 
 
+class ChromiumRenderer:
+    """Headless Chromium through Playwright, for machines without WebKit (Windows, Linux)."""
+
+    def __init__(self, width, height):
+        from playwright.sync_api import sync_playwright
+        self.pw = sync_playwright().start()
+        self.browser = self.pw.chromium.launch(args=["--allow-file-access-from-files"])
+        self.page = self.browser.new_page(viewport={"width": width, "height": height}, device_scale_factor=1)
+
+    def open(self, path, query):
+        self.page.goto(path.as_uri() + query)
+        self.page.wait_for_function("document.readyState === 'complete' && typeof window.renderAt === 'function'")
+
+    def shot(self, t, fmt="jpeg"):
+        result = self.page.evaluate(f"(() => {{ try {{ renderAt({t}); return 'ok'; }} catch (e) {{ return String(e); }} }})()")
+        if result != "ok":
+            raise RuntimeError(f"renderAt({t}) threw: {result}")
+        return self.page.screenshot(type=fmt, quality=93 if fmt == "jpeg" else None)
+
+    def close(self):
+        self.browser.close()
+        self.pw.stop()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stills", help="comma-separated seconds; writes PNGs to video/stills instead of the MP4")
     ap.add_argument("--keep-narration", action="store_true", help="reuse timeline.js and narration.wav")
-    ap.add_argument("--out", default=str(HERE.parent / "MeetingScribe_Demo.mp4"))
+    ap.add_argument("--out", default=str(HERE.parent / "site" / "demo.mp4"))
     args = ap.parse_args()
     script = json.loads((HERE / "script.json").read_text())
     W, H, fps = script["width"], script["height"], script["fps"]
@@ -192,7 +219,7 @@ def main():
         print(f"  total      {total:5.1f}s")
     total = json.loads((HERE / "timeline.js").read_text().split("=", 1)[1].rstrip().rstrip(";"))["total"]
 
-    chrome = Renderer(W, H)
+    chrome = (Renderer if sys.platform == "darwin" else ChromiumRenderer)(W, H)
     try:
         chrome.open(HERE / "motion.html", "?capture")
         if args.stills:

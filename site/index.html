@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MeetingScribe: Teams meeting notes that write themselves</title>
+<meta name="description" content="MeetingScribe records your Microsoft Teams calls on your Mac and writes the notes for you: a summary, action items and a transcript that knows who said what. Nothing leaves the machine.">
+<meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="MeetingScribe">
+<meta property="og:description" content="Join the call. Hang up. The notes are already written. On-device Teams meeting notes for the Mac.">
+<meta property="og:url" content="https://meetingscribe.preetbohra.com/">
+<meta property="og:image" content="https://meetingscribe.preetbohra.com/poster.jpg">
+<meta property="og:type" content="website">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#fbfbfd; --bg-alt:#f2f2f5; --card:#ffffff; --ink:#1d1d1f; --ink-2:#4a4a50; --ink-3:#86868b;
+  --line:rgba(0,0,0,.09); --rec:#e5483a; --link:#b9361f; --warm:#9a5b00;
+  --code:#16161a; --code-ink:#e9e9ee; --code-dim:#8e8e98;
+  --bar:rgba(251,251,253,.72); --shadow:0 1px 1px rgba(0,0,0,.03),0 8px 30px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0b0b0f; --bg-alt:#131318; --card:#17171d; --ink:#f2f2f5; --ink-2:#b4b4bd; --ink-3:#7c7c86;
+    --line:rgba(255,255,255,.09); --rec:#ff5a4a; --link:#ff8b7a; --warm:#e0a24a;
+    --code:#101014; --code-ink:#e9e9ee; --code-dim:#7c7c86;
+    --bar:rgba(11,11,15,.7); --shadow:none;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:64px}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:1.0625rem/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:.18em}
+code,pre{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+:not(pre)>code{font-size:.88em;background:var(--bg-alt);border:1px solid var(--line);border-radius:6px;padding:.05em .35em}
+img,video{display:block;max-width:100%}
+.wrap{max-width:1040px;margin-left:auto;margin-right:auto;padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+.narrow{max-width:720px}
+
+/* top bar: translucent, content scrolls under it */
+.bar{position:sticky;top:0;z-index:10;background:var(--bar);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:1px solid transparent;transition:border-color .2s}
+.bar.scrolled{border-bottom-color:var(--line)}
+.bar .wrap{display:flex;align-items:center;gap:20px;height:52px}
+.brand{display:flex;align-items:center;gap:9px;color:var(--ink);font-weight:600;font-size:1rem;letter-spacing:-.01em}
+.brand:hover{text-decoration:none}
+.brand img{width:24px;height:24px}
+.bar nav{display:flex;gap:22px;margin-left:auto;font-size:.875rem}
+.bar nav a{color:var(--ink-2)}
+.bar nav a:hover{color:var(--ink);text-decoration:none}
+@media (max-width:640px){.bar nav .opt{display:none}.bar nav{gap:16px}}
+
+/* hero */
+.hero{padding:88px 0 40px;text-align:center}
+.hero .kicker{display:inline-flex;align-items:center;gap:8px;font-size:.9375rem;font-weight:600;color:var(--ink-2);margin:0 0 14px}
+.hero .kicker::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--rec)}
+.hero h1{font-size:clamp(2.25rem,6vw,4.25rem);line-height:1.05;letter-spacing:-.035em;font-weight:700;margin:0 auto}
+.hero h1 span{display:block}
+.hero p.lede{font-size:clamp(1.125rem,2.2vw,1.3125rem);line-height:1.5;color:var(--ink-2);max-width:40em;margin:24px auto 0;letter-spacing:-.005em}
+.ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:32px}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 22px;border-radius:999px;font-size:1rem;font-weight:500;
+  transition:transform .1s ease-out,background-color .2s}
+.btn:hover{text-decoration:none}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--ink);color:var(--bg)}
+.btn.ghost{color:var(--ink);border:1px solid var(--line)}
+.btn.ghost:hover{background:var(--bg-alt)}
+.meta{margin-top:18px;font-size:.8125rem;color:var(--ink-3)}
+
+/* film */
+.film{margin-top:56px;margin-bottom:0}
+.film .frame{border-radius:18px;overflow:hidden;background:#0e0e10;box-shadow:0 30px 80px -24px rgba(0,0,0,.35),0 0 0 1px var(--line)}
+.film video{width:100%;aspect-ratio:16/9;background:#0e0e10}
+.film figcaption{text-align:center;color:var(--ink-3);font-size:.8125rem;margin-top:14px}
+
+/* sections */
+section{padding:112px 0 0}
+.eyebrow{font-size:.8125rem;font-weight:600;letter-spacing:.02em;color:var(--ink-3);margin:0 0 10px}
+h2{font-size:clamp(1.875rem,4vw,2.75rem);line-height:1.1;letter-spacing:-.028em;margin:0;font-weight:700;max-width:22ch}
+.intro{font-size:1.1875rem;color:var(--ink-2);margin:18px 0 0;max-width:36em}
+h3{font-size:1.1875rem;letter-spacing:-.012em;margin:0 0 6px}
+
+/* the note */
+.note-row{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:40px;margin-top:48px;align-items:start}
+.doc{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.doc .tab{display:flex;align-items:center;gap:7px;padding:11px 16px;border-bottom:1px solid var(--line);font:.75rem/1 "SF Mono",ui-monospace,Menlo,monospace;color:var(--ink-3)}
+.doc .tab i{width:11px;height:11px;border-radius:50%;background:var(--line)}
+.doc .tab span{margin-left:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc .body{padding:28px 32px 30px;font-size:.9688rem}
+.doc h4{font-size:1.5rem;letter-spacing:-.02em;margin:0 0 10px}
+.doc .hd{color:var(--ink-2);line-height:1.7;font-size:.9063rem}
+.doc .hd b{color:var(--ink);font-weight:600}
+.doc h5{font-size:1rem;margin:22px 0 6px}
+.doc ul{margin:0;padding-left:1.15em}
+.doc li{margin:3px 0}
+.doc ul.todo{list-style:none;padding:0}
+.doc ul.todo li{display:flex;gap:10px}
+.doc ul.todo li::before{content:"";flex:none;width:14px;height:14px;margin-top:.3em;border:1.5px solid var(--ink-3);border-radius:4px}
+.doc hr{border:0;border-top:1px solid var(--line);margin:22px 0}
+.doc .ln{display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;margin:5px 0}
+.doc .ts{font:.75rem/1.9 "SF Mono",ui-monospace,Menlo,monospace;color:var(--ink-3)}
+.doc .tag{color:var(--ink-3);font-style:italic}
+.unk{color:var(--warm)}
+.margin{display:grid;gap:26px;padding-top:18px}
+.margin p{margin:0;font-size:.9375rem;color:var(--ink-2);border-left:2px solid var(--line);padding-left:14px}
+.margin p b{display:block;color:var(--ink);font-weight:600;margin-bottom:2px}
+@media (max-width:860px){.note-row{grid-template-columns:minmax(0,1fr)}.margin{grid-template-columns:1fr 1fr;padding-top:0}}
+@media (max-width:540px){.margin{grid-template-columns:1fr}.doc .body{padding:22px 18px}.doc .ln{grid-template-columns:1fr;gap:0}}
+
+/* timeline */
+.track{display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:52px}
+.track h3{font-size:.8125rem;font-weight:600;color:var(--ink-3);letter-spacing:.02em;margin:0 0 18px}
+.track ol{list-style:none;margin:0;padding:0;counter-reset:n}
+.track li{position:relative;padding:0 0 26px 44px;counter-increment:n}
+.track li::before{content:counter(n);position:absolute;left:0;top:-1px;width:26px;height:26px;border-radius:50%;
+  display:grid;place-items:center;font-size:.8125rem;font-weight:600;background:var(--bg-alt);color:var(--ink-2);border:1px solid var(--line)}
+.track li::after{content:"";position:absolute;left:12.5px;top:30px;bottom:4px;width:1px;background:var(--line)}
+.track li:last-child::after{display:none}
+.track .after li{counter-increment:n}
+.track b{display:block;font-weight:600;letter-spacing:-.01em}
+.track span{color:var(--ink-2);font-size:.9688rem}
+@media (max-width:760px){.track{grid-template-columns:1fr;gap:16px}}
+
+/* split rows */
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:center;margin-top:48px}
+.split p{color:var(--ink-2);margin:0 0 14px}
+@media (max-width:820px){.split{grid-template-columns:minmax(0,1fr);gap:28px}}
+pre{position:relative;margin:0;background:var(--code);color:var(--code-ink);border-radius:14px;padding:20px 22px;overflow:auto;font-size:.8438rem;line-height:1.7}
+pre .c{color:var(--code-dim)}
+pre .p{color:#ff8b7a}
+.copy{position:absolute;top:10px;right:10px;font:500 .75rem/1 -apple-system,system-ui,sans-serif;color:#cfcfd6;background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:7px 10px;cursor:pointer;transition:transform .1s ease-out}
+.copy:active{transform:scale(.96)}
+
+.jira{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.jira li{display:grid;grid-template-columns:92px minmax(0,1fr);gap:14px;align-items:baseline;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.jira em{font-style:normal;font-size:.75rem;font-weight:600;letter-spacing:.02em;text-align:center;border-radius:999px;padding:4px 0}
+.jira .cm{background:var(--bg-alt);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.jira .sk{background:var(--bg-alt);color:var(--ink-3)}
+.jira .nw{background:rgba(229,72,58,.12);color:var(--link)}
+.jira span{font-size:.9375rem;color:var(--ink-2)}
+
+/* privacy */
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:48px}
+.facts div{background:var(--card);padding:26px 28px}
+.facts p{margin:0;color:var(--ink-2);font-size:.9688rem}
+@media (max-width:700px){.facts{grid-template-columns:1fr}}
+
+/* install */
+.install{background:var(--bg-alt);margin-top:112px;padding:96px 0}
+.install section{padding:0}
+.req{display:flex;flex-wrap:wrap;gap:8px 24px;margin:20px 0 32px;padding:0;list-style:none;color:var(--ink-2);font-size:.9375rem}
+.req li::before{content:"·";margin-right:10px;color:var(--ink-3)}
+.req li:first-child::before{content:none}
+.after-install{margin-top:20px;color:var(--ink-2);font-size:.9688rem}
+
+.fine{padding:72px 0 0;color:var(--ink-3);font-size:.8438rem;max-width:720px}
+footer{border-top:1px solid var(--line);margin-top:72px;padding:28px 0 calc(40px + env(safe-area-inset-bottom));font-size:.8438rem;color:var(--ink-3)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:10px 28px;justify-content:space-between}
+footer a{color:var(--ink-2)}
+
+/* gentle arrival as sections scroll in */
+.rise{opacity:0;transform:translateY(16px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.2,1)}
+.rise.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .rise{opacity:1;transform:none;transition:none}
+  .btn:active,.copy:active{transform:none}
+}
+@media (prefers-reduced-transparency:reduce){.bar{background:var(--bg);-webkit-backdrop-filter:none;backdrop-filter:none}}
+</style>
+</head>
+<body>
+
+<header class="bar" id="bar">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.svg" alt="">MeetingScribe</a>
+    <nav aria-label="Page">
+      <a class="opt" href="#note">The note</a>
+      <a class="opt" href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="https://preetbohra.com/">More projects &#8599;</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap hero">
+    <p class="kicker">For Microsoft Teams on the Mac</p>
+    <h1><span>Join the call. Hang up.</span> <span>The notes are written.</span></h1>
+    <p class="lede">MeetingScribe sits quietly in the background. When Teams picks up your microphone it starts recording, and a few minutes after you leave it saves a note with a summary, action items and a transcript that knows who said what. Everything runs on your Mac.</p>
+    <div class="ctas">
+      <a class="btn primary" href="#film">Watch the demo</a>
+      <a class="btn ghost" href="https://github.com/preetbohra-dev/MeetingScribe">Source on GitHub</a>
+    </div>
+    <p class="meta">Free and open source &middot; Apple silicon, macOS 14.4 or later</p>
+  </div>
+
+  <figure class="wrap film" id="film">
+    <div class="frame">
+      <video controls playsinline preload="metadata" poster="poster.jpg">
+        <source src="demo.mp4" type="video/mp4">
+        Your browser can't play this video. <a href="demo.mp4">Download it</a> instead.
+      </video>
+    </div>
+    <figcaption>About three and a half minutes, narrated. The people, meetings and tickets in it are made up.</figcaption>
+  </figure>
+
+  <section class="wrap" id="note">
+    <div class="rise">
+      <p class="eyebrow">What you get</p>
+      <h2>One Markdown file per meeting, in a folder you already have.</h2>
+      <p class="intro">Notes land in <code>~/Documents/Meeting Notes</code>. Open them in any editor, search them with Spotlight, paste them into an email. This is what one looks like.</p>
+    </div>
+    <div class="note-row rise">
+      <article class="doc" aria-label="Example meeting note">
+        <div class="tab"><i></i><i></i><i></i><span>2026-10-28 1400 - Migration sync.md</span></div>
+        <div class="body">
+          <h4>Migration sync</h4>
+          <div class="hd">
+            <b>Date:</b> Wednesday 28 October 2026, 14:00&ndash;14:47 (47 min)<br>
+            <b>Participants:</b> Me, Samantha Lee, Daniel Ortiz, <span class="unk">Speaker 3 (unrecognized)</span><br>
+            <b>Filtered:</b> 12 non-work lines left out
+          </div>
+          <h5>Summary</h5>
+          <ul>
+            <li>Database migration finished last night; tables validated.</li>
+            <li>Nightly reporting jobs still point at the old source and fail.</li>
+            <li>The firewall change for the new cluster hasn't been requested yet.</li>
+          </ul>
+          <h5>Action items</h5>
+          <ul class="todo">
+            <li>Me: update the reporting jobs by Thursday</li>
+            <li>Daniel Ortiz: re-run the row-count check on store_sales</li>
+            <li><span><span class="unk">Speaker 3</span>: raise the firewall change with security today</span></li>
+          </ul>
+          <hr>
+          <h5>Transcript</h5>
+          <div class="ln"><span class="ts">00:00:00</span><span><b>Me:</b> Morning everyone, let's go through where the migration is.</span></div>
+          <div class="ln"><span class="ts">00:00:05</span><span><b>Samantha Lee:</b> It finished last night. I validated the tables this morning&hellip;</span></div>
+          <div class="ln"><span class="ts">00:00:19</span><span><b>Me:</b> Great, thanks. <span class="tag">(possible echo of the remote side)</span></span></div>
+        </div>
+      </article>
+      <div class="margin">
+        <p><b>Named after the meeting</b>The title comes from the Teams window, so you can find it again.</p>
+        <p><b>Small talk is counted, not kept</b>Weekend plans and the weather never make it into the note. You only see how many lines were dropped.</p>
+        <p><b>Voices it doesn't know yet</b>New people get a label. Name them once and they're recognised from then on.</p>
+        <p><b>Nothing is quietly deleted</b>Lines that might be an echo or a mis-hearing are tagged, not removed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" id="how">
+    <div class="rise">
+      <p class="eyebrow">How it works</p>
+      <h2>There's no record button.</h2>
+      <p class="intro">macOS can tell which apps are using the microphone. MeetingScribe checks once a second, and when it's Teams, the call is on.</p>
+    </div>
+    <div class="track rise">
+      <div>
+        <h3>During the call</h3>
+        <ol>
+          <li><b>Notices the call</b><span>Teams takes the mic, and recording starts within a second or two.</span></li>
+          <li><b>Records two tracks</b><span>Your microphone is &ldquo;Me&rdquo;. Teams&rsquo; own audio is everyone else, captured from Teams alone, so your music and notifications stay out of it.</span></li>
+          <li><b>Notices you left</b><span>Ten seconds after Teams lets go of the mic, recording stops. Being on mute doesn&rsquo;t end it.</span></li>
+        </ol>
+      </div>
+      <div>
+        <h3>After you hang up</h3>
+        <ol>
+          <li><b>Transcribes</b><span>Whisper large-v3-turbo on each track, with long silences cut first so it doesn&rsquo;t invent text.</span></li>
+          <li><b>Works out who spoke</b><span>Every second of remote audio gets a voice fingerprint. Similar ones are grouped and matched against people it has heard before.</span></li>
+          <li><b>Keeps the work</b><span>Qwen 2.5 14B reads the transcript and drops the personal chat, then writes the summary and action items.</span></li>
+          <li><b>Saves the note</b><span>You get a notification. Raw audio is deleted once the note is safely written.</span></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" id="speakers">
+    <div class="split rise">
+      <div>
+        <p class="eyebrow">Speakers</p>
+        <h2>It learns your colleagues&rsquo; voices.</h2>
+        <p class="intro" style="margin-bottom:14px">Everyone on the other end arrives mixed into one stream, so they&rsquo;re told apart by how they sound. Not sure who &ldquo;Speaker 2&rdquo; was? Play a ten-second clip of them, then give them a name.</p>
+        <p>The note is rewritten with the right name, and from the next meeting on they&rsquo;re labelled automatically. Every confident match sharpens their voiceprint a little.</p>
+      </div>
+<pre><code><span class="p">$</span> ./ctl.sh listen
+<span class="c">Speaker 2 · first heard at 00:03:12</span>
+<span class="c">"Can we push the cutover to Monday?"</span>
+
+<span class="p">$</span> ./ctl.sh name "Speaker 2" "Priya Shah"
+<span class="c">Rewrote 2026-10-28 1400 - Migration sync.md</span>
+<span class="c">Saved Priya Shah's voiceprint</span></code></pre>
+    </div>
+  </section>
+
+  <section class="wrap" id="jira">
+    <div class="split rise">
+      <div>
+        <p class="eyebrow">Jira, if you use it</p>
+        <h2>Action items become tickets. You approve each one.</h2>
+        <p class="intro" style="margin-bottom:14px">Run <code>./ctl.sh jira</code> after a meeting. It drafts each piece of work, searches every Jira space you can see for tickets that already cover it, and suggests what to do.</p>
+        <p>Nothing is sent until you press <b>y</b>. You can edit any field first, and it remembers what it pushed, so running it twice doesn&rsquo;t create duplicates.</p>
+      </div>
+      <ul class="jira">
+        <li><em class="cm">Comment</em><span>The work is already in an open ticket. Add the meeting&rsquo;s update to it.</span></li>
+        <li><em class="sk">Skip</em><span>The ticket is done and nobody said the problem is back.</span></li>
+        <li><em class="nw">Create</em><span>Nothing covers it yet. Draft a ticket and link the related ones.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="wrap" id="privacy">
+    <div class="rise">
+      <p class="eyebrow">Privacy</p>
+      <h2>Your meetings stay on your Mac.</h2>
+      <p class="intro">The models are downloaded once. After that MeetingScribe runs with the network switched off for them, and Jira is the only thing that ever talks to the internet, and only when you start it.</p>
+    </div>
+    <div class="facts rise">
+      <div><h3>Audio</h3><p>Written to your Library folder while the call runs, and deleted as soon as the note is saved.</p></div>
+      <div><h3>Models</h3><p>Whisper and Qwen run on the Mac&rsquo;s GPU through MLX. If you&rsquo;d rather use Ollama, it has to be on your own machine.</p></div>
+      <div><h3>Voiceprints</h3><p>192 numbers per person in a local file. They can&rsquo;t be turned back into audio, and you can delete any of them.</p></div>
+      <div><h3>Check for yourself</h3><p>Watch <code>nettop</code> while a meeting is being processed. There are no connections to see.</p></div>
+    </div>
+  </section>
+</main>
+
+<div class="install" id="install">
+  <section class="wrap narrow">
+    <p class="eyebrow">Install</p>
+    <h2>About fifteen minutes, most of it downloading.</h2>
+    <ul class="req">
+      <li>Apple silicon Mac</li>
+      <li>macOS 14.4 or later</li>
+      <li>Python 3.12&ndash;3.14</li>
+      <li>About 10 GB free</li>
+      <li>No admin rights</li>
+    </ul>
+<pre><code><span class="p">$</span> git clone https://github.com/preetbohra-dev/MeetingScribe.git
+<span class="p">$</span> cd MeetingScribe
+<span class="p">$</span> python3 -m venv .venv &amp;&amp; .venv/bin/pip install -r requirements.txt
+<span class="p">$</span> .venv/bin/python meeting_scribe.py download-models
+<span class="p">$</span> ./install.sh</code></pre>
+    <p class="after-install">Then allow the microphone and system audio when macOS asks, and join a Teams call. The <a href="https://github.com/preetbohra-dev/MeetingScribe#readme">README</a> covers permissions, settings and what to do if something doesn&rsquo;t work.</p>
+  </section>
+</div>
+
+<div class="wrap">
+  <p class="fine">Recording a meeting usually needs everyone&rsquo;s agreement, and voiceprints count as biometric data in many places. Tell people you&rsquo;re using it and check your company&rsquo;s policy. MeetingScribe is provided as is, under the GPL-3.0 licence, and isn&rsquo;t an official tool of any company.</p>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Made by <a href="https://preetbohra.com/">Preet Bohra</a></span>
+    <span><a href="https://preetbohra.com/">More projects</a> &middot; <a href="https://github.com/preetbohra-dev/MeetingScribe">GitHub</a> &middot; <a href="https://github.com/preetbohra-dev/MeetingScribe/blob/main/LICENSE">GPL-3.0</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var bar = document.getElementById('bar');
+  function onScroll() { bar.classList.toggle('scrolled', window.scrollY > 8); }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  var items = document.querySelectorAll('.rise');
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -10% 0px' });
+    items.forEach(function (el) { io.observe(el); });
+  } else {
+    items.forEach(function (el) { el.classList.add('in'); });
+  }
+
+  document.querySelectorAll('#install pre').forEach(function (pre) {
+    var b = document.createElement('button');
+    b.className = 'copy'; b.type = 'button'; b.textContent = 'Copy';
+    b.addEventListener('click', function () {
+      var text = pre.innerText.replace(/^Copy$/m, '').split('\n')
+        .map(function (l) { return l.replace(/^\$\s?/, ''); }).filter(Boolean).join('\n');
+      navigator.clipboard.writeText(text).then(function () {
+        b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1400);
+      });
+    });
+    pre.appendChild(b);
+  });
+})();
+</script>
+</body>
+</html>

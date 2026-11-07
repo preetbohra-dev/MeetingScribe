@@ -3,20 +3,20 @@ window.TIMELINE = {
   {
    "id": "title",
    "start": 0.0,
-   "dur": 10.657,
+   "dur": 10.615,
    "lines": [
     {
      "t": 0.6,
-     "dur": 1.259,
+     "dur": 1.237,
      "text": "Meet MeetingScribe."
     },
     {
-     "t": 2.139,
-     "dur": 4.459,
+     "t": 2.117,
+     "dur": 4.437,
      "text": "It turns every Teams meeting into clean notes, and now into Jira tickets."
     },
     {
-     "t": 6.877,
+     "t": 6.835,
      "dur": 2.88,
      "text": "Without anything leaving your Mac, unless you say so."
     }
@@ -24,16 +24,16 @@ window.TIMELINE = {
   },
   {
    "id": "problem",
-   "start": 10.657,
+   "start": 10.615,
    "dur": 8,
    "lines": [
     {
      "t": 0.6,
-     "dur": 1.323,
+     "dur": 1.301,
      "text": "Meetings create work."
     },
     {
-     "t": 2.203,
+     "t": 2.181,
      "dur": 4.736,
      "text": "But notes go unwritten, action items get lost, and the tickets never get raised."
     }
@@ -41,21 +41,21 @@ window.TIMELINE = {
   },
   {
    "id": "detect",
-   "start": 18.657,
-   "dur": 13.516,
+   "start": 18.615,
+   "dur": 13.473,
    "lines": [
     {
      "t": 0.6,
-     "dur": 2.539,
+     "dur": 2.496,
      "text": "MeetingScribe runs quietly in the background."
     },
     {
-     "t": 3.419,
+     "t": 3.376,
      "dur": 5.824,
      "text": "When you join a Teams call, it starts recording two tracks: your microphone, and Teams' own audio."
     },
     {
-     "t": 9.523,
+     "t": 9.48,
      "dur": 3.093,
      "text": "No buttons to press, and no bot joining the meeting."
     }
@@ -63,8 +63,8 @@ window.TIMELINE = {
   },
   {
    "id": "pipeline",
-   "start": 32.173,
-   "dur": 16.719,
+   "start": 32.088,
+   "dur": 16.697,
    "lines": [
     {
      "t": 0.6,
@@ -78,11 +78,11 @@ window.TIMELINE = {
     },
     {
      "t": 5.917,
-     "dur": 4.331,
+     "dur": 4.309,
      "text": "Voiceprints tell the speakers apart, and recognise people it has heard before."
     },
     {
-     "t": 10.528,
+     "t": 10.507,
      "dur": 5.291,
      "text": "A local language model drops the small talk, then writes the summary and the action items."
     }
@@ -90,7 +90,7 @@ window.TIMELINE = {
   },
   {
    "id": "note",
-   "start": 48.892,
+   "start": 48.785,
    "dur": 11,
    "lines": [
     {
@@ -107,7 +107,7 @@ window.TIMELINE = {
   },
   {
    "id": "voices",
-   "start": 59.892,
+   "start": 59.785,
    "dur": 8.5,
    "lines": [
     {
@@ -124,25 +124,25 @@ window.TIMELINE = {
   },
   {
    "id": "jira",
-   "start": 68.392,
-   "dur": 8.393,
+   "start": 68.285,
+   "dur": 8.329,
    "lines": [
     {
      "t": 0.6,
-     "dur": 1.387,
+     "dur": 1.365,
      "text": "And now, the new part."
     },
     {
-     "t": 2.267,
-     "dur": 5.227,
+     "t": 2.245,
+     "dur": 5.184,
      "text": "MeetingScribe can turn those action items into Jira tickets, with you approving every one."
     }
    ]
   },
   {
    "id": "signin",
-   "start": 76.785,
-   "dur": 15.497,
+   "start": 76.615,
+   "dur": 15.455,
    "lines": [
     {
      "t": 0.6,
@@ -151,43 +151,43 @@ window.TIMELINE = {
     },
     {
      "t": 10.181,
-     "dur": 4.416,
+     "dur": 4.373,
      "text": "It can stay in your macOS Keychain, and you are asked again when it expires."
     }
    ]
   },
   {
    "id": "space",
-   "start": 92.283,
+   "start": 92.069,
    "dur": 6,
    "lines": [
     {
      "t": 0.6,
-     "dur": 2.901,
+     "dur": 2.88,
      "text": "Then tell it which Jira space new tickets should go to."
     }
    ]
   },
   {
    "id": "extract",
-   "start": 98.283,
-   "dur": 9.503,
+   "start": 98.069,
+   "dur": 9.417,
    "lines": [
     {
      "t": 0.6,
-     "dur": 4.907,
+     "dur": 4.864,
      "text": "The same local model reads the meeting, and pulls out the work that belongs in Jira."
     },
     {
-     "t": 5.787,
-     "dur": 2.816,
+     "t": 5.744,
+     "dur": 2.773,
      "text": "Owners, due dates, and the keywords to search for."
     }
    ]
   },
   {
    "id": "search",
-   "start": 107.785,
+   "start": 107.487,
    "dur": 12,
    "lines": [
     {
@@ -204,21 +204,21 @@ window.TIMELINE = {
   },
   {
    "id": "decide",
-   "start": 119.785,
+   "start": 119.487,
    "dur": 15,
    "lines": [
     {
      "t": 0.6,
-     "dur": 4.032,
+     "dur": 3.989,
      "text": "Work that already has an open ticket gets a comment, not a duplicate."
     },
     {
-     "t": 4.912,
+     "t": 4.869,
      "dur": 3.477,
      "text": "Genuinely new work gets a new ticket, linked to its relatives."
     },
     {
-     "t": 8.669,
+     "t": 8.627,
      "dur": 4.843,
      "text": "And if a closed ticket's problem is back, it opens a fresh one, and links the history."
     }
@@ -226,8 +226,8 @@ window.TIMELINE = {
   },
   {
    "id": "draft",
-   "start": 134.785,
-   "dur": 16.396,
+   "start": 134.487,
+   "dur": 16.375,
    "lines": [
     {
      "t": 0.6,
@@ -236,11 +236,11 @@ window.TIMELINE = {
     },
     {
      "t": 6.277,
-     "dur": 4.928,
+     "dur": 4.907,
      "text": "Type, priority, assignee, due date, components, even required custom fields."
     },
     {
-     "t": 11.485,
+     "t": 11.464,
      "dur": 4.011,
      "text": "Nothing is pushed until you say yes, and you can edit any field first."
     }
@@ -248,7 +248,7 @@ window.TIMELINE = {
   },
   {
    "id": "board",
-   "start": 151.181,
+   "start": 150.861,
    "dur": 8.5,
    "lines": [
     {
@@ -265,16 +265,16 @@ window.TIMELINE = {
   },
   {
    "id": "usecases",
-   "start": 159.681,
+   "start": 159.361,
    "dur": 13,
    "lines": [
     {
      "t": 0.6,
-     "dur": 5.696,
+     "dur": 5.675,
      "text": "Use it for stand-ups, migration syncs, incident reviews, sprint planning, and stakeholder calls."
     },
     {
-     "t": 6.576,
+     "t": 6.555,
      "dur": 1.707,
      "text": "Anywhere talk turns into work."
     }
@@ -282,8 +282,8 @@ window.TIMELINE = {
   },
   {
    "id": "privacy",
-   "start": 172.681,
-   "dur": 10.591,
+   "start": 172.361,
+   "dur": 10.569,
    "lines": [
     {
      "t": 0.6,
@@ -292,23 +292,23 @@ window.TIMELINE = {
     },
     {
      "t": 4.336,
-     "dur": 5.355,
+     "dur": 5.333,
      "text": "The only thing that leaves is the Jira update you approved, sent straight to your own Jira site."
     }
    ]
   },
   {
    "id": "windows",
-   "start": 183.272,
-   "dur": 12.105,
+   "start": 182.931,
+   "dur": 12.084,
    "lines": [
     {
      "t": 0.6,
-     "dur": 4.693,
+     "dur": 4.672,
      "text": "MeetingScribe runs on Apple Silicon Macs today, and Windows support is coming."
     },
     {
-     "t": 5.573,
+     "t": 5.552,
      "dur": 5.632,
      "text": "First the Jira step, on any computer. Then recording and transcription on Windows PCs."
     }
@@ -316,8 +316,8 @@ window.TIMELINE = {
   },
   {
    "id": "outro",
-   "start": 195.377,
-   "dur": 9.865,
+   "start": 195.015,
+   "dur": 9.844,
    "lines": [
     {
      "t": 0.6,
@@ -326,11 +326,11 @@ window.TIMELINE = {
     },
     {
      "t": 5.723,
-     "dur": 3.243,
+     "dur": 3.221,
      "text": "MeetingScribe. Meetings, written down, and followed up."
     }
    ]
   }
  ],
- "total": 205.243
+ "total": 204.859
 };
