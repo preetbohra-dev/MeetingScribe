@@ -1,0 +1,13 @@
+numpy
+scipy
+sounddevice
+mlx-whisper
+mlx-lm
+pyobjc-core
+pyobjc-framework-Cocoa
+pyobjc-framework-Quartz
+pyobjc-framework-ScreenCaptureKit
+pyobjc-framework-CoreMedia
+pyobjc-framework-libdispatch
+speechbrain
+keyring

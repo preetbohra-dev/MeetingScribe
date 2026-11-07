@@ -1,0 +1,49 @@
+# MeetingScribe settings. Every key is optional; defaults live in meeting_scribe.py.
+# After editing: ./ctl.sh restart
+
+output_dir = "~/Documents/Meeting Notes"
+my_name = "Preet"
+others_name = "Others"
+language = ""                 # "" = auto-detect, or "en", "de", ...
+keep_audio = false             # stereo WAV (L = Me, R = Others) saved next to each note
+notify = true                 # macOS notification on start / stop / notes ready
+
+# "teams" = only Teams' audio; "all" = all system audio (fallback if Teams capture is silent)
+capture_mode = "teams"
+# "tap" = Core Audio process tap (no orange screen-recording glow); "screencapturekit" = old path
+system_audio_backend = "tap"
+mic_device = ""               # part of a mic's name, e.g. "AirPods"; "" = system default
+
+# Detection timing (seconds)
+start_after_s = 1
+stop_after_s = 10
+min_meeting_s = 10
+
+# Models (downloaded once with `download-models`, then used fully offline)
+whisper_model = "mlx-community/whisper-large-v3-turbo"
+llm_backend = "mlx"           # "mlx" (in-process) or "ollama" (local server)
+mlx_llm_model = "mlx-community/Qwen2.5-14B-Instruct-4bit"   # summary, action items and work filter
+ollama_model = "qwen2.5:14b"
+ollama_url = "http://127.0.0.1:11434"   # non-loopback URLs are refused
+
+# Keep only work discussion: small talk and personal conversation are left out of the summary,
+# the note's transcript and transcript.json. false = keep every line.
+work_only = true
+work_filter_model = ""        # "" = same model as mlx_llm_model (loaded once); or another mlx model
+
+# Suspected echo / low-confidence lines are kept and tagged in the note; true = delete them
+drop_suspect_lines = false
+
+# Jira (optional): `./ctl.sh jira` drafts tickets from a meeting and asks you before every push.
+# Credentials never go in this file: you paste a token or browser session cookie when asked, and
+# it is kept in your macOS Keychain ("MeetingScribe Jira"). base_url must start with https://.
+[jira]
+base_url = ""                 # e.g. "https://yourcompany.atlassian.net"; "" = asked on first run
+deployment = "cloud"          # "cloud" (*.atlassian.net) or "server" (Server / Data Center)
+auth = ""                     # "bearer" (personal access token), "basic" (email + API token), "cookie"; "" = ask
+email = ""                    # only for auth = "basic"
+project = ""                  # suggested space for new tickets; you confirm it every run
+search_days = 365             # related-ticket search covers tickets updated this recently, in every space
+labels = ["meetingscribe"]    # added to every ticket created
+ssl_strict = false            # false = accept Zscaler-style proxy CAs (chain and hostname still checked)
+ca_bundle = ""                # corporate root CA .pem, if HTTPS fails with a certificate error
