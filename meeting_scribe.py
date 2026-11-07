@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-MeetingScribe: a zero-touch, 100% on-device Microsoft Teams meeting recorder.
+MeetingScribe: a zero-touch, 100% on-device meeting recorder for Microsoft Teams, Zoom
+and meetings in a web browser (Google Meet, Teams or Zoom on the web, Webex, ...).
 
-  run              Background daemon. Watches for Teams calls, records two tracks
-                   (Me = microphone, Others = Teams audio via ScreenCaptureKit),
+  run              Background daemon. Watches for calls, records two tracks
+                   (Me = microphone, Others = the meeting app's audio),
                    and hands each finished recording to the processing pipeline.
   process DIR      Transcribe (mlx-whisper) -> merge -> summarize (mlx-lm/Ollama)
                    -> write Markdown. The daemon runs this automatically.
-  status           Show permissions, Teams audio state and detected windows.
-  test-capture N   Record N seconds of both tracks and report levels.
+  status           Show permissions, meeting apps' audio state and meeting windows.
+  test-capture N   Record N seconds of both tracks and report levels (--app zoom, chrome, ...).
   download-models  One-time model download (the only command that uses network).
   jira             Review a meeting's action items and push the ones you approve
                    to Jira (opt-in; you approve every ticket and comment).
@@ -61,14 +62,17 @@ TARGET_SR = 16000  # Whisper's native rate; both tracks are stored at this rate.
 DEFAULTS = {
     "output_dir": "~/Documents/Meeting Notes",
     **plat.DIRS,  # work_dir and log_dir
-    # "teams" = only audio produced by Teams processes; "all" = all system audio.
-    "capture_mode": "teams",
+    # Apps watched for calls: "teams", "zoom" and "browsers" (a browser counts while it holds
+    # the mic and shows a meeting tab: Google Meet, Teams or Zoom on the web, Webex, ...).
+    # Single browsers can be named instead: "chrome", "edge", "firefox", "brave", "arc", "safari".
+    "meeting_apps": ["teams", "zoom", "browsers"],
+    # "app" = only audio produced by the meeting app; "all" = all system audio.
+    "capture_mode": "app",
     # "tap" = Core Audio process tap (audio only, no screen-capture indicator);
     # "screencapturekit" = older path, makes macOS show its screen-recording glow.
     "system_audio_backend": "tap",
-    "teams_bundle_prefix": "com.microsoft.teams",
     "mic_device": "",  # substring of an input device name; "" = system default
-    "start_after_s": 4,  # Teams must hold the mic this long before we start
+    "start_after_s": 4,  # the meeting app must hold the mic this long before we start
     "stop_after_s": 20,  # ...and release it this long before we stop
     "window_keepalive_max_s": 600,  # a meeting window alone keeps a call alive this long
     "min_meeting_s": 60,  # shorter recordings (e.g. device preview) are discarded
@@ -232,12 +236,84 @@ def resample_poly_np(x, up, down):
     return (phases[pos % up] * xs).sum(axis=1)
 
 
-def meeting_window_title(cfg):
+# --------------------------------------------------------------------------
+# Meeting apps
+# --------------------------------------------------------------------------
+
+# Meeting tabs, matched against browser window titles (the active tab's title, followed by
+# the browser's name on Windows). "title" is the meeting's name where the page shows one.
+_TAB = r"^(?:\(\d+\)\s*)?"  # an unread count, e.g. "(2) "
+WEB_MEETINGS = [
+    ("Google Meet", _TAB + r"Meet\s*[-–:]\s*(?P<title>.+?)(?:\s+and \d+ more pages?)?(?:\s[-–—]\s.*)?$"),
+    ("Microsoft Teams", _TAB + r"(?P<title>.+?)\s*\|\s*Microsoft Teams\b"),
+    ("Zoom", _TAB + r"Zoom(?: Meeting| Workplace)?(?:\s[-–—|]\s.*)?$"),
+    ("Webex", r"\bWebex\b"),
+    ("Jitsi Meet", r"\bJitsi Meet\b"),
+    ("Whereby", r"\bWhereby\b"),
+]
+
+
+def _browser(id, name, mac, owner, win, packaged=()):
+    return {"id": id, "name": name, "browser": True, "mac": mac, "mac_owner": owner,
+            "win": win, "win_packaged": packaged, "windows": WEB_MEETINGS}
+
+
+# Who to watch. mac: bundle-ID prefixes of every process that plays or records the call
+# (helpers included); mac_owner: owner names of their windows. win: exe names;
+# win_packaged: microphone privacy-store key prefixes of the Store version. windows: what
+# a window title looks like during a meeting. Native apps count while they hold the mic;
+# a browser also needs a meeting tab on screen when the call starts.
+MEETING_APPS = [
+    {"id": "teams", "name": "Microsoft Teams", "browser": False,
+     "mac": ("com.microsoft.teams",), "mac_owner": ("Microsoft Teams", "MSTeams"),
+     "win": ("ms-teams.exe", "teams.exe"), "win_packaged": ("msteams_", "microsoftteams_"),
+     "windows": [("Microsoft Teams", r"^(?P<title>.+?)(?:\s*\|\s*Microsoft Teams.*)?$")]},
+    {"id": "zoom", "name": "Zoom", "browser": False,
+     "mac": ("us.zoom.xos",), "mac_owner": ("zoom.us",),
+     "win": ("zoom.exe",), "win_packaged": (),
+     "windows": [("Zoom", r"^Zoom Meeting\b")]},
+    _browser("chrome", "Google Chrome", ("com.google.Chrome",), ("Google Chrome",), ("chrome.exe",)),
+    _browser("edge", "Microsoft Edge", ("com.microsoft.edgemac",), ("Microsoft Edge",), ("msedge.exe",)),
+    _browser("firefox", "Firefox", ("org.mozilla.firefox", "org.mozilla.plugincontainer"),
+             ("Firefox",), ("firefox.exe",)),
+    _browser("brave", "Brave", ("com.brave.Browser",), ("Brave Browser",), ("brave.exe",)),
+    _browser("arc", "Arc", ("company.thebrowser.Browser",), ("Arc",), ("arc.exe",),
+             ("thebrowsercompany.arc_",)),
+    # Safari records and plays through WebKit's shared helper processes.
+    _browser("safari", "Safari", ("com.apple.Safari", "com.apple.WebKit"), ("Safari",), ()),
+]
+APPS_BY_ID = {a["id"]: a for a in MEETING_APPS}
+MEET_CODE = re.compile(r"^[a-z]{3}-[a-z]{4}-[a-z]{3}$")  # a Google Meet code is not a title
+
+
+def enabled_apps(cfg):
+    want = set(cfg["meeting_apps"])
+    if "browsers" in want:
+        want |= {a["id"] for a in MEETING_APPS if a["browser"]}
+    unknown = want - set(APPS_BY_ID) - {"browsers"}
+    if unknown:
+        log.warning("unknown meeting_apps entries ignored: %s", sorted(unknown))
+    return [a for a in MEETING_APPS if a["id"] in want]
+
+
+def meeting_window(cfg, app, titles=None):
+    """(service, title) for the first window of `app` that shows a meeting, else None.
+    service is e.g. "Google Meet" for a browser; title is None when the window shows no
+    usable meeting name."""
     exclude = re.compile(cfg["meeting_window_exclude_regex"], re.I)
-    for _, title in plat.teams_windows():
-        clean = re.sub(r"\s*\|\s*Microsoft Teams.*$", "", title).strip()
-        if clean and not exclude.search(clean) and clean.lower() != "microsoft teams":
-            return clean
+    if titles is None:
+        titles = [t for _, t in plat.app_windows(app)]
+    for raw in titles:
+        for service, pattern in app["windows"]:
+            m = re.search(pattern, raw)
+            if not m:
+                continue
+            title = (m.groupdict().get("title") or "").strip() or None
+            if title and (exclude.search(title) or title.lower() in (service.lower(), "microsoft teams")):
+                continue
+            if title and MEET_CODE.match(title):
+                title = None
+            return service, title
     return None
 
 
@@ -346,18 +422,21 @@ class MicCapture:
 
 
 class Recording:
-    def __init__(self, cfg, session_dir, title):
+    def __init__(self, cfg, session_dir, app, service, title):
         self.cfg, self.dir = cfg, session_dir
         self.dir.mkdir(parents=True, exist_ok=True)
         self.t0 = time.monotonic()
-        self.meta = {"status": "recording", "title": title or "Teams meeting",
+        self.titled = bool(title)
+        self.meta = {"status": "recording", "title": title or f"{service} meeting",
+                     "source": service, "app": app["id"],
                      "started_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
                      "sample_rate": TARGET_SR}
         self._save_meta()
         self.mic_w = TrackWriter(self.dir / "mic.pcm", self.t0)
         self.sys_w = TrackWriter(self.dir / "system.pcm", self.t0)
         self.mic = MicCapture(self.mic_w, cfg["mic_device"])
-        self.sys = plat.system_audio_capture(cfg, self.sys_w)
+        mode = "all" if cfg["capture_mode"] == "all" else "app"
+        self.sys = plat.system_audio_capture(cfg, self.sys_w, app, mode)
         self.warned = set()
 
     def _save_meta(self):
@@ -376,11 +455,12 @@ class Recording:
             log.error("mic capture failed to start: %s", e)
 
     def set_title(self, title):
-        if title and self.meta["title"] == "Teams meeting":
+        if title and not self.titled:
+            self.titled = True
             self.meta["title"] = title
             self._save_meta()
 
-    def watchdog(self, teams_output_active, mic_device_changed):
+    def watchdog(self, app_output_active, mic_device_changed):
         now = time.monotonic()
         elapsed = now - self.t0
         if mic_device_changed or (self.mic.stream and now - (self.mic.last_cb or now) > 3):
@@ -400,10 +480,10 @@ class Recording:
                 self.sys.start()
             except Exception as e:
                 log.error("system audio restart failed: %s", e)
-        # Teams is playing audio but nothing reaches us: fall back to all system audio.
-        if (self.sys.mode == "teams" and elapsed > 30 and teams_output_active
+        # The app is playing audio but nothing reaches us: fall back to all system audio.
+        if (self.sys.mode == "app" and elapsed > 30 and app_output_active
                 and self.sys_w.peak < 1e-4):
-            log.warning("Teams is playing audio but per-app capture is silent; "
+            log.warning("the meeting app is playing audio but per-app capture is silent; "
                         "switching this recording to all-system-audio capture")
             self.sys.stop()
             self.sys.mode = "all"
@@ -411,7 +491,7 @@ class Recording:
                 self.sys.start()
             except Exception as e:
                 log.error("system audio restart failed: %s", e)
-        if (self.sys.mode == "all" and elapsed > 90 and teams_output_active
+        if (self.sys.mode == "all" and elapsed > 90 and app_output_active
                 and self.sys_w.peak < 1e-4 and "sys0" not in self.warned):
             self.warned.add("sys0")
             log.error("system audio is pure silence even when tapping everything: the "
@@ -439,7 +519,10 @@ class Daemon:
         self.sessions = cfg["work_dir"] / "sessions"
         self.sessions.mkdir(parents=True, exist_ok=True)
         self.probe = plat.AudioProbe()
+        self.apps = enabled_apps(cfg)
         self.rec = None
+        self.app = None  # the app in the call being recorded
+        self.candidate = None  # (app, service, title) holding the mic, not yet recording
         self.mic_since = None
         self.last_mic = 0.0
         self.last_signal = 0.0
@@ -471,26 +554,44 @@ class Daemon:
                 log.info("re-queueing unprocessed session %s", meta_path.parent.name)
                 self.queue.append(meta_path.parent)
 
+    def find_call(self, states):
+        """(app, service, title) of the first app that is in a call: a native app holding
+        the mic, or a browser holding the mic with a meeting tab on screen."""
+        for app in self.apps:
+            if not states[app["id"]][0]:
+                continue
+            found = meeting_window(self.cfg, app)
+            if found:
+                return app, *found
+            if not app["browser"]:
+                return app, app["name"], None
+        return None
+
     def tick(self):
         now = time.monotonic()
-        mic_active, out_active = self.probe.teams_state(self.cfg)
-        title = meeting_window_title(self.cfg)
-        if mic_active:
-            self.last_mic = now
-
         if self.rec is None:
-            self.mic_since = (self.mic_since or now) if mic_active else None
-            if self.mic_since and now - self.mic_since >= self.cfg["start_after_s"]:
-                self.start_recording(title)
+            call = self.find_call(self.probe.app_states(self.apps))
+            if not call or not self.candidate or call[0] is not self.candidate[0]:
+                self.mic_since = now if call else None
+            self.candidate = call
+            if call and now - self.mic_since >= self.cfg["start_after_s"]:
+                self.start_recording(*call)
+                self.last_mic = now
         else:
-            # A meeting-looking window only counts while Teams still has its call audio
+            mic_active, out_active = self.probe.app_states([self.app])[self.app["id"]]
+            found = meeting_window(self.cfg, self.app)
+            title = found[1] if found else None
+            if mic_active:
+                self.last_mic = now
+            # A meeting-looking window only counts while the app still has its call audio
             # open; after hang-up the window title can linger (e.g. the chat stays selected).
-            window_ok = (title and out_active
+            window_ok = (found and out_active
                          and now - self.last_mic < self.cfg["window_keepalive_max_s"])
             if mic_active or window_ok:
                 self.last_signal = now
             if window_ok and not mic_active and not self.held_by_window:
-                log.info("Teams released the mic; window '%s' + Teams audio keep recording", title)
+                log.info("%s released the mic; its meeting window and audio keep recording",
+                         self.app["name"])
             self.held_by_window = bool(window_ok and not mic_active)
             self.rec.set_title(title)
             dev = self.probe.default_input_device()
@@ -501,16 +602,19 @@ class Daemon:
 
         self.pump_queue()
 
-    def start_recording(self, title):
+    def start_recording(self, app, service, title):
         sid = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        log.info("meeting detected (%s); recording session %s", title or "untitled", sid)
-        self.rec = Recording(self.cfg, self.sessions / sid, title)
+        log.info("%s meeting detected in %s (%s); recording session %s", service, app["name"],
+                 title or "untitled", sid)
+        self.app = app
+        self.rec = Recording(self.cfg, self.sessions / sid, app, service, title)
         self.rec.start()
         self.last_signal = time.monotonic()
-        notify(self.cfg, f"Recording Teams meeting{': ' + title if title else ''}")
+        notify(self.cfg, f"Recording {service} meeting{': ' + title if title else ''}")
 
     def stop_recording(self):
         rec, self.rec, self.mic_since = self.rec, None, None
+        self.app = self.candidate = None
         dur = rec.stop()
         log.info("meeting ended after %.0f s", dur)
         if dur < self.cfg["min_meeting_s"]:
@@ -538,7 +642,7 @@ class Daemon:
     def run(self):
         self.check_permissions()
         self.recover()
-        log.info("daemon started; watching for Teams meetings")
+        log.info("daemon started; watching %s", ", ".join(a["name"] for a in self.apps))
         try:
             while True:
                 try:
@@ -1059,7 +1163,7 @@ def ts(seconds):
 SYSTEM_PROMPT = ("You are a meticulous meeting assistant. Use only information present in the "
                  "transcript. Never invent names, dates, numbers, or decisions.")
 
-FINAL_INSTRUCTIONS = """The material below comes from a Microsoft Teams meeting. Lines labelled "{me}" are the person these notes belong to. Every other label is one remote participant, identified by voice: a real name when the voice was recognized, otherwise "Speaker 1", "Speaker 2", and so on. Keep "Speaker N" labels as they are unless that person's name is clearly stated in the conversation.
+FINAL_INSTRUCTIONS = """The material below comes from an online meeting. Lines labelled "{me}" are the person these notes belong to. Every other label is one remote participant, identified by voice: a real name when the voice was recognized, otherwise "Speaker 1", "Speaker 2", and so on. Keep "Speaker N" labels as they are unless that person's name is clearly stated in the conversation.
 
 Respond in Markdown with exactly these two sections and nothing before or after them:
 
@@ -1071,9 +1175,9 @@ Respond in Markdown with exactly these two sections and nothing before or after 
 Include every task someone volunteered for, agreed to, or was asked to do. Use "{me}" for tasks I committed to, otherwise the speaker label or name of whoever took the task, or "Unassigned". If there are none, write "- None identified."
 """
 
-CHUNK_INSTRUCTIONS = """This is part {i} of {n} of a Microsoft Teams meeting transcript. "{me}" is the note-taker; every other label is one remote participant. Extract terse bullets of: key points, decisions, and action items (with owner if known). Output bullets only."""
+CHUNK_INSTRUCTIONS = """This is part {i} of {n} of an online meeting transcript. "{me}" is the note-taker; every other label is one remote participant. Extract terse bullets of: key points, decisions, and action items (with owner if known). Output bullets only."""
 
-WORK_FILTER_INSTRUCTIONS = """Below are numbered lines from a Microsoft Teams work meeting. Find the lines that are NOT work related.
+WORK_FILTER_INSTRUCTIONS = """Below are numbered lines from an online work meeting. Find the lines that are NOT work related.
 
 Not work related: small talk and personal conversation, such as weekend stories, family, health, food, sports, weather, jokes, personal plans, gossip, "how are you" greetings, and chit-chat while waiting for people to join.
 
@@ -1083,7 +1187,7 @@ Answer with exactly one line: OFF: followed by the numbers or ranges of the line
 
 # Asking for a category, not "work or not", keeps an 8B model from calling terse work
 # questions ("What did the DBS say?") small talk. Only C and D are dropped.
-WORK_CONFIRM_INSTRUCTIONS = """Here is an excerpt from a Microsoft Teams work meeting. Classify the line marked >>> into one category:
+WORK_CONFIRM_INSTRUCTIONS = """Here is an excerpt from an online work meeting. Classify the line marked >>> into one category:
 
 A) Work: anything about projects, systems, servers, tables, data, tickets, tasks, customers, status, questions to a colleague, who is available or out, schedules, holidays or change freezes that affect the work, or running the meeting ("let's get started", "I'll send it in the chat").
 B) Brief reply or filler: "yes", "okay", "makes sense", "thank you", "sorry", "mm-hmm", or a garbled fragment.
@@ -1210,7 +1314,7 @@ def summarize(cfg, transcript, llm):
 
 def safe_filename(s):
     s = re.sub(r'[\\/:*?"<>|\n\r\t]+', " ", s).strip()
-    return re.sub(r"\s+", " ", s)[:80] or "Teams meeting"
+    return re.sub(r"\s+", " ", s)[:80] or "Meeting"
 
 
 def process_session(cfg, session_dir):
@@ -1318,7 +1422,7 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None):
     title = meta["title"]
     md = [f"# {title}", "",
           f"**Date:** {started:%A %d %B %Y, %H:%M}–{end:%H:%M} ({round(duration / 60)} min)  ",
-          f"**Source:** Microsoft Teams · recorded, transcribed and summarized on this {plat.DEVICE}  "]
+          f"**Source:** {meta.get('source', 'Microsoft Teams')} · recorded, transcribed and summarized on this {plat.DEVICE}  "]
     if speakers:
         md.append("**Participants:** " + ", ".join(
             [cfg["my_name"]] + [n if s["known"] else f"{n} (unrecognized)"
@@ -2192,14 +2296,21 @@ def cmd_status(cfg, args):
     for line in plat.permission_report():
         print(line)
     probe = plat.AudioProbe()
-    for p in probe.teams_processes(cfg):
-        print(f"  {p['name']:45} pid={p['pid']:<6} mic={p['input']} speaker={p['output']}")
-    mic, out = probe.teams_state(cfg)
-    print("Teams mic in use:", mic, "| Teams playing audio:", out)
-    print("Teams windows:")
-    for owner, title in plat.teams_windows():
-        print(f"  [{owner}] {title}")
-    print("Meeting window detected:", meeting_window_title(cfg))
+    apps = enabled_apps(cfg)
+    states = probe.app_states(apps)
+    for app in apps:
+        procs = probe.app_processes(app)
+        windows = plat.app_windows(app)
+        if not procs and not windows:
+            print(f"{app['name']}: not running")
+            continue
+        mic, out = states[app["id"]]
+        print(f"{app['name']}: mic in use={mic} | playing audio={out} | "
+              f"meeting window={meeting_window(cfg, app, [t for _, t in windows])}")
+        for p in procs:
+            print(f"  {p['name']:45} pid={p['pid']:<6} mic={p['input']} speaker={p['output']}")
+        for owner, title in windows:
+            print(f"  [{owner}] {title}")
 
 
 def cmd_test_capture(cfg, args):
@@ -2209,9 +2320,10 @@ def cmd_test_capture(cfg, args):
     if d.exists():
         for p in d.iterdir():
             p.unlink()
-    rec = Recording(cfg, d, "test")
+    app = APPS_BY_ID[args.app]
+    rec = Recording(cfg, d, app, app["name"], "test")
     rec.start()
-    print(f"Recording {args.seconds}s; play some audio in Teams and say something…")
+    print(f"Recording {args.seconds}s; play some audio in {app['name']} and say something…")
     end = time.time() + args.seconds
     while time.time() < end:
         plat.run_loop(0.5)
@@ -2394,6 +2506,8 @@ def main():
     sub.add_parser("status").set_defaults(fn=cmd_status)
     p = sub.add_parser("test-capture")
     p.add_argument("seconds", type=int, nargs="?", default=15)
+    p.add_argument("--app", default="teams", choices=list(APPS_BY_ID),
+                   help="whose audio to record as Others")
     p.set_defaults(fn=cmd_test_capture)
     sub.add_parser("download-models").set_defaults(fn=cmd_download)
     p = sub.add_parser("name-speaker", help='e.g. name-speaker "Speaker 2" "Priya Shah"')
