@@ -259,7 +259,8 @@ Run `download-models` again after changing a model.
 
 | Path | What it is |
 |---|---|
-| `meeting_scribe.py` | The whole program: background daemon, processing pipeline and CLI |
+| `meeting_scribe.py` | The program: background daemon, processing pipeline and CLI |
+| `platforms/` | What differs per operating system: call detection, Teams audio capture, notifications. `macos.py` today, `windows.py` in progress |
 | `config.toml` | Your settings |
 | `install.sh`, `uninstall.sh`, `ctl.sh` | Install, remove and control the background agent |
 | `site/` | The website at meetingscribe.preetbohra.com, with the demo video |
