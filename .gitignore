@@ -1,0 +1,14 @@
+# Python environments
+.venv/
+__pycache__/
+
+# Written by install.sh for this machine (it holds absolute paths)
+run.sh
+
+# Demo video build: downloaded voice models and intermediate output
+video/.venv/
+video/models/
+video/narration.wav
+video/stills/
+
+graphify-out/
