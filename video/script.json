@@ -147,8 +147,8 @@
       "id": "windows",
       "min": 9,
       "lines": [
-        "MeetingScribe runs on Apple Silicon Macs today, and Windows support is coming.",
-        "First the Jira step, on any computer. Then recording and transcription on Windows PCs."
+        "MeetingScribe runs on Apple Silicon Macs and on Windows PCs.",
+        "Both install with one command. On Windows it runs on the processor, or on an NVIDIA graphics card if you have one."
       ]
     },
     {

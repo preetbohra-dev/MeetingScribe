@@ -300,23 +300,23 @@ window.TIMELINE = {
   {
    "id": "windows",
    "start": 182.931,
-   "dur": 12.084,
+   "dur": 13.407,
    "lines": [
     {
      "t": 0.6,
-     "dur": 4.672,
-     "text": "MeetingScribe runs on Apple Silicon Macs today, and Windows support is coming."
+     "dur": 4.096,
+     "text": "MeetingScribe runs on Apple Silicon Macs and on Windows PCs."
     },
     {
-     "t": 5.552,
-     "dur": 5.632,
-     "text": "First the Jira step, on any computer. Then recording and transcription on Windows PCs."
+     "t": 4.976,
+     "dur": 7.531,
+     "text": "Both install with one command. On Windows it runs on the processor, or on an NVIDIA graphics card if you have one."
     }
    ]
   },
   {
    "id": "outro",
-   "start": 195.015,
+   "start": 196.337,
    "dur": 9.844,
    "lines": [
     {
@@ -332,5 +332,5 @@ window.TIMELINE = {
    ]
   }
  ],
- "total": 204.859
+ "total": 206.181
 };

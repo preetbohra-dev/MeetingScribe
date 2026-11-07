@@ -304,11 +304,12 @@ Model defaults depend on the system and are picked in `platforms/macos.py` and `
 ```bash
 python3 -m venv video/.venv
 video/.venv/bin/pip install imageio-ffmpeg kokoro-onnx pyobjc-framework-WebKit pyobjc-framework-Quartz  # macOS
-video/.venv/bin/pip install imageio-ffmpeg kokoro-onnx playwright && video/.venv/bin/python -m playwright install chromium  # Windows
+video/.venv/Scripts/pip install imageio-ffmpeg kokoro-onnx playwright && video/.venv/Scripts/python -m playwright install chromium  # Windows
 # once: kokoro-v1.0.onnx and voices-v1.0.bin from github.com/thewh1teagle/kokoro-onnx/releases into video/models/
 video/.venv/bin/python video/build_video.py                   # about 10 minutes
 video/.venv/bin/python video/build_video.py --stills 30,120   # a few PNG frames to check a change
 ```
+On Windows, use `video/.venv/Scripts/python` in place of `video/.venv/bin/python`.
 
 People, meetings and ticket numbers in the video are made up.
 </details>
