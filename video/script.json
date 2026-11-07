@@ -15,8 +15,8 @@
       "min": 7.5,
       "lines": [
         "Meet MeetingScribe.",
-        "It turns every Teams meeting into clean notes, and now into Jira tickets.",
-        "Without anything leaving your Mac, unless you say so."
+        "It turns your Teams, Zoom and Google Meet calls into clean notes, and now into Jira tickets.",
+        "Without anything leaving your computer, unless you say so."
       ]
     },
     {
@@ -32,15 +32,32 @@
       "min": 11,
       "lines": [
         "MeetingScribe runs quietly in the background.",
-        "When you join a Teams call, it starts recording two tracks: your microphone, and Teams' own audio.",
+        "When you join a call, it starts recording two tracks: your microphone, and the meeting's own audio.",
         "No buttons to press, and no bot joining the meeting."
+      ]
+    },
+    {
+      "id": "apps",
+      "min": 10,
+      "lines": [
+        "It works with the meetings you already have: the Teams and Zoom apps, and Google Meet in your browser.",
+        "Teams and Zoom on the web, Webex, Jitsi and Whereby work in the browser too."
+      ]
+    },
+    {
+      "id": "browser",
+      "min": 13,
+      "lines": [
+        "In a browser, it waits for two signals: the browser is using the microphone, and a meeting tab is open.",
+        "Then it records only the browser's sound, and names the note after the meeting.",
+        "Dictating a document, or recording a voice message, is never mistaken for a call."
       ]
     },
     {
       "id": "pipeline",
       "min": 14,
       "lines": [
-        "When the call ends, everything runs right on the Mac.",
+        "When the call ends, everything runs right on your computer.",
         "Whisper transcribes both tracks.",
         "Voiceprints tell the speakers apart, and recognise people it has heard before.",
         "A local language model drops the small talk, then writes the summary and the action items."
@@ -75,7 +92,7 @@
       "min": 11,
       "lines": [
         "Run control jira, and sign in with a personal access token, an API token, or your browser's session cookie for single sign-on sites.",
-        "It can stay in your macOS Keychain, and you are asked again when it expires."
+        "It can stay in your Mac's Keychain or in Windows Credential Manager, and you are asked again when it expires."
       ]
     },
     {
@@ -139,7 +156,7 @@
       "id": "privacy",
       "min": 10,
       "lines": [
-        "Recording, transcription, and every model stay on your Mac.",
+        "Recording, transcription, and every model stay on your computer.",
         "The only thing that leaves is the Jira update you approved, sent straight to your own Jira site."
       ]
     },

@@ -5,7 +5,7 @@
 <p align="center">
 Meeting notes that write themselves, for Teams, Zoom and Google Meet, on your Mac or Windows PC.<br>
 <a href="https://meetingscribe.preetbohra.com"><b>Website</b></a> ·
-<a href="https://meetingscribe.preetbohra.com/#film">3-minute demo</a> ·
+<a href="https://meetingscribe.preetbohra.com/#film">4-minute demo</a> ·
 <a href="#install">Install</a>
 </p>
 

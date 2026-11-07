@@ -96,6 +96,12 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
 .lane h5 { font-family: var(--mono); font-size: 24px; text-align: center; color: #fff; margin-bottom: 4px; }
 .lane small { display: block; text-align: center; color: var(--muted); font-size: 16px; margin-bottom: 14px; }
 .stub { height: 30px; border-radius: 8px; background: #202024; margin-top: 10px; }
+.btab { height: 44px; padding: 0 22px; border-radius: 12px 12px 0 0; display: flex; align-items: center; gap: 10px;
+  font-size: 19px; color: var(--dim); white-space: nowrap; }
+.btab.on { background: var(--card); color: var(--text); }
+.btab .fav { width: 18px; height: 18px; border-radius: 5px; flex: none; }
+.xmark { background: rgba(248,113,113,.15) !important; color: var(--red) !important; }
+.appwin .ring { position: absolute; inset: -3px; border-radius: 24px; pointer-events: none; }
 .stub.hit { background: rgba(245,181,67,.25); border: 1px solid rgba(245,181,67,.6); }
 .stub.hit2 { background: rgba(161,161,168,.18); border: 1px solid rgba(161,161,168,.45); }
 .space { width: 300px; height: 150px; padding: 24px 26px; }
@@ -115,7 +121,7 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
     </div>
     <div class="abs h1" id="t-name" style="left:0;width:1920px;top:400px;text-align:center;font-size:132px">MeetingScribe</div>
-    <div class="abs sub" id="t-tag" style="left:0;width:1920px;top:580px;text-align:center;font-size:38px">Your Teams meetings, written down on your Mac.</div>
+    <div class="abs sub" id="t-tag" style="left:0;width:1920px;top:580px;text-align:center;font-size:38px">Your meetings, written down on your own computer.</div>
     <div class="abs" id="t-chips" style="left:0;width:1920px;top:680px;text-align:center">
       <span class="chip v" id="t-c1">+ Jira, with you in the loop</span>&nbsp;&nbsp;
       <span class="chip" id="t-c2">100% on-device AI</span>
@@ -152,10 +158,67 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
       <div id="d-l1" style="margin-top:30px;font-size:24px"><span style="color:var(--green)">●</span> Teams is using the microphone</div>
       <div id="d-l2" style="margin-top:10px;font-size:24px"><span style="color:var(--red)">●</span> Recording <span style="font-family:var(--mono);color:var(--muted)">session 2026-11-05_1400</span></div>
       <div id="d-w1" style="margin-top:34px"><div class="lbl">Me · microphone</div><canvas id="cv1" width="740" height="110" style="margin-top:10px"></canvas></div>
-      <div id="d-w2" style="margin-top:18px"><div class="lbl">Teams audio · Core Audio process tap</div><canvas id="cv2" width="740" height="110" style="margin-top:10px"></canvas></div>
+      <div id="d-w2" style="margin-top:18px"><div class="lbl">Call audio · only from the meeting app</div><canvas id="cv2" width="740" height="110" style="margin-top:10px"></canvas></div>
     </div>
     <div class="abs" id="d-chips" style="left:0;width:1920px;top:820px;text-align:center">
       <span class="chip n">No buttons</span>&nbsp;&nbsp;<span class="chip n">No meeting bot</span>&nbsp;&nbsp;<span class="chip n">No virtual audio drivers</span>
+    </div>
+  </section>
+
+  <!-- 3b MEETING APPS -->
+  <section class="scene" id="s-apps">
+    <div class="abs h2" id="ap-h" style="left:0;width:1920px;top:122px;text-align:center;font-size:58px">Works with the meetings you already have</div>
+    <div id="ap-wins"></div>
+    <div class="abs" id="ap-more" style="left:0;width:1920px;top:826px;text-align:center"><span class="lbl" id="ap-lbl" style="margin-right:22px;vertical-align:middle">Also in the browser</span></div>
+  </section>
+
+  <!-- 3c IN THE BROWSER -->
+  <section class="scene" id="s-browser">
+    <div class="abs card" id="br-win" style="left:110px;top:150px;width:1080px;height:720px;overflow:hidden">
+      <div style="height:60px;background:#131315;display:flex;align-items:flex-end;gap:6px;padding:0 16px">
+        <div class="btab"><span class="fav" style="background:#3a3a40"></span>Inbox (3)</div>
+        <div class="btab" id="br-t1"><span class="fav" style="background:#34d39966"></span>Meet – Design review<span id="br-rec" style="width:10px;height:10px;border-radius:50%;background:var(--red);margin-left:6px"></span></div>
+        <div class="btab" id="br-t2"><span class="fav" style="background:#60a5fa66"></span>Release notes – Docs</div>
+        <div class="btab" style="padding:0 14px;font-size:24px">+</div>
+      </div>
+      <div style="height:62px;display:flex;align-items:center;padding:0 22px;border-bottom:1px solid var(--line)">
+        <div style="flex:1;height:40px;border-radius:999px;background:#111113;border:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 18px;font-size:19px;color:var(--muted);font-family:var(--mono)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span id="br-url">meet.google.com/abc-defg-hij</span></div>
+      </div>
+      <div id="br-meet" class="abs" style="left:0;top:122px;width:1080px;height:598px">
+        <div id="br-tiles" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;padding:24px 24px 0"></div>
+        <div class="abs" style="left:0;bottom:22px;width:1080px;display:flex;justify-content:center;gap:16px">
+          <div style="width:58px;height:58px;border-radius:50%;background:#2a2a2f;display:grid;place-items:center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
+          <div style="width:58px;height:58px;border-radius:50%;background:#2a2a2f;display:grid;place-items:center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></div>
+          <div style="width:84px;height:58px;border-radius:29px;background:#e5483a;display:grid;place-items:center"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M3 14c5-5 13-5 18 0l-2 3-4-1v-3c-2-.6-4-.6-6 0v3l-4 1z"/></svg></div>
+        </div>
+      </div>
+      <div id="br-docs" class="abs" style="left:0;top:122px;width:1080px;height:598px;background:#141416">
+        <div style="position:absolute;left:190px;top:40px;width:700px;height:540px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:46px 54px">
+          <div style="font-size:34px;font-weight:800">Release notes</div>
+          <div id="br-lines" style="margin-top:22px"></div>
+        </div>
+        <div class="abs" id="br-voice" style="left:420px;top:500px;height:56px;padding:0 24px;border-radius:999px;background:#202024;border:1px solid var(--line);display:flex;align-items:center;gap:14px;font-size:21px">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          Voice typing <canvas id="br-cv" width="120" height="30"></canvas></div>
+      </div>
+    </div>
+    <div class="abs card" id="br-c1" style="left:1240px;top:150px;width:580px;height:340px;padding:28px 32px">
+      <div style="display:flex;align-items:center;gap:14px"><div class="h3" style="font-size:30px">Design review</div><span class="chip g" style="margin-left:auto;font-size:19px;padding:6px 14px">Google Meet</span></div>
+      <div class="check" id="br-c1a" style="margin-top:14px"><i>✓</i>Chrome is using the microphone</div>
+      <div class="check" id="br-c1b"><i>✓</i>A meeting tab is open</div>
+      <div id="br-c1c" style="margin-top:16px;padding:14px 18px;border-radius:14px;background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.35);font-size:23px;display:flex;align-items:center;gap:12px">
+        <span id="br-c1dot" style="width:14px;height:14px;border-radius:50%;background:var(--red)"></span><b>Recording</b><span style="color:var(--muted)">· only Chrome's sound</span></div>
+      <div id="br-c1d" style="margin-top:16px;display:flex;align-items:center;gap:12px;font-size:21px;color:var(--muted)"><span style="color:var(--teal);display:flex"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></svg></span>Saves <b style="color:#fff;font-family:var(--mono);font-size:19px">Design review.md</b> after the call</div>
+    </div>
+    <div class="abs card" id="br-c2" style="left:1240px;top:530px;width:580px;height:340px;padding:28px 32px">
+      <div style="display:flex;align-items:center;gap:14px"><div class="h3" style="font-size:30px">Release notes</div><span class="chip n" style="margin-left:auto;font-size:19px;padding:6px 14px">Voice typing</span></div>
+      <div class="check" id="br-c2a" style="margin-top:14px"><i>✓</i>Chrome is using the microphone</div>
+      <div class="check" id="br-c2b"><i class="xmark">✕</i>No meeting tab</div>
+      <div id="br-c2c" style="margin-top:16px;padding:14px 18px;border-radius:14px;background:rgba(161,161,168,.08);border:1px solid rgba(161,161,168,.25);font-size:23px;color:var(--muted)">
+        <b style="color:#dcdce0">Not a call</b> · nothing is recorded</div>
+      <div id="br-c2d" style="margin-top:16px;font-size:21px;color:var(--muted)">The same goes for voice messages and dictation apps.</div>
     </div>
   </section>
 
@@ -163,7 +226,7 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
   <section class="scene" id="s-pipeline">
     <div class="abs" style="left:0;width:1920px;top:150px;text-align:center"><span class="chip g" id="pl-lock">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-      Runs entirely on this Mac</span></div>
+      Runs entirely on this computer</span></div>
     <svg class="abs" id="pl-wires" style="left:0;top:0" width="1920" height="1080"></svg>
     <div id="pl-nodes"></div>
     <div class="abs card" id="pl-tr" style="left:460px;top:640px;width:1000px;height:250px;padding:22px 34px"></div>
@@ -244,7 +307,7 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
         <div class="abs" id="si-ring" style="inset:-3px;border-radius:24px;border:3px solid var(--teal);box-shadow:0 0 40px rgba(45,212,191,.4)"></div></div>
       <div class="card" id="si-kc" style="padding:24px 28px;margin-top:34px;display:flex;gap:20px;align-items:center">
         <div class="icon" style="width:70px;height:70px;background:rgba(245,181,67,.15);flex:none"><svg viewBox="0 0 24 24" fill="none" stroke="#f5b543" stroke-width="2"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg></div>
-        <div><div class="h3" style="font-size:26px">Saved in macOS Keychain</div><div class="sub" style="font-size:20px">Asked again when it expires</div></div></div>
+        <div><div class="h3" style="font-size:26px">Saved securely</div><div class="sub" style="font-size:20px">Keychain or Credential Manager · asked again when it expires</div></div></div>
     </div>
   </section>
 
@@ -338,7 +401,7 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
     <div class="abs" id="pv-mac" style="left:200px;top:170px;width:1000px;height:640px">
       <div style="position:absolute;left:60px;top:0;width:880px;height:560px;border:4px solid #3d3d44;border-radius:30px;background:rgba(24,24,27,.85)"></div>
       <div style="position:absolute;left:0;top:560px;width:1000px;height:34px;border-radius:0 0 30px 30px;background:#2e2e33"></div>
-      <div class="abs" style="left:120px;top:40px" ><span class="chip g">Stays on this Mac</span></div>
+      <div class="abs" style="left:120px;top:40px" ><span class="chip g">Stays on this computer</span></div>
       <div id="pv-items"></div>
     </div>
     <svg class="abs" id="pv-arrow" style="left:0;top:0" width="1920" height="1080"></svg>
@@ -395,7 +458,7 @@ project  = <span class="y">"EDA"</span></pre></div>
 // ---------------------------------------------------------------- timeline data
 // timeline.js (written by build_video.py from the narration) sets window.TIMELINE.
 // Without it, line lengths are estimated so the page still previews.
-const FALLBACK_IDS = ["title","problem","detect","pipeline","note","voices","jira","signin","space","extract","search","decide","draft","board","usecases","privacy","windows","outro"];
+const FALLBACK_IDS = ["title","problem","detect","apps","browser","pipeline","note","voices","jira","signin","space","extract","search","decide","draft","board","usecases","privacy","windows","outro"];
 const TL = window.TIMELINE || (() => {
   let t = 0; const scenes = FALLBACK_IDS.map(id => { const s = {id, start: t, dur: 10, lines: [{t: .6, dur: 4, text: ""}, {t: 4.8, dur: 4, text: ""}, {t: 8, dur: 2, text: ""}, {t: 9, dur: 1, text: ""}]}; t += 10; return s; });
   return {scenes, total: t};
@@ -528,6 +591,109 @@ scene("detect", (s, L, e) => {
     });
   });
   ["#d-chips"].forEach(c => IN(c, L[2] + .2));
+});
+
+scene("apps", (s, L, e) => {
+  A("#ap-h", s + .1, .9, {opacity: [0, 1], y: [24, 0], blur: [8, 0]});
+  const people = '<circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.4"/><path d="M3 19c.6-3.4 3-5.2 6-5.2s5.4 1.8 6 5.2M15 14.2c2.6-.3 4.8 1.2 5.4 4.3"/>';
+  const camera = '<rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3z"/>';
+  const globe = '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9M12 3c-2.6 2.6-3.8 5.6-3.8 9s1.2 6.4 3.8 9"/>';
+  const apps = [
+    {name: "Microsoft Teams", kind: "Desktop app", c: "#8b93ff", bar: "Sprint planning", icon: people, who: ["Me", "AK", "JP", "LM"]},
+    {name: "Zoom", kind: "Desktop app", c: "#60a5fa", bar: "Zoom Meeting", icon: camera, who: ["Me", "RS", "TW", "NB"]},
+    {name: "Google Meet", kind: "Chrome · Edge · Firefox · Safari · Brave · Arc", c: "#34d399", bar: "meet.google.com", icon: globe, who: ["Me", "DO", "SL", "PK"]},
+  ];
+  const when = [L[0] + 3.0, L[0] + 4.0, L[0] + 5.0];
+  apps.forEach((a, i) => {
+    const x = 150 + i * 560;
+    const win = html(`<div class="abs card appwin" style="left:${x}px;top:250px;width:500px;height:420px">
+      <div style="height:48px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;padding:0 18px">
+        <i style="width:12px;height:12px;border-radius:50%;background:#3a3a40;display:block"></i><i style="width:12px;height:12px;border-radius:50%;background:#3a3a40;display:block"></i><i style="width:12px;height:12px;border-radius:50%;background:#3a3a40;display:block"></i>
+        <span style="margin-left:12px;color:var(--muted);font-size:17px;font-family:var(--mono)">${a.bar}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px">${a.who.map((w, j) => `
+        <div style="height:122px;border-radius:12px;background:#141416;border:1px solid var(--line);display:grid;place-items:center;position:relative">
+          <div class="spk" style="position:absolute;inset:-1px;border-radius:12px;border:3px solid ${a.c};opacity:0"></div>
+          <div style="width:62px;height:62px;border-radius:50%;background:${a.c}2e;color:${a.c};display:grid;place-items:center;font-size:22px;font-weight:800">${w}</div></div>`).join("")}</div>
+      <div style="position:absolute;left:16px;right:16px;bottom:16px;height:56px">
+        <div class="mic-off abs" style="inset:0;border-radius:14px;background:#141416;border:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 18px;font-size:20px;color:var(--dim)">
+          <span style="width:12px;height:12px;border-radius:50%;background:#3a3a40"></span>Waiting for a call</div>
+        <div class="mic-on abs" style="inset:0;border-radius:14px;background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.4);display:flex;align-items:center;gap:12px;padding:0 18px;font-size:20px;color:var(--green);font-weight:600">
+          <span style="width:12px;height:12px;border-radius:50%;background:var(--green)"></span>Using the microphone
+          <span style="margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--red)"><span class="rec" style="width:12px;height:12px;border-radius:50%;background:var(--red)"></span>Recording</span></div>
+      </div>
+      <div class="ring" style="border:3px solid ${a.c};box-shadow:0 0 50px ${a.c}55"></div></div>`);
+    const label = html(`<div class="abs" style="left:${x}px;top:694px;width:500px;text-align:center">
+      <div style="display:inline-flex;align-items:center;gap:12px"><span class="icon" style="width:44px;height:44px;border-radius:12px;background:${a.c}22"><svg viewBox="0 0 24 24" fill="none" stroke="${a.c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${a.icon}</svg></span>
+      <span class="h3" style="font-size:32px">${a.name}</span></div>
+      <div class="sub" style="font-size:21px;margin-top:8px">${a.kind}</div></div>`);
+    $("#ap-wins").append(win, label);
+    A(win, s + .5 + i * .22, .9, {opacity: [0, 1], y: [70, 0], scale: [.94, 1]}, "back");
+    IN(label, s + .8 + i * .22, .7, 18);
+    const on = win.querySelector(".mic-on"), off = win.querySelector(".mic-off"), ring = win.querySelector(".ring");
+    A(on, when[i], .35, {opacity: [0, 1]});
+    A(off, when[i], .25, {opacity: [1, 0]});
+    A(ring, when[i], .35, {opacity: [0, 1]});
+    A(ring, when[i] + .9, .8, {opacity: [1, .3]});
+    A(win, when[i], .5, {scale: [1, 1.035]}, "back");
+    A(win, when[i] + .5, .6, {scale: [1.035, 1]}, "inout");
+    const rec = win.querySelector(".rec");
+    const spk = [...win.querySelectorAll(".spk")];
+    F(s, e - s, (p, t) => {
+      rec.style.opacity = t > when[i] ? .45 + .55 * Math.abs(Math.cos((t - when[i]) * 2.4)) : 1;
+      spk.forEach((el, j) => { const v = Math.max(0, Math.sin(t * 1.9 + j * 1.6 + i)); el.style.opacity = t > when[i] && v > .6 ? (v - .6) * 2.5 : 0; });
+    });
+  });
+  const more = ["Teams on the web", "Zoom on the web", "Webex", "Jitsi Meet", "Whereby"];
+  IN("#ap-lbl", L[1] - .1, .5, 10);
+  more.forEach((m, i) => {
+    const c = html(`<span class="chip n" style="margin:0 7px;vertical-align:middle">${m}</span>`);
+    $("#ap-more").appendChild(c);
+    POP(c, L[1] + .2 + i * .28, .5);
+  });
+});
+
+scene("browser", (s, L, e) => {
+  A("#br-win", s + .1, .9, {opacity: [0, 1], x: [-50, 0]});
+  const tiles = $("#br-tiles");
+  [["Me", "#2dd4bf"], ["DO", "#f5b543"], ["SL", "#ff8a65"], ["PK", "#60a5fa"], ["AK", "#8b93ff"], ["JP", "#34d399"]].forEach(([n, c], i) => {
+    const tile = html(`<div style="height:196px;border-radius:14px;background:#141416;border:1px solid var(--line);display:grid;place-items:center;position:relative">
+      <div class="ring" style="position:absolute;inset:-1px;border-radius:14px;border:3px solid ${c};opacity:0"></div>
+      <div style="width:84px;height:84px;border-radius:50%;background:${c}2e;color:${c};display:grid;place-items:center;font-size:30px;font-weight:800">${n}</div></div>`);
+    tiles.appendChild(tile);
+    const ring = tile.querySelector(".ring");
+    F(s, e - s, (p, t) => { const v = Math.max(0, Math.sin(t * 1.7 + i * 1.3)); ring.style.opacity = v > .7 ? (v - .7) * 3.3 : 0; });
+  });
+  ["Highlights", "Faster exports for large projects", "Fixed: sync stalls on slow networks", "Known issues"].forEach((t, i) => {
+    $("#br-lines").appendChild(html(`<div style="font-size:${i % 3 ? 22 : 26}px;font-weight:${i % 3 ? 400 : 700};color:${i % 3 ? "#c9c9cf" : "#fff"};margin-top:${i ? 16 : 0}px">${t}</div>`));
+  });
+  const typed = html(`<div style="font-size:22px;color:#c9c9cf;margin-top:16px"><span id="br-typed"></span><span class="caret" style="height:22px"></span></div>`);
+  $("#br-lines").appendChild(typed);
+  const sw = L[2] - .2;  // switch to the Docs tab
+  typeText("#br-typed", sw + .8, "Dictated: the export fix ships on Friday.", 22);
+  F(s, e - s, (p, t) => {
+    const docs = t >= sw;
+    $("#br-t1").classList.toggle("on", !docs);
+    $("#br-t2").classList.toggle("on", docs);
+    $("#br-url").textContent = docs ? "docs.google.com/document/d/1Xr…" : "meet.google.com/abc-defg-hij";
+    $("#br-rec").style.opacity = .4 + .6 * Math.abs(Math.cos(t * 2.4));
+    const cv = $("#br-cv"), g = cv.getContext("2d");
+    g.clearRect(0, 0, cv.width, cv.height); g.fillStyle = "#f87171";
+    for (let i = 0; i < 16; i++) { const h = 4 + 22 * Math.abs(Math.sin(t * 7 + i * .9) * Math.cos(t * 2.3 + i * .4)); g.fillRect(i * 7.5, (30 - h) / 2, 4.5, h); }
+  });
+  A("#br-meet", sw, .45, {opacity: [1, 0]});
+  A("#br-docs", sw, .45, {opacity: [0, 1]});
+  A("#br-c1", L[0] + .3, .8, {opacity: [0, 1], x: [50, 0]});
+  IN("#br-c1a", L[0] + 2.4, .5, 12);
+  IN("#br-c1b", L[0] + 4.0, .5, 12);
+  A("#br-c1c", L[1] + .2, .6, {opacity: [0, 1], scale: [.92, 1]}, "back");
+  IN("#br-c1d", L[1] + 2.4, .5, 10);
+  F(L[1], e - L[1], (p, t) => { $("#br-c1dot").style.opacity = .4 + .6 * Math.abs(Math.cos(t * 2.4)); });
+  A("#br-c1", sw, .5, {opacity: [1, .45]});
+  A("#br-c2", sw + .2, .8, {opacity: [0, 1], x: [50, 0]});
+  IN("#br-c2a", sw + 1.1, .5, 12);
+  IN("#br-c2b", sw + 1.9, .5, 12);
+  A("#br-c2c", sw + 2.7, .6, {opacity: [0, 1], scale: [.92, 1]}, "back");
+  IN("#br-c2d", sw + 3.4, .5, 10);
 });
 
 scene("pipeline", (s, L, e) => {
@@ -821,7 +987,7 @@ scene("outro", (s, L, e) => {
 });
 
 // ---------------------------------------------------------------- persistent chrome
-const SECTIONS = {title: "", problem: "Why", detect: "Capture", pipeline: "On-device processing", note: "Notes", voices: "Voices",
+const SECTIONS = {title: "", problem: "Why", detect: "Capture", apps: "Meeting apps", browser: "In the browser", pipeline: "On-device processing", note: "Notes", voices: "Voices",
   jira: "New · Jira", signin: "Jira · sign in", space: "Jira · space", extract: "Jira · extract", search: "Jira · search", decide: "Jira · decide",
   draft: "Jira · review", board: "Jira · pushed", usecases: "Use cases", privacy: "Privacy", windows: "Platforms", outro: ""};
 F(0, TL.total, (p, t) => {
