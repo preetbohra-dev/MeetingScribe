@@ -6,7 +6,7 @@ my_name = "Me"
 others_name = "Others"
 language = ""                 # "" = auto-detect, or "en", "de", ...
 keep_audio = false             # stereo WAV (L = Me, R = Others) saved next to each note
-notify = true                 # macOS notification on start / stop / notes ready
+notify = true                 # notification on start / stop / notes ready
 
 # "teams" = only Teams' audio; "all" = all system audio (fallback if Teams capture is silent)
 capture_mode = "teams"
@@ -19,10 +19,13 @@ start_after_s = 1
 stop_after_s = 10
 min_meeting_s = 10
 
-# Models (downloaded once with `download-models`, then used fully offline)
-whisper_model = "mlx-community/whisper-large-v3-turbo"
-llm_backend = "mlx"           # "mlx" (in-process) or "ollama" (local server)
+# Models (downloaded once with `download-models`, then used fully offline).
+# Left unset, each OS picks its own: Mac = mlx-whisper + mlx Qwen 2.5 14B; Windows =
+# faster-whisper + llama.cpp Qwen 2.5 GGUF (14B with 24 GB of RAM or more, else 7B).
+# whisper_model = "mlx-community/whisper-large-v3-turbo"   # Windows: "dropbox-dash/faster-whisper-large-v3-turbo"
+# llm_backend = "mlx"         # "mlx" (Mac), "llamacpp" (Windows) or "ollama" (local server)
 mlx_llm_model = "mlx-community/Qwen2.5-14B-Instruct-4bit"   # summary, action items and work filter
+# gguf_model = "bartowski/Qwen2.5-14B-Instruct-GGUF/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
 ollama_model = "qwen2.5:14b"
 ollama_url = "http://127.0.0.1:11434"   # non-loopback URLs are refused
 
@@ -36,7 +39,7 @@ drop_suspect_lines = false
 
 # Jira (optional): `./ctl.sh jira` drafts tickets from a meeting and asks you before every push.
 # Credentials never go in this file: you paste a token or browser session cookie when asked, and
-# it is kept in your macOS Keychain ("MeetingScribe Jira"). base_url must start with https://.
+# it is kept in your macOS Keychain or Windows Credential Manager ("MeetingScribe Jira"). base_url must start with https://.
 [jira]
 base_url = ""                 # e.g. "https://yourcompany.atlassian.net"; "" = asked on first run
 deployment = "cloud"          # "cloud" (*.atlassian.net) or "server" (Server / Data Center)

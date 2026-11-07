@@ -1,0 +1,4 @@
+# Shell scripts must keep LF on every checkout (a Mac clone runs them); batch files want CRLF.
+*.sh text eol=lf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

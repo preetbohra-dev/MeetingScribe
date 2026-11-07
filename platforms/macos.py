@@ -20,9 +20,18 @@ import numpy as np
 log = logging.getLogger("meetingscribe")
 TARGET_SR = 16000  # same as meeting_scribe.TARGET_SR
 
+# How messages name things on this system.
+CTL, INSTALL, DEVICE, SECRET_STORE = "./ctl.sh", "./install.sh", "Mac", "macOS Keychain"
+
 DIRS = {
     "work_dir": "~/Library/Application Support/MeetingScribe",
     "log_dir": "~/Library/Logs/MeetingScribe",
+}
+
+MODEL_DEFAULTS = {
+    "asr_backend": "mlx",
+    "whisper_model": "mlx-community/whisper-large-v3-turbo",
+    "llm_backend": "mlx",
 }
 
 

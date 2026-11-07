@@ -1,13 +1,26 @@
+# One file for both systems; pip skips the lines whose marker doesn't match.
+# Prebuilt llama.cpp wheels (CPU), so Windows needs no compiler:
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 numpy
-scipy
 sounddevice
-mlx-whisper
-mlx-lm
-pyobjc-core
-pyobjc-framework-Cocoa
-pyobjc-framework-Quartz
-pyobjc-framework-ScreenCaptureKit
-pyobjc-framework-CoreMedia
-pyobjc-framework-libdispatch
-speechbrain
 keyring
+huggingface_hub
+
+# macOS: Apple-silicon models and the system frameworks
+scipy; sys_platform == "darwin"
+speechbrain; sys_platform == "darwin"
+mlx-whisper; sys_platform == "darwin"
+mlx-lm; sys_platform == "darwin"
+pyobjc-core; sys_platform == "darwin"
+pyobjc-framework-Cocoa; sys_platform == "darwin"
+pyobjc-framework-Quartz; sys_platform == "darwin"
+pyobjc-framework-ScreenCaptureKit; sys_platform == "darwin"
+pyobjc-framework-CoreMedia; sys_platform == "darwin"
+pyobjc-framework-libdispatch; sys_platform == "darwin"
+
+# Windows: CTranslate2 Whisper, llama.cpp, ONNX voices, WASAPI through comtypes.
+# No scipy or torch: Smart App Control blocks their DLLs.
+faster-whisper; sys_platform == "win32"
+llama-cpp-python; sys_platform == "win32"
+onnxruntime; sys_platform == "win32"
+comtypes; sys_platform == "win32"

@@ -1,0 +1,66 @@
+<#
+.SYNOPSIS
+  MeetingScribe control, the Windows twin of ctl.sh. Run it as .\ctl from the repository:
+  .\ctl start | stop | restart | status | logs | name | listen | voices | refilter | jira | terms
+#>
+
+param([Parameter(Position = 0)][string]$Command = 'status',
+      [Parameter(Position = 1, ValueFromRemainingArguments = $true)][string[]]$Rest)
+
+$Root = Split-Path $PSScriptRoot -Parent
+$Py = Join-Path $Root '.venv\Scripts\python.exe'
+$Script = Join-Path $Root 'meeting_scribe.py'
+$Logs = Join-Path $env:LOCALAPPDATA 'MeetingScribe\Logs'
+$Task = 'MeetingScribe'
+
+function Get-Scribe($what) {
+  Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
+    Where-Object { $_.CommandLine -like "*meeting_scribe.py*`" $what*" -or $_.CommandLine -like "*meeting_scribe.py $what*" }
+}
+
+function Invoke-Scribe { & $Py $Script @args; exit $LASTEXITCODE }
+
+switch ($Command) {
+  'start' {
+    Enable-ScheduledTask -TaskName $Task | Out-Null
+    Start-ScheduledTask -TaskName $Task
+    'started'
+  }
+  'stop' {
+    # Disabled, so the 5-minute trigger does not bring it straight back.
+    Disable-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue | Out-Null
+    Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
+    Get-Scribe 'run' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    'stopped (a recording in progress is processed on next start; .\ctl start to resume)'
+  }
+  'restart' {
+    Get-Scribe 'run' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Enable-ScheduledTask -TaskName $Task | Out-Null
+    Start-ScheduledTask -TaskName $Task
+    'restarted'
+  }
+  'status' {
+    $d = Get-Scribe 'run'
+    if ($d) { "daemon: running (pid $(@($d.ProcessId) -join ', '))" } else { 'daemon: NOT running' }
+    if (Get-Scribe 'process') { 'processing: a meeting is being transcribed/summarized' }
+    '--- last daemon log lines'
+    Get-Content (Join-Path $Logs 'daemon.log') -Tail 8 -ErrorAction SilentlyContinue
+    '--- live detection'
+    Invoke-Scribe status
+  }
+  'logs' { Get-Content (Join-Path $Logs 'daemon.log'), (Join-Path $Logs 'process.log') -Tail 50 -Wait -ErrorAction SilentlyContinue }
+  'name' {  # .\ctl name "Speaker 2" "Priya Shah" [session]
+    $session = if ($Rest.Count -ge 3) { $Rest[2] } else { 'latest' }
+    Invoke-Scribe name-speaker $Rest[0] $Rest[1] --session $session
+  }
+  'listen' {  # .\ctl listen ["Speaker 2"] [session]
+    $label = @($Rest | Select-Object -First 1)
+    $session = if ($Rest.Count -ge 2) { $Rest[1] } else { 'latest' }
+    Invoke-Scribe listen @label --session $session
+  }
+  { $_ -in 'voices', 'refilter', 'terms', 'jira', 'process', 'download-models' } { Invoke-Scribe $Command @Rest }
+  default {
+    'usage: .\ctl start|stop|restart|status|logs|name|listen|voices|refilter|jira|terms|process|download-models'
+    exit 1
+  }
+}
