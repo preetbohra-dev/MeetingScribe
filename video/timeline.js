@@ -3,7 +3,7 @@ window.TIMELINE = {
   {
    "id": "title",
    "start": 0.0,
-   "dur": 10.615,
+   "dur": 12.065,
    "lines": [
     {
      "t": 0.6,
@@ -12,19 +12,19 @@ window.TIMELINE = {
     },
     {
      "t": 2.117,
-     "dur": 4.437,
-     "text": "It turns every Teams meeting into clean notes, and now into Jira tickets."
+     "dur": 5.611,
+     "text": "It turns your Teams, Zoom and Google Meet calls into clean notes, and now into Jira tickets."
     },
     {
-     "t": 6.835,
-     "dur": 2.88,
-     "text": "Without anything leaving your Mac, unless you say so."
+     "t": 8.008,
+     "dur": 3.157,
+     "text": "Without anything leaving your computer, unless you say so."
     }
    ]
   },
   {
    "id": "problem",
-   "start": 10.615,
+   "start": 12.065,
    "dur": 8,
    "lines": [
     {
@@ -41,8 +41,8 @@ window.TIMELINE = {
   },
   {
    "id": "detect",
-   "start": 18.615,
-   "dur": 13.473,
+   "start": 20.065,
+   "dur": 13.196,
    "lines": [
     {
      "t": 0.6,
@@ -51,38 +51,77 @@ window.TIMELINE = {
     },
     {
      "t": 3.376,
-     "dur": 5.824,
-     "text": "When you join a Teams call, it starts recording two tracks: your microphone, and Teams' own audio."
+     "dur": 5.547,
+     "text": "When you join a call, it starts recording two tracks: your microphone, and the meeting's own audio."
     },
     {
-     "t": 9.48,
+     "t": 9.203,
      "dur": 3.093,
      "text": "No buttons to press, and no bot joining the meeting."
     }
    ]
   },
   {
-   "id": "pipeline",
-   "start": 32.088,
-   "dur": 16.697,
+   "id": "apps",
+   "start": 33.261,
+   "dur": 11.849,
    "lines": [
     {
      "t": 0.6,
-     "dur": 2.859,
-     "text": "When the call ends, everything runs right on the Mac."
+     "dur": 5.397,
+     "text": "It works with the meetings you already have: the Teams and Zoom apps, and Google Meet in your browser."
     },
     {
-     "t": 3.739,
+     "t": 6.277,
+     "dur": 4.672,
+     "text": "Teams and Zoom on the web, Webex, Jitsi and Whereby work in the browser too."
+    }
+   ]
+  },
+  {
+   "id": "browser",
+   "start": 45.111,
+   "dur": 17.676,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 6.272,
+     "text": "In a browser, it waits for two signals: the browser is using the microphone, and a meeting tab is open."
+    },
+    {
+     "t": 7.152,
+     "dur": 4.309,
+     "text": "Then it records only the browser's sound, and names the note after the meeting."
+    },
+    {
+     "t": 11.741,
+     "dur": 5.035,
+     "text": "Dictating a document, or recording a voice message, is never mistaken for a call."
+    }
+   ]
+  },
+  {
+   "id": "pipeline",
+   "start": 62.787,
+   "dur": 17.017,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 3.179,
+     "text": "When the call ends, everything runs right on your computer."
+    },
+    {
+     "t": 4.059,
      "dur": 1.899,
      "text": "Whisper transcribes both tracks."
     },
     {
-     "t": 5.917,
+     "t": 6.237,
      "dur": 4.309,
      "text": "Voiceprints tell the speakers apart, and recognise people it has heard before."
     },
     {
-     "t": 10.507,
+     "t": 10.827,
      "dur": 5.291,
      "text": "A local language model drops the small talk, then writes the summary and the action items."
     }
@@ -90,7 +129,7 @@ window.TIMELINE = {
   },
   {
    "id": "note",
-   "start": 48.785,
+   "start": 79.804,
    "dur": 11,
    "lines": [
     {
@@ -107,7 +146,7 @@ window.TIMELINE = {
   },
   {
    "id": "voices",
-   "start": 59.785,
+   "start": 90.804,
    "dur": 8.5,
    "lines": [
     {
@@ -124,7 +163,7 @@ window.TIMELINE = {
   },
   {
    "id": "jira",
-   "start": 68.285,
+   "start": 99.304,
    "dur": 8.329,
    "lines": [
     {
@@ -141,8 +180,8 @@ window.TIMELINE = {
   },
   {
    "id": "signin",
-   "start": 76.615,
-   "dur": 15.455,
+   "start": 107.633,
+   "dur": 17.631,
    "lines": [
     {
      "t": 0.6,
@@ -151,14 +190,14 @@ window.TIMELINE = {
     },
     {
      "t": 10.181,
-     "dur": 4.373,
-     "text": "It can stay in your macOS Keychain, and you are asked again when it expires."
+     "dur": 6.549,
+     "text": "It can stay in your Mac's Keychain or in Windows Credential Manager, and you are asked again when it expires."
     }
    ]
   },
   {
    "id": "space",
-   "start": 92.069,
+   "start": 125.264,
    "dur": 6,
    "lines": [
     {
@@ -170,7 +209,7 @@ window.TIMELINE = {
   },
   {
    "id": "extract",
-   "start": 98.069,
+   "start": 131.264,
    "dur": 9.417,
    "lines": [
     {
@@ -187,7 +226,7 @@ window.TIMELINE = {
   },
   {
    "id": "search",
-   "start": 107.487,
+   "start": 140.681,
    "dur": 12,
    "lines": [
     {
@@ -204,7 +243,7 @@ window.TIMELINE = {
   },
   {
    "id": "decide",
-   "start": 119.487,
+   "start": 152.681,
    "dur": 15,
    "lines": [
     {
@@ -226,7 +265,7 @@ window.TIMELINE = {
   },
   {
    "id": "draft",
-   "start": 134.487,
+   "start": 167.681,
    "dur": 16.375,
    "lines": [
     {
@@ -248,7 +287,7 @@ window.TIMELINE = {
   },
   {
    "id": "board",
-   "start": 150.861,
+   "start": 184.056,
    "dur": 8.5,
    "lines": [
     {
@@ -265,7 +304,7 @@ window.TIMELINE = {
   },
   {
    "id": "usecases",
-   "start": 159.361,
+   "start": 192.556,
    "dur": 13,
    "lines": [
     {
@@ -282,16 +321,16 @@ window.TIMELINE = {
   },
   {
    "id": "privacy",
-   "start": 172.361,
-   "dur": 10.569,
+   "start": 205.556,
+   "dur": 10.825,
    "lines": [
     {
      "t": 0.6,
-     "dur": 3.456,
-     "text": "Recording, transcription, and every model stay on your Mac."
+     "dur": 3.712,
+     "text": "Recording, transcription, and every model stay on your computer."
     },
     {
-     "t": 4.336,
+     "t": 4.592,
      "dur": 5.333,
      "text": "The only thing that leaves is the Jira update you approved, sent straight to your own Jira site."
     }
@@ -299,7 +338,7 @@ window.TIMELINE = {
   },
   {
    "id": "windows",
-   "start": 182.931,
+   "start": 216.381,
    "dur": 13.407,
    "lines": [
     {
@@ -316,7 +355,7 @@ window.TIMELINE = {
   },
   {
    "id": "outro",
-   "start": 196.337,
+   "start": 229.788,
    "dur": 9.844,
    "lines": [
     {
@@ -332,5 +371,5 @@ window.TIMELINE = {
    ]
   }
  ],
- "total": 206.181
+ "total": 239.632
 };
