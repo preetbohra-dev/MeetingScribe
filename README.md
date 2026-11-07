@@ -3,7 +3,7 @@
 <h1 align="center">MeetingScribe</h1>
 
 <p align="center">
-Teams meeting notes that write themselves, on your Mac or Windows PC.<br>
+Meeting notes that write themselves, for Teams, Zoom and Google Meet, on your Mac or Windows PC.<br>
 <a href="https://meetingscribe.preetbohra.com"><b>Website</b></a> ·
 <a href="https://meetingscribe.preetbohra.com/#film">3-minute demo</a> ·
 <a href="#install">Install</a>
@@ -11,8 +11,9 @@ Teams meeting notes that write themselves, on your Mac or Windows PC.<br>
 
 ---
 
-MeetingScribe runs in the background. When Microsoft Teams starts using your microphone it records the call, and a
-few minutes after you hang up it saves a Markdown note to `Documents/Meeting Notes/` with:
+MeetingScribe runs in the background. When a call starts in Microsoft Teams, Zoom or a meeting in your web browser
+(Google Meet, Teams or Zoom on the web, Webex, ...) it records it, and a few minutes after you hang up it saves a
+Markdown note to `Documents/Meeting Notes/` with:
 
 - a **summary** and **action items** with owners,
 - a **transcript** that says who said what, recognising people it has heard before,
@@ -24,6 +25,7 @@ If you use Jira, `ctl jira` can turn the meeting's action items into tickets, an
 ## Contents
 
 - [How it works](#how-it-works)
+- [Supported meetings](#supported-meetings)
 - [Install](#install)
 - [Everyday use](#everyday-use)
 - [Speakers](#speakers)
@@ -39,28 +41,42 @@ If you use Jira, `ctl jira` can turn the meeting's action items into tickets, an
 ```
  During the call                          After you hang up
  ───────────────                          ─────────────────
- Teams takes the mic ─► start recording   1. cut long silences
+ The app takes the mic ─► start         1. cut long silences
    your mic       → mic.pcm   ("Me")      2. transcribe each track (Whisper large-v3-turbo)
-   Teams' audio   → system.pcm (others)   3. fingerprint voices and match known people
- Teams lets go of the mic ─► stop         4. merge both tracks by time, tag likely echoes
+   the app's audio → system.pcm (others)  3. fingerprint voices and match known people
+ The app lets go of the mic ─► stop       4. merge both tracks by time, tag likely echoes
                                           5. drop small talk (Qwen 2.5)
                                           6. write summary + action items, save the note
 ```
 
 | | Mac | Windows |
 |---|---|---|
-| Detecting the call | Core Audio lists every process using audio (macOS 14.4+) | Windows' microphone privacy record says when Teams holds the mic |
-| Capturing Teams | Core Audio *process tap* on the Teams processes | WASAPI *process loopback* on the Teams process tree |
+| Detecting the call | Core Audio lists every process using audio (macOS 14.4+) | The microphone's WASAPI sessions and Windows' microphone privacy record |
+| Capturing the call | Core Audio *process tap* on the app's processes | WASAPI *process loopback* on the app's process tree |
 | Transcription | mlx-whisper on the GPU | faster-whisper (NVIDIA GPU if there is one, else CPU) |
 | Notes and small-talk filter | Qwen 2.5 14B on MLX | Qwen 2.5 GGUF on llama.cpp: 14B with 24 GB of RAM or more, else 7B |
 | Voice fingerprints | ECAPA-TDNN (SpeechBrain) | WeSpeaker ResNet34 (ONNX Runtime) |
 | Runs in the background via | a launch agent | a scheduled task at logon |
 
-Both check once a second; when Teams holds the mic for `start_after_s`, recording starts, and `stop_after_s` after
-it lets go, recording stops. Capture is audio-only and Teams-only, so there's no screen-recording indicator, and
-you keep hearing the call as normal. If you're muted, an open meeting window keeps the recording going for up to
-10 minutes. A crash or power cut keeps what was recorded and processes it on the next start; switching headsets
-mid-call restarts mic capture; if the Teams-only capture stays silent, it falls back to all system audio.
+Both check once a second; when a meeting app holds the mic for `start_after_s`, recording starts, and
+`stop_after_s` after it lets go, recording stops. Capture is audio-only and takes only that app's sound, so
+there's no screen-recording indicator, other apps' sounds stay out, and you keep hearing the call as normal. If
+you're muted, an open meeting window keeps the recording going for up to 10 minutes. A crash or power cut keeps
+what was recorded and processes it on the next start; switching headsets mid-call restarts mic capture; if the
+app-only capture stays silent, it falls back to all system audio.
+
+## Supported meetings
+
+| | How a call is recognised | Note title |
+|---|---|---|
+| **Microsoft Teams** app | Teams holds the microphone | The meeting window's title |
+| **Zoom** app | Zoom holds the microphone | "Zoom meeting" |
+| **In a browser**: Google Meet, Teams, Zoom, Webex, Jitsi Meet, Whereby | The browser holds the microphone *and* a window shows a meeting tab when the call starts | The meeting's name where the page shows it (Meet, Teams), else e.g. "Google Meet meeting" |
+
+Browsers: Chrome, Edge, Firefox, Brave and Arc on both systems, and Safari on the Mac. A browser needs the meeting
+tab so that dictation or a voice message isn't mistaken for a call; once recording, you can switch tabs freely.
+The browser's audio is recorded as a whole, so a video playing in another tab during the call ends up in the
+recording too. To watch only some apps, set `meeting_apps` in `config.toml`, e.g. `["teams", "chrome"]`.
 
 ## Install
 
@@ -111,19 +127,20 @@ Windows. The model download is the only step that uses the network; after it eve
 | Microphone | Yes | Click **Allow** when asked on first start. Dismissed it? `tccutil reset Microphone local.meetingscribe`, then `./ctl.sh restart`. |
 | System Audio Recording Only | Yes | Asked at the first call. Otherwise: **Privacy & Security → Screen & System Audio Recording → System Audio Recording Only**, turn on MeetingScribe. |
 | Files and Folders → Desktop | Only if the folder is on your Desktop | Click **Allow** when asked. |
-| Screen Recording | Optional | Only used to read the Teams window title for the note's name. Same pane, top section: **+**, <kbd>⌘⇧G</kbd>, `~/Applications/MeetingScribe.app`. |
+| Screen Recording | For browser meetings | Lets MeetingScribe read window titles: needed to spot a meeting tab in a browser, and used to name notes after the meeting. Teams and Zoom are recorded without it. Same pane, top section: **+**, <kbd>⌘⇧G</kbd>, `~/Applications/MeetingScribe.app`. |
 
 Accessibility and Automation are not needed. Re-running `install.sh` re-signs the app, so macOS will ask again.
 
-**Windows:** nothing to grant. Teams' audio and window titles need no permission. The microphone works as long as
+**Windows:** nothing to grant. The apps' audio and window titles need no permission. The microphone works as long as
 **Settings → Privacy & security → Microphone → Let desktop apps access your microphone** is on (the default);
 `.\ctl status` tells you if it isn't.
 
 ### Check it works
 
-1. In Teams: **Settings → Devices → Make a test call**.
+1. In Teams: **Settings → Devices → Make a test call**. In Zoom: join the test meeting at
+   [zoom.us/test](https://zoom.us/test). In a browser: start a meeting on your own at [meet.new](https://meet.new).
 2. In a terminal: `./ctl.sh logs` (Mac) or `.\ctl logs` (Windows). You should see `meeting detected`, then
-   `process tap running` (Mac) or `process loopback on ms-teams.exe` (Windows).
+   `process tap running` (Mac) or `process loopback on ms-teams.exe` (Windows; `zoom.exe`, `chrome.exe`, ...).
 3. Hang up. After `meeting ended`, the note appears in `Documents/Meeting Notes/`.
 
 The test bot plays your message back, so in a test call your words also appear on the remote side. That
@@ -174,7 +191,7 @@ voiceprint. Voiceprints stay on the computer that made them (the Mac and Windows
 - **Too many fragments?** Raise `speaker_min_seconds` (default 15) or set `max_speakers`.
 
 In testing with synthetic voices, the same voice scored 0.83 to 0.90 against its voiceprint and different
-voices never scored above 0.51. Real Teams audio is noisier, so expect somewhat lower scores.
+voices never scored above 0.51. Real call audio is noisier, so expect somewhat lower scores.
 
 ## Jira
 
@@ -243,6 +260,7 @@ Edit `config.toml`, then `./ctl.sh restart`. Every key is optional. The ones you
 | `mic_device` | Part of a mic's name, e.g. `"AirPods"` |
 | `keep_audio` | Save a stereo WAV (left = you, right = others) next to each note |
 | `work_only` | `false` keeps every line |
+| `meeting_apps` | Apps to watch: `"teams"`, `"zoom"`, `"browsers"` (default: all three), or single browsers such as `"chrome"`, `"edge"`, `"firefox"`, `"safari"` |
 | `capture_mode` | `"all"` records all system audio if the remote side comes out silent |
 | `whisper_model`, `mlx_llm_model` | Mac: smaller models for 8 GB Macs, e.g. `mlx-community/whisper-small-mlx` and `mlx-community/Qwen2.5-7B-Instruct-4bit` |
 | `gguf_model` | Windows: `owner/repo/file.gguf` on Hugging Face, e.g. the 14B one on a 16 GB PC with time to spare |
@@ -276,10 +294,10 @@ Model defaults depend on the system and are picked in `platforms/macos.py` and `
 | `daemon: NOT running` | Mac: check `~/Library/Logs/MeetingScribe/stderr.log`. Windows: check the *MeetingScribe* task in Task Scheduler. Re-run the installer after moving the folder or recreating `.venv`. |
 | Nothing logged after a reinstall (Mac) | A permission prompt (usually Desktop access) is waiting on screen. |
 | `microphone delivers pure silence` | Mac: Microphone permission was denied. Windows: desktop apps' microphone access is off. |
-| `system audio is pure silence` | Mac: System Audio Recording permission was denied. Windows: see if Teams' own speaker test is audible. |
+| `system audio is pure silence` | Mac: System Audio Recording permission was denied. Windows: see if the app's own speaker test is audible. |
 | The remote side is silent | Set `capture_mode = "all"`. |
-| Meeting not detected | Run `./ctl.sh status` during a call; `Teams mic in use` should be `True`. |
-| Notes are called "Teams meeting" (Mac) | Grant the optional Screen Recording permission. |
+| Meeting not detected | Run `./ctl.sh status` during a call: the app should show `mic in use=True`, and for a browser `meeting window` should name the meeting. |
+| Browser meetings not detected, or notes called "Microsoft Teams meeting" (Mac) | Grant the Screen Recording permission. |
 | `DLL load failed ... Application Control policy` (Windows) | Smart App Control blocked a package; re-run `.\install`, which only installs ones it allows. |
 
 ## Repository layout
@@ -287,11 +305,11 @@ Model defaults depend on the system and are picked in `platforms/macos.py` and `
 | Path | What it is |
 |---|---|
 | `meeting_scribe.py` | The program: background daemon, processing pipeline and CLI |
-| `platforms/` | What differs per system: call detection, Teams audio capture, notifications, default models (`macos.py`, `windows.py`) |
+| `platforms/` | What differs per system: call detection, the app's audio capture, notifications, default models (`macos.py`, `windows.py`) |
 | `config.toml` | Your settings |
 | `install.sh`, `uninstall.sh`, `ctl.sh` | Mac: install, remove and control the background agent |
 | `install.cmd`, `uninstall.cmd`, `ctl.cmd`, `windows/` | Windows: the same, as PowerShell scripts |
-| `tests/` | Checks that the Windows stand-ins match the Mac's libraries (`python -m pytest tests`) |
+| `tests/` | Meeting-tab recognition, and checks that the Windows stand-ins match the Mac's libraries (`python -m pytest tests`) |
 | `site/` | The website at meetingscribe.preetbohra.com, with the demo video |
 | `video/` | Source for the demo video: narration script, animation and build script |
 

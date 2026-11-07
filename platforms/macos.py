@@ -1,4 +1,4 @@
-"""macOS side of MeetingScribe: Core Audio call detection, Teams audio capture
+"""macOS side of MeetingScribe: Core Audio call detection, the meeting app's audio capture
 (process tap or ScreenCaptureKit), window titles, notifications and the run loop.
 
 Every module in this package exposes the same names; meeting_scribe.py only
@@ -77,7 +77,8 @@ def play_audio(path):
 def request_permissions(cfg):
     import Quartz
     if not Quartz.CGPreflightScreenCaptureAccess():
-        log.info("Screen Recording not granted (optional): notes will be titled 'Teams meeting' "
+        log.info("Screen Recording not granted: meetings in a browser (Google Meet, Teams or "
+                 "Zoom on the web) can't be detected, and notes are titled after the app "
                  "instead of the meeting's window title")
         asked = cfg["work_dir"] / ".asked_screen_recording"
         if not asked.exists():  # prompt once, not on every restart
@@ -106,7 +107,7 @@ class _PropAddr(ctypes.Structure):
 class CoreAudioProbe:
     """Reports which processes are using audio input/output, without opening any
     device ourselves. Our own mic capture never confuses it, because we only look
-    at processes whose bundle ID belongs to Teams."""
+    at processes whose bundle ID belongs to a meeting app."""
 
     SYSTEM_OBJECT = 1
     GLOBAL = _fourcc("glob")
@@ -162,38 +163,41 @@ class CoreAudioProbe:
                  "input": bool(self._u32(o, self.RUNNING_INPUT)),
                  "output": bool(self._u32(o, self.RUNNING_OUTPUT))} for o in ids]
 
-    def app_state(self, prefix):
-        procs = [p for p in self.processes() if p["bundle"].startswith(prefix)]
-        return any(p["input"] for p in procs), any(p["output"] for p in procs)
+    def app_states(self, apps):
+        """{app id: (holds the mic, plays audio)}, from one look at Core Audio's processes."""
+        procs = self.processes()
+        out = {}
+        for app in apps:
+            mine = [p for p in procs if p["bundle"].startswith(app["mac"])]
+            out[app["id"]] = (any(p["input"] for p in mine), any(p["output"] for p in mine))
+        return out
+
+    def app_processes(self, app):
+        return [{**p, "name": p["bundle"]} for p in self.processes()
+                if p["bundle"].startswith(app["mac"])]
 
     def default_input_device(self):
         return self._u32(self.SYSTEM_OBJECT, self.DEFAULT_INPUT)
 
-    def teams_state(self, cfg):
-        """(Teams holds the mic, Teams plays audio)."""
-        return self.app_state(cfg["teams_bundle_prefix"])
 
-    def teams_processes(self, cfg):
-        return [{**p, "name": p["bundle"]} for p in self.processes()
-                if p["bundle"].startswith(cfg["teams_bundle_prefix"])]
-
-
-def teams_windows():
-    """(owner, title) for every titled Teams window. Titles need Screen Recording."""
+def app_windows(app):
+    """(owner, title) for every titled window of the app; for a browser, the title is its
+    active tab's. Titles need Screen Recording."""
     import Quartz
     opts = Quartz.kCGWindowListOptionAll | Quartz.kCGWindowListExcludeDesktopElements
     out = []
     for w in Quartz.CGWindowListCopyWindowInfo(opts, Quartz.kCGNullWindowID) or []:
         owner = str(w.get(Quartz.kCGWindowOwnerName, "") or "")
         title = str(w.get(Quartz.kCGWindowName, "") or "").strip()
-        if ("Microsoft Teams" in owner or owner == "MSTeams") and title \
-                and w.get(Quartz.kCGWindowLayer, 0) == 0:
+        # "Microsoft Teams" also covers "Microsoft Teams (work or school)", but "Arc" is not "Archive Utility".
+        named = any(owner == o or owner.startswith(o + " ") for o in app["mac_owner"])
+        if named and title and w.get(Quartz.kCGWindowLayer, 0) == 0:
             out.append((owner, title))
     return out
 
 
 # --------------------------------------------------------------------------
-# Teams audio capture
+# The meeting app's audio
 # --------------------------------------------------------------------------
 
 def _wait_for(fn, timeout=10):
@@ -252,11 +256,11 @@ def _sck_classes():
 
 
 class SystemAudioCapture:
-    """Teams' audio via ScreenCaptureKit. Audio only; video is configured as a
+    """The meeting app's audio via ScreenCaptureKit. Audio only; video is configured as a
     2x2 px, 1 fps stream that we never consume."""
 
-    def __init__(self, writer, mode, prefix):
-        self.writer, self.mode, self.prefix = writer, mode, prefix
+    def __init__(self, writer, app, mode):
+        self.writer, self.app, self.mode, self.prefix = writer, app, mode, app["mac"]
         self.stream = None
         self.stopped = False
 
@@ -272,14 +276,15 @@ class SystemAudioCapture:
         display = content.displays()[0]
         apps = [a for a in content.applications()
                 if (a.bundleIdentifier() or "").startswith(self.prefix)]
-        if self.mode == "teams" and apps:
+        if self.mode == "app" and apps:
             filt = SCK.SCContentFilter.alloc().initWithDisplay_includingApplications_exceptingWindows_(
                 display, apps, [])
-            log.info("system audio: capturing %d Teams processes: %s", len(apps),
+            log.info("system audio: capturing %d %s processes: %s", len(apps), self.app["name"],
                      sorted({a.bundleIdentifier() for a in apps}))
         else:
-            if self.mode == "teams":
-                log.warning("no Teams apps visible to ScreenCaptureKit; capturing all system audio")
+            if self.mode == "app":
+                log.warning("no %s apps visible to ScreenCaptureKit; capturing all system audio",
+                            self.app["name"])
             filt = SCK.SCContentFilter.alloc().initWithDisplay_excludingWindows_(display, [])
             log.info("system audio: capturing all system audio")
 
@@ -344,15 +349,15 @@ _IOPROC = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_uint32, ctypes.c_void_p,
 
 
 class ProcessTapCapture:
-    """Teams' audio via a Core Audio process tap (macOS 14.4+). It is audio-only, so
+    """The meeting app's audio via a Core Audio process tap (macOS 14.4+). It is audio-only, so
     macOS shows no screen-capture indicator; it needs the "System Audio Recording
     Only" permission. A private aggregate device wraps the tap, and an IOProc
     hands each buffer to a writer thread so the real-time audio thread never waits."""
 
     TAP_FORMAT = _fourcc("tfmt")
 
-    def __init__(self, writer, mode, prefix):
-        self.writer, self.mode, self.prefix = writer, mode, prefix
+    def __init__(self, writer, app, mode):
+        self.writer, self.app, self.mode, self.prefix = writer, app, mode, app["mac"]
         self.stopped = False
         self.tap_id = self.agg_id = None
         self.proc_id = ctypes.c_void_p()
@@ -377,14 +382,14 @@ class ProcessTapCapture:
         CATapDescription = objc.lookUpClass("CATapDescription")
 
         procs = [p for p in self.probe.processes() if p["bundle"].startswith(self.prefix)]
-        if self.mode == "teams" and procs:
+        if self.mode == "app" and procs:
             ids = [NSNumber.numberWithUnsignedInt_(p["id"]) for p in procs]
             desc = CATapDescription.alloc().initMonoMixdownOfProcesses_(ids)
-            log.info("system audio: tapping %d Teams processes: %s", len(procs),
+            log.info("system audio: tapping %d %s processes: %s", len(procs), self.app["name"],
                      sorted({p["bundle"] for p in procs}))
         else:
-            if self.mode == "teams":
-                log.warning("no Teams audio processes found; tapping all system audio")
+            if self.mode == "app":
+                log.warning("no %s audio processes found; tapping all system audio", self.app["name"])
             desc = CATapDescription.alloc().initMonoGlobalTapButExcludeProcesses_([])
             log.info("system audio: tapping all system audio")
         desc.setPrivate_(True)
@@ -485,10 +490,10 @@ class ProcessTapCapture:
             self.tap_id = None
 
 
-def system_audio_capture(cfg, writer):
+def system_audio_capture(cfg, writer, app, mode):
     cls = (SystemAudioCapture if cfg["system_audio_backend"] == "screencapturekit"
            else ProcessTapCapture)
-    return cls(writer, cfg["capture_mode"], cfg["teams_bundle_prefix"])
+    return cls(writer, app, mode)
 
 
 AudioProbe = CoreAudioProbe

@@ -12,10 +12,13 @@
   play_audio(path)          play a WAV and block until it ends
   request_permissions(cfg)  ask for optional permissions once, at daemon start
   permission_report()       lines for `status`
-  AudioProbe()              .teams_state(cfg) -> (mic, out), .teams_processes(cfg),
-                            .default_input_device()
-  teams_windows()           [(owner, title)] for Teams' top-level windows
-  system_audio_capture(cfg, writer)  Teams' audio into a TrackWriter
+  AudioProbe()              .app_states(apps) -> {app id: (holds mic, plays audio)},
+                            .app_processes(app), .default_input_device()
+  app_windows(app)          [(owner, title)] for the app's top-level windows
+  system_audio_capture(cfg, writer, app, mode)  the app's audio ("app") or all system
+                            audio ("all") into a TrackWriter
+
+An app is an entry of MEETING_APPS in meeting_scribe.py.
 """
 
 import sys

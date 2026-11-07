@@ -1,13 +1,14 @@
-"""Windows side of MeetingScribe (Windows 10 build 20348+ / Windows 11, new or classic Teams).
+"""Windows side of MeetingScribe (Windows 10 build 20348+ / Windows 11). Meeting apps
+(Teams, Zoom, browsers) are described by MEETING_APPS in meeting_scribe.py.
 
   Call detection   The privacy consent store in the registry records when each app
-                   opens the microphone; LastUsedTimeStop is 0 while Teams holds it.
-                   Whether Teams is playing call audio comes from the WASAPI audio
-                   sessions of the Teams process tree.
-  Teams' audio     WASAPI process loopback on the Teams process tree: audio only,
-                   from Teams only, no permission prompt. "all" mode uses the same
+                   opens the microphone; LastUsedTimeStop is 0 while the app holds it.
+                   Whether the app is playing call audio comes from the WASAPI audio
+                   sessions of its process tree.
+  App audio        WASAPI process loopback on the app's process tree: audio only, from
+                   that app only, no permission prompt. "all" mode uses the same
                    loopback on every process except this one.
-  Window titles    EnumWindows on the Teams processes; no permission needed.
+  Window titles    EnumWindows on the app's processes; no permission needed.
 
 Only ctypes, winreg and comtypes (pure Python): Smart App Control, on by default on
 new Windows 11 installs, blocks unsigned native DLLs such as scipy's and torch's.
@@ -62,7 +63,7 @@ def _ram_gb():
     return m.ullTotalPhys / 2**30
 
 
-# Qwen 2.5 14B (about 9 GB) needs room next to Teams and the browser; smaller PCs get 7B.
+# Qwen 2.5 14B (about 9 GB) needs room next to the meeting app and the browser; smaller PCs get 7B.
 _QWEN = "bartowski/Qwen2.5-{0}-Instruct-GGUF/Qwen2.5-{0}-Instruct-Q4_K_M.gguf"
 MODEL_DEFAULTS = {
     "asr_backend": "faster-whisper",
@@ -73,7 +74,6 @@ MODEL_DEFAULTS = {
     "voice_model": "Wespeaker/wespeaker-voxceleb-resnet34-LM",
 }
 
-TEAMS_EXES = ("ms-teams.exe", "teams.exe")  # new Teams, classic Teams
 CONSENT = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"
 
 
@@ -185,13 +185,20 @@ def _processes():
     return out
 
 
-def _teams_tree():
-    """(root pids, every pid in their trees, {pid: exe}). Roots are Teams processes whose
-    parent is not Teams; the trees include Teams' WebView2 children, which play the audio."""
-    procs = _processes()
+def _app_tree(app, procs=None):
+    """(root pids, every pid in their trees, {pid: exe}). Roots are the app's processes
+    whose parent is not the app; the trees include children that play the audio (Teams'
+    WebView2, a browser's audio service)."""
+    procs = procs or _processes()
+    exes = app["win"]
     names = {pid: n for pid, (n, _) in procs.items()}
     roots = [pid for pid, (n, parent) in procs.items()
-             if n.lower() in TEAMS_EXES and names.get(parent, "").lower() not in TEAMS_EXES]
+             if n.lower() in exes and names.get(parent, "").lower() not in exes]
+    return sorted(roots, key=lambda p: exes.index(names[p].lower())), _descendants(roots, procs), names
+
+
+def _descendants(roots, procs):
+    """The pids in roots and every process below them."""
     children = {}
     for pid, (_, parent) in procs.items():
         children.setdefault(parent, []).append(pid)
@@ -201,16 +208,16 @@ def _teams_tree():
         if pid not in tree:
             tree.add(pid)
             todo += children.get(pid, [])
-    return sorted(roots, key=lambda p: names[p].lower() != "ms-teams.exe"), tree, names
+    return tree
 
 
 _user32 = ctypes.WinDLL("user32", use_last_error=True)
 _WNDENUMPROC = ctypes.WINFUNCTYPE(BOOL, HWND, LPARAM)
 
 
-def teams_windows():
-    """(owner, title) for every visible, titled top-level window of the Teams processes."""
-    _, tree, names = _teams_tree()
+def app_windows(app):
+    """(owner, title) for every visible, titled top-level window of the app's processes."""
+    _, tree, names = _app_tree(app)
     out = []
 
     def visit(hwnd, _):
@@ -222,7 +229,7 @@ def teams_windows():
                 buf = ctypes.create_unicode_buffer(n + 1)
                 _user32.GetWindowTextW(hwnd, buf, n + 1)
                 if buf.value.strip():
-                    out.append((names.get(pid.value, "Teams"), buf.value.strip()))
+                    out.append((names.get(pid.value, app["name"]), buf.value.strip()))
         return True
 
     _user32.EnumWindows(_WNDENUMPROC(visit), 0)
@@ -371,55 +378,60 @@ def _enumerator():
     return comtypes.CoCreateInstance(CLSID_MMDeviceEnumerator, IMMDeviceEnumerator, comtypes.CLSCTX_ALL)
 
 
+def _subkeys(path):
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as key:
+            out = []
+            for i in range(10_000):
+                try:
+                    out.append(winreg.EnumKey(key, i))
+                except OSError:
+                    return out
+    except OSError:
+        return []
+
+
+def _mic_holders():
+    """Lower-cased consent-store keys of the apps holding the microphone right now:
+    packaged apps by package name ("msteams_8wekyb3d8bbwe"), desktop apps by exe path
+    ("nonpackaged\\c:#program files#google#chrome#application#chrome.exe")."""
+    names = _subkeys(CONSENT) + ["NonPackaged\\" + k for k in _subkeys(CONSENT + r"\NonPackaged")]
+    out = set()
+    for name in names:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CONSENT + "\\" + name) as k:
+                start = winreg.QueryValueEx(k, "LastUsedTimeStart")[0]
+                stop = winreg.QueryValueEx(k, "LastUsedTimeStop")[0]
+            if start and stop == 0:
+                out.add(name.lower())
+        except OSError:
+            pass
+    return out
+
+
+def _holds_mic(app, holders):
+    return any(h.startswith(app["win_packaged"]) if app["win_packaged"] and "\\" not in h
+               else h.startswith("nonpackaged\\") and h.rsplit("#", 1)[-1] in app["win"]
+               for h in holders)
+
+
 class AudioProbe:
-    """Whether Teams holds the mic (privacy consent store) and is playing call audio
-    (an active WASAPI session in its process tree). Our own capture shows up under
-    python.exe, which never matches."""
+    """Whether a meeting app holds the mic and is playing call audio: an active WASAPI
+    capture / playback session in its process tree. For the mic, the privacy consent
+    store counts too (Teams). Edge records mic use there only sometimes, so the sessions
+    are needed. Our own capture runs as python.exe, which is no meeting app."""
 
     def __init__(self):
         self.devices = _enumerator()
 
-    def mic_in_use(self):
-        """{consent-store key: in use} for Teams entries: packaged new/classic Teams, or a
-        desktop Teams.exe / ms-teams.exe under NonPackaged."""
-        out = {}
-        try:
-            root = winreg.OpenKey(winreg.HKEY_CURRENT_USER, CONSENT)
-        except OSError:
-            return out
-        keys = []
-        with root:
-            for i in range(10_000):
-                try:
-                    keys.append(winreg.EnumKey(root, i))
-                except OSError:
-                    break
-        names = [k for k in keys if k.lower().startswith(("msteams_", "microsoftteams_"))]
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CONSENT + r"\NonPackaged") as np_key:
-                for i in range(10_000):
-                    try:
-                        k = winreg.EnumKey(np_key, i)
-                    except OSError:
-                        break
-                    if k.lower().rsplit("#", 1)[-1] in TEAMS_EXES:
-                        names.append("NonPackaged\\" + k)
-        except OSError:
-            pass
-        for name in names:
-            try:
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CONSENT + "\\" + name) as k:
-                    start = winreg.QueryValueEx(k, "LastUsedTimeStart")[0]
-                    stop = winreg.QueryValueEx(k, "LastUsedTimeStop")[0]
-                out[name] = bool(start) and stop == 0
-            except OSError:
-                out[name] = False
-        return out
-
     def active_output_pids(self):
-        """Processes with a running (not just open) playback session on any output device."""
+        return self.active_pids(E_RENDER)
+
+    def active_pids(self, flow):
+        """Processes with a running (not just open) session on any device of that flow:
+        E_RENDER for playback, E_CAPTURE for microphones."""
         pids = set()
-        coll = self.devices.EnumAudioEndpoints(E_RENDER, DEVICE_STATE_ACTIVE)
+        coll = self.devices.EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE)
         for i in range(coll.GetCount()):
             try:
                 mgr = coll.Item(i).Activate(IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None) \
@@ -433,16 +445,24 @@ class AudioProbe:
                 log.debug("audio sessions on device %d: %s", i, e)
         return pids
 
-    def teams_state(self, cfg):
-        """(Teams holds the mic, Teams plays audio)."""
-        _, tree, _ = _teams_tree()
-        return any(self.mic_in_use().values()), bool(tree & self.active_output_pids())
+    def app_states(self, apps):
+        """{app id: (holds the mic, plays audio)}, from one look at the registry, the
+        process list and the audio sessions."""
+        holders, procs = _mic_holders(), _processes()
+        recording, playing = self.active_pids(E_CAPTURE), self.active_pids(E_RENDER)
+        out = {}
+        for a in apps:
+            tree = _app_tree(a, procs)[1]
+            out[a["id"]] = (_holds_mic(a, holders) or bool(tree & recording), bool(tree & playing))
+        return out
 
-    def teams_processes(self, cfg):
-        roots, tree, names = _teams_tree()
-        mic, playing = any(self.mic_in_use().values()), self.active_output_pids()
-        return [{"name": names[p], "pid": p, "input": mic and p in roots, "output": p in playing}
-                for p in sorted(tree) if p in roots or p in playing]
+    def app_processes(self, app):
+        roots, tree, names = _app_tree(app)
+        held = _holds_mic(app, _mic_holders())
+        recording, playing = self.active_pids(E_CAPTURE), self.active_pids(E_RENDER)
+        return [{"name": names[p], "pid": p, "input": p in recording or (held and p in roots),
+                 "output": p in playing}
+                for p in sorted(tree) if p in roots or p in playing or p in recording]
 
     def default_input_device(self):
         try:
@@ -452,7 +472,7 @@ class AudioProbe:
 
 
 # --------------------------------------------------------------------------
-# Teams' audio: WASAPI process loopback
+# The meeting app's audio: WASAPI process loopback
 # --------------------------------------------------------------------------
 
 class _ActivationParams(Structure):
@@ -515,26 +535,32 @@ def _activate_loopback(pid, include_tree):
 
 
 class ProcessLoopbackCapture:
-    """Teams' audio via WASAPI process loopback: 48 kHz 16-bit stereo, mixed to mono and
-    handed to the writer from a polling thread. In "all" mode it records every process
-    except this one."""
+    """The meeting app's audio via WASAPI process loopback: 48 kHz 16-bit stereo, mixed to
+    mono and handed to the writer from a polling thread. In "all" mode it records every
+    process except this one."""
 
     SR = 48000
 
-    def __init__(self, writer, mode):
-        self.writer, self.mode = writer, mode
+    def __init__(self, writer, app, mode):
+        self.writer, self.app, self.mode = writer, app, mode
         self.stopped = False
         self.running = False
         self.thread = None
 
     def start(self):
-        roots, _, names = _teams_tree()
-        if self.mode == "teams" and roots:
+        procs = _processes()
+        roots, _, names = _app_tree(self.app, procs)
+        if self.mode == "app" and len(roots) > 1:
+            # Several top-level copies (e.g. a browser started twice with different profile
+            # folders): follow the one playing audio. Loopback takes a single process tree.
+            playing = AudioProbe().active_output_pids()
+            roots.sort(key=lambda r: not (_descendants([r], procs) & playing))
+        if self.mode == "app" and roots:
             pid, include = roots[0], True
             log.info("system audio: process loopback on %s (pid %d) and its children", names[pid], pid)
         else:
-            if self.mode == "teams":
-                log.warning("no Teams process found; recording all system audio")
+            if self.mode == "app":
+                log.warning("no %s process found; recording all system audio", self.app["name"])
             pid, include = os.getpid(), False
             log.info("system audio: process loopback on everything except MeetingScribe")
         client = _activate_loopback(pid, include)
@@ -563,7 +589,7 @@ class ProcessLoopbackCapture:
                         x = pcm.reshape(-1, 2).mean(axis=1, dtype=np.float32) / 32768
                     self.capture.ReleaseBuffer(frames)
                     self.writer.write(x, self.SR, arrived)
-        except Exception as e:  # device lost, Teams quit: the recording's watchdog restarts us
+        except Exception as e:  # device lost, app quit: the recording's watchdog restarts us
             log.warning("system audio capture stopped: %s", e)
             self.stopped = True
         finally:
@@ -582,5 +608,5 @@ class ProcessLoopbackCapture:
             self.client = self.capture = None
 
 
-def system_audio_capture(cfg, writer):
-    return ProcessLoopbackCapture(writer, cfg["capture_mode"])
+def system_audio_capture(cfg, writer, app, mode):
+    return ProcessLoopbackCapture(writer, app, mode)
