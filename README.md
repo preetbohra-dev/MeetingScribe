@@ -226,7 +226,7 @@ Saved voices stay on the computer that made them.
 
 - **One person split in two?** Give both labels the same name and they merge. "Anna" and "Anna Jones" count as one person.
 - **Two people merged into one?** Lower `speaker_cluster_threshold` (default 0.6).
-- **Too many fragments?** Raise `speaker_min_seconds` (default 15) or set `max_speakers`.
+- **Too many fragments?** Raise `speaker_min_seconds` (default 10) or set `max_speakers`.
 
 ## Jira
 

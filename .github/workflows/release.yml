@@ -57,6 +57,8 @@ jobs:
           pyinstaller --noconfirm packaging/MeetingScribe.spec
       - name: The packaged program runs
         run: dist/MeetingScribe.app/Contents/MacOS/MeetingScribe voices | grep "No saved voices"
+      - name: The packaged app writes a note from a spoken meeting
+        run: python packaging/smoke_mac.py dist/MeetingScribe.app/Contents/MacOS/MeetingScribe
       - name: Disk image and zip
         run: |
           packaging/make_dmg.sh "$(cat packaging/VERSION)"

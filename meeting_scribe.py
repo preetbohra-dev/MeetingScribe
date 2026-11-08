@@ -113,8 +113,10 @@ DEFAULTS = {
     "speaker_match_min_seconds": 20,  # ...with at least this much of the voice to go on
     "speaker_suggest_threshold": 0.55,  # below the bar above but this close: offered as "maybe"
     "speaker_require_attendance": True,  # a voice match alone never puts a name in a note
-    "speaker_merge_similarity": 0.7,  # clusters whose voices are this similar are one person
-    "speaker_min_seconds": 15,  # voices with less talk time are folded into the closest voice
+    # Tuned on labelled 3 and 6 minute meetings: 0.7 left one person split in two; 0.5-0.65
+    # never did. A floor of 15 s lost quiet people from short meetings without removing errors.
+    "speaker_merge_similarity": 0.6,  # clusters whose voices are this similar are one person
+    "speaker_min_seconds": 10,  # voices with less talk time are folded into the closest voice
     "speaker_min_words": 8,  # a voice that said fewer words than this is not listed as a person
     "max_speakers": 0,  # hard cap on remote speakers; 0 = no cap
     "screen_names": False,  # read name tiles off the meeting window (the app asks at setup)
