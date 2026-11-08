@@ -25,7 +25,7 @@ hiddenimports += ["platforms.macos", "Quartz", "Vision", "AppKit", "Foundation",
     "platforms.windows", "PIL.Image", "PIL.ImageDraw"]
 
 a = Analysis([str(ROOT / "meetingscribe_app.py")], pathex=[str(ROOT)], binaries=binaries, datas=datas,
-             hiddenimports=hiddenimports, excludes=["torch", "torchaudio", "scipy", "speechbrain", "tkinter", "matplotlib", "pytest"])
+             hiddenimports=hiddenimports, excludes=["torch", "torchaudio", "speechbrain", "tkinter", "matplotlib", "pytest"] + ([] if MAC else ["scipy"]))  # mlx_whisper imports scipy
 pyz = PYZ(a.pure)
 icon = ROOT / "packaging" / ("MeetingScribe.icns" if MAC else "MeetingScribe.ico")
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="MeetingScribe", console=False, icon=str(icon),
