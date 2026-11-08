@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""MeetingScribe's desktop app: a window over the same recorder and commands as the terminal.
+
+With a command (run, process, ...) this is the ordinary program, which is how the packaged
+app runs its own background recorder and workers. With none it opens the window. Anything
+that loads a model runs as a separate process, so the window never freezes.
+"""
+
+import base64
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+import meeting_scribe as ms
+
+UI = ms.HERE / "ui" / "index.html"
+APP_NAME = "MeetingScribe"
+ALIVE_S = 15  # a recorder that hasn't reported for this long is not running
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+
+
+def run_command(*args, timeout=None):
+    """Run this program with args; (ok, stdout text or the error for the user)."""
+    r = subprocess.run(ms.self_command(*args), capture_output=True, timeout=timeout, creationflags=CREATE_NO_WINDOW)
+    out, err = r.stdout.decode("utf-8", "replace").strip(), r.stderr.decode("utf-8", "replace").strip()
+    return (True, out) if r.returncode == 0 else (False, err.splitlines()[-1] if err else "That didn't work.")
+
+
+def start_at_login(enable):
+    """Have the recorder start when the user logs in. Only the packaged app registers this
+    way; a checkout has its install script's scheduled task or launch agent."""
+    if not ms.FROZEN:
+        return
+    if sys.platform == "win32":
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
+                            winreg.KEY_SET_VALUE) as k:
+            if enable:
+                winreg.SetValueEx(k, APP_NAME, 0, winreg.REG_SZ, f'"{sys.executable}" run')
+            else:
+                try:
+                    winreg.DeleteValue(k, APP_NAME)
+                except OSError:
+                    pass
+    else:
+        plist = Path("~/Library/LaunchAgents/local.meetingscribe.plist").expanduser()
+        if not enable:
+            subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
+            plist.unlink(missing_ok=True)
+            return
+        import plistlib
+        plist.parent.mkdir(parents=True, exist_ok=True)
+        plist.write_bytes(plistlib.dumps({"Label": "local.meetingscribe", "ProgramArguments": [sys.executable, "run"],
+                                          "RunAtLoad": True, "KeepAlive": True, "ThrottleInterval": 30,
+                                          "ProcessType": "Background"}))
+        subprocess.run(["launchctl", "load", str(plist)], capture_output=True)
+
+
+def starts_at_login():
+    if not ms.FROZEN:
+        return True
+    if sys.platform == "win32":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as k:
+                winreg.QueryValueEx(k, APP_NAME)
+            return True
+        except OSError:
+            return False
+    return Path("~/Library/LaunchAgents/local.meetingscribe.plist").expanduser().exists()
+
+
+class Api:
+    """What the page can ask for. Every method returns plain JSON-able data. Page input
+    is treated as untrusted: a session id must name a folder that really exists."""
+
+    def __init__(self):
+        self.download = None
+        self.window = None
+
+    @property
+    def cfg(self):
+        return ms.load_config()
+
+    def _session(self, sid):
+        cfg = self.cfg
+        if not isinstance(sid, str) or not re.fullmatch(r"[\w-]+", sid):
+            raise ValueError("bad meeting id")
+        d = cfg["work_dir"] / "sessions" / sid
+        if not (d / "session.json").exists():
+            raise ValueError("no such meeting")
+        return d
+
+    # -- first run
+
+    def setup_state(self):
+        cfg = self.cfg
+        return {"terms_ok": ms.terms_accepted(cfg), "models_ok": ms.models_ready(cfg), "terms": ms.DISCLAIMER,
+                "platform": sys.platform, "downloading": self._downloading()}
+
+    def accept_terms(self, screen_names):
+        cfg = self.cfg
+        ms.save_settings({"screen_names": bool(screen_names)})
+        ms.record_terms(cfg)
+        return True
+
+    def _downloading(self):
+        return bool(self.download and self.download.poll() is None)
+
+    def start_download(self):
+        if not self._downloading():
+            self.download = subprocess.Popen(ms.self_command("download-models"), stdout=subprocess.DEVNULL,
+                                             stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+        return True
+
+    def download_progress(self):
+        cfg = self.cfg
+        try:
+            total = json.loads((cfg["work_dir"] / "download_size.json").read_text())
+        except (OSError, ValueError):
+            total = None
+        hub = Path(os.environ.get("HF_HUB_CACHE") or os.environ.get("HF_HOME", "~/.cache/huggingface") + "/hub").expanduser()
+        got = 0
+        for repo, _ in ms.model_plan(cfg):
+            for p in (hub / ("models--" + repo.replace("/", "--"))).rglob("*"):
+                try:
+                    if not p.is_symlink() and p.is_file():
+                        got += p.stat().st_size
+                except OSError:
+                    pass
+        failed = self.download is not None and self.download.poll() not in (None, 0)
+        return {"done": ms.models_ready(cfg), "failed": failed, "got": got, "total": total}
+
+    def finish_setup(self):
+        cfg = self.cfg
+        start_at_login(True)
+        self.ensure_recorder()
+        return ms.terms_accepted(cfg) and ms.models_ready(cfg)
+
+    # -- the recorder
+
+    def ensure_recorder(self):
+        if not self.status()["alive"]:
+            subprocess.Popen(ms.self_command("run"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             creationflags=CREATE_NO_WINDOW)
+        return True
+
+    def status(self):
+        cfg = self.cfg
+        try:
+            s = json.loads((cfg["work_dir"] / "status.json").read_text())
+        except (OSError, ValueError):
+            s = {"time": 0, "state": "off", "warnings": []}
+        s["alive"] = time.time() - s.get("time", 0) < ALIVE_S
+        if not s["alive"]:
+            s.update(state="off", warnings=[])
+        return s
+
+    def set_paused(self, paused):
+        flag = self.cfg["work_dir"] / "paused"
+        if paused:
+            flag.touch()
+        else:
+            flag.unlink(missing_ok=True)
+        return True
+
+    # -- meetings
+
+    def meetings(self):
+        cfg = self.cfg
+        out = []
+        for p in sorted((cfg["work_dir"] / "sessions").glob("*/session.json"), reverse=True):
+            try:
+                m = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            sp = p.parent / "speakers.json"
+            speakers = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}
+            out.append({"id": p.parent.name, "title": m.get("title", "Meeting"), "started_at": m.get("started_at"),
+                        "minutes": round(m.get("duration_s", 0) / 60), "status": m.get("status"), "source": m.get("source"),
+                        "to_name": sum(not s["known"] for s in speakers.values()),
+                        "people": [n for n in speakers]})
+        return out
+
+    def meeting(self, sid):
+        d = self._session(sid)
+        speakers, meta = ms.session_speakers(d)
+        tr = d / "transcript.json"
+        turns = json.loads(tr.read_text(encoding="utf-8")) if tr.exists() else []
+        note = Path(meta.get("notes") or "/missing")
+        text = note.read_text(encoding="utf-8") if note.exists() else ""
+        voices = []
+        for name, s in speakers.items():
+            voices.append({"label": name, "known": s["known"], "confirmed": s.get("confirmed", False), "seconds": s.get("seconds"),
+                           "suggest": s.get("suggest"), "first": s.get("first"), "has_clip": bool(s.get("sample"))})
+        return {"id": sid, "meta": {k: meta.get(k) for k in ("title", "started_at", "duration_s", "source", "status")},
+                "summary": ms.note_section(text, "Summary"), "actions": ms.note_section(text, "Action Items"),
+                "talk": ms.talk_shares(turns), "turns": [{"start": t["start"], "speaker": t["speaker"], "text": t["text"], "flag": t.get("flag")} for t in turns],
+                "voices": voices, "note_exists": note.exists(), "me": self.cfg["my_name"]}
+
+    def voice_clip(self, sid, label):
+        d = self._session(sid)
+        speakers, _ = ms.session_speakers(d)
+        sample = speakers.get(label, {}).get("sample")
+        return self._data_url(d / "voices" / sample) if sample else None
+
+    @staticmethod
+    def _data_url(path):
+        if not path.exists():
+            return None
+        return "data:audio/wav;base64," + base64.b64encode(path.read_bytes()).decode()
+
+    def name_voice(self, sid, label, name):
+        self._session(sid)
+        ok, msg = run_command("name-speaker", label, name, "--session", sid)
+        return {"ok": ok, "message": msg}
+
+    def reject_voice(self, sid, label):
+        self._session(sid)
+        ok, msg = run_command("reject-name", label, "--session", sid)
+        return {"ok": ok, "message": msg}
+
+    def retry(self, sid):
+        d = self._session(sid)
+        subprocess.Popen(ms.self_command("process", str(d)), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=CREATE_NO_WINDOW)
+        return True
+
+    def delete_meeting(self, sid):
+        """Removes the recording, the note, and its files, after the page has confirmed."""
+        import shutil
+        d = self._session(sid)
+        cfg = self.cfg
+        _, meta = ms.session_speakers(d)
+        note = Path(meta["notes"]) if meta.get("notes") else None
+        if note and note.parent == cfg["output_dir"]:
+            for suffix in (".md", ".json", ".wav"):
+                note.with_suffix(suffix).unlink(missing_ok=True)
+        index = cfg["output_dir"] / "index.jsonl"
+        if index.exists():
+            kept = [ln for ln in index.read_text(encoding="utf-8").splitlines() if json.loads(ln).get("id") != sid]
+            index.write_text("".join(ln + "\n" for ln in kept), encoding="utf-8")
+        shutil.rmtree(d)
+        return True
+
+    def open_note(self, sid):
+        _, meta = ms.session_speakers(self._session(sid))
+        self._open(Path(meta["notes"]))
+        return True
+
+    def open_notes_folder(self):
+        self._open(self.cfg["output_dir"])
+        return True
+
+    @staticmethod
+    def _open(path):
+        if sys.platform == "win32":
+            os.startfile(str(path))
+        else:
+            subprocess.Popen(["open", str(path)])
+
+    # -- search and questions
+
+    def search(self, query):
+        return ms.search_meetings(self.cfg, str(query))
+
+    def ask(self, question, sid=None):
+        args = ["ask", str(question), "--json"] + (["--session", sid] if sid else [])
+        if sid:
+            self._session(sid)
+        ok, out = run_command(*args)
+        if not ok:
+            return {"answer": None, "error": out, "sources": []}
+        return json.loads(out.splitlines()[-1])
+
+    # -- people
+
+    def people(self):
+        lib = ms.VoiceLibrary(self.cfg)
+        return [{"name": n, "seconds": v["seconds"], "saved_at": v["saved_at"]} for n, v in sorted(lib.voices.items())]
+
+    def person_clip(self, name):
+        lib = ms.VoiceLibrary(self.cfg)
+        v = lib.voices.get(name)
+        return self._data_url(lib.dir / v["file"]) if v else None
+
+    def forget_person(self, name):
+        return ms.VoiceLibrary(self.cfg).forget(name)
+
+    # -- settings
+
+    SETTINGS = {"my_name": str, "language": str, "output_dir": str, "keep_audio": bool, "work_only": bool,
+                "notify": bool, "screen_names": bool, "meeting_apps": list, "mic_device": str}
+
+    def settings(self):
+        cfg = self.cfg
+        out = {k: cfg[k] for k in self.SETTINGS}
+        out["output_dir"] = str(cfg["output_dir"])
+        out["vocabulary"] = cfg["vocabulary"]
+        out["start_at_login"] = starts_at_login()
+        out["packaged"] = ms.FROZEN
+        return out
+
+    def save_settings(self, values):
+        changes = {}
+        for k, kind in self.SETTINGS.items():
+            if k in values:
+                if not isinstance(values[k], kind):
+                    return {"ok": False, "message": f"{k} has the wrong type"}
+                changes[k] = values[k]
+        if "my_name" in changes and not changes["my_name"].strip():
+            return {"ok": False, "message": "Your name can't be empty."}
+        vocab = values.get("vocabulary")
+        ms.save_settings(changes, vocab if isinstance(vocab, dict) else None)
+        if "start_at_login" in values:
+            start_at_login(bool(values["start_at_login"]))
+        (self.cfg["work_dir"] / "reload").touch()
+        return {"ok": True, "message": "Saved."}
+
+    def choose_folder(self):
+        import webview
+        picked = self.window.create_file_dialog(webview.FOLDER_DIALOG)
+        return picked[0] if picked else None
+
+
+def open_window():
+    import webview
+    api = Api()
+    cfg = ms.load_config()
+    cfg["work_dir"].mkdir(parents=True, exist_ok=True)
+    window = webview.create_window(APP_NAME, str(UI), js_api=api, width=1100, height=760, min_size=(760, 560))
+    api.window = window
+    threading.Thread(target=lambda: ms.terms_accepted(cfg) and ms.models_ready(cfg) and api.ensure_recorder(), daemon=True).start()
+    webview.start()
+
+
+def main():
+    if len(sys.argv) > 1:
+        ms.main()
+    else:
+        open_window()
+
+
+if __name__ == "__main__":
+    main()

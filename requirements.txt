@@ -5,15 +5,16 @@ numpy
 sounddevice
 keyring
 huggingface_hub
+onnxruntime
+pywebview  # the desktop app's window
 
 # macOS: Apple-silicon models and the system frameworks
-scipy; sys_platform == "darwin"
-speechbrain; sys_platform == "darwin"
 mlx-whisper; sys_platform == "darwin"
 mlx-lm; sys_platform == "darwin"
 pyobjc-core; sys_platform == "darwin"
 pyobjc-framework-Cocoa; sys_platform == "darwin"
 pyobjc-framework-Quartz; sys_platform == "darwin"
+pyobjc-framework-Vision; sys_platform == "darwin"
 pyobjc-framework-ScreenCaptureKit; sys_platform == "darwin"
 pyobjc-framework-CoreMedia; sys_platform == "darwin"
 pyobjc-framework-libdispatch; sys_platform == "darwin"
@@ -22,5 +23,6 @@ pyobjc-framework-libdispatch; sys_platform == "darwin"
 # No scipy or torch: Smart App Control blocks their DLLs.
 faster-whisper; sys_platform == "win32"
 llama-cpp-python; sys_platform == "win32"
-onnxruntime; sys_platform == "win32"
 comtypes; sys_platform == "win32"
+pystray; sys_platform == "win32"
+pillow; sys_platform == "win32"

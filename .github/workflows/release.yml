@@ -1,0 +1,83 @@
+name: Release
+
+# Builds the packaged app for both systems. On a v* tag the files go on a GitHub release;
+# run by hand, they are only kept as workflow artifacts.
+on:
+  push:
+    tags: ["v*"]
+    branches: ["desktop-*"]  # build without releasing, to test the installers
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          python -m pip install -r requirements.txt pyinstaller
+          pyinstaller --noconfirm packaging/MeetingScribe.spec
+      - name: The packaged program runs
+        shell: pwsh
+        run: |
+          $o = & dist\MeetingScribe\MeetingScribe.exe voices | Out-String
+          if ($LASTEXITCODE) { throw "exit $LASTEXITCODE" }
+          if ($o -notmatch 'No saved voices') { throw "unexpected output: $o" }
+      - name: Installer and zip
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $v = (Get-Content packaging/VERSION).Trim()
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DAppVersion=$v" packaging\MeetingScribe.iss
+          if ($LASTEXITCODE) { throw "installer build failed" }
+          Compress-Archive dist\MeetingScribe "dist\MeetingScribe-$v-Windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/*.exe
+            dist/*.zip
+
+  mac:
+    runs-on: macos-latest  # Apple silicon, like the users'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          python -m pip install -r requirements.txt pyinstaller
+          pyinstaller --noconfirm packaging/MeetingScribe.spec
+      - name: The packaged program runs
+        run: dist/MeetingScribe.app/Contents/MacOS/MeetingScribe voices | grep "No saved voices"
+      - name: Disk image and zip
+        run: |
+          packaging/make_dmg.sh "$(cat packaging/VERSION)"
+          ditto -c -k --keepParent dist/MeetingScribe.app "dist/MeetingScribe-$(cat packaging/VERSION)-Mac.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" files/* --repo "$GITHUB_REPOSITORY" --generate-notes

@@ -16,10 +16,11 @@ MeetingScribe runs in the background. When a call starts in Microsoft Teams, Zoo
 Markdown note to `Documents/Meeting Notes/` with:
 
 - a **summary** and **action items** with owners,
-- a **transcript** that says who said what, recognising people it has heard before,
+- a **transcript** that says who said what, and asks you when it isn't sure who someone is,
 - **only the work**: small talk and personal chat are left out.
 
 You never press record. Recording, transcription and every model run on your computer, and nothing is uploaded.
+There's a desktop app for reading notes, naming voices, searching past meetings and asking them questions.
 If you use Jira, `ctl jira` can turn the meeting's action items into tickets, and you approve each one.
 
 ## Contents
@@ -55,7 +56,8 @@ If you use Jira, `ctl jira` can turn the meeting's action items into tickets, an
 | Capturing the call | Core Audio *process tap* on the app's processes | WASAPI *process loopback* on the app's process tree |
 | Transcription | mlx-whisper on the GPU | faster-whisper (NVIDIA GPU if there is one, else CPU) |
 | Notes and small-talk filter | Qwen 2.5 14B on MLX | Qwen 2.5 GGUF on llama.cpp: 14B with 24 GB of RAM or more, else 7B |
-| Voice fingerprints | ECAPA-TDNN (SpeechBrain) | WeSpeaker ResNet34 (ONNX Runtime) |
+| Telling voices apart | WeSpeaker ResNet34 (ONNX Runtime) | The same |
+| Reading name tiles (optional) | Vision | Windows' built-in OCR |
 | Runs in the background via | a launch agent | a scheduled task at logon |
 
 Both check once a second; when a meeting app holds the mic for `start_after_s`, recording starts, and
@@ -80,9 +82,27 @@ recording too. To watch only some apps, set `meeting_apps` in `config.toml`, e.g
 
 ## Install
 
+### The app
+
+Download the installer from [Releases](https://github.com/preetbohra-dev/MeetingScribe/releases): the `.exe` for
+Windows, the `.dmg` for a Mac (Apple silicon, macOS 14.4 or later). Open MeetingScribe, accept the terms, and it
+downloads its AI models once with a progress bar (about 6 GB on most PCs, up to 11 GB with 24 GB of RAM or on a Mac).
+After that it starts by itself when you log in. No admin rights.
+
+The downloads aren't code-signed yet, so your computer will warn you the first time:
+
+- **Windows:** on the blue SmartScreen window choose **More info**, then **Run anyway**.
+- **Mac:** drag the app to Applications and open it. When macOS refuses, go to **System Settings > Privacy &
+  Security**, scroll down and choose **Open Anyway**. macOS may ask for the microphone and system-audio permissions
+  again after an update.
+
+To remove it: **Settings > Apps** on Windows, or drag it to the Trash on a Mac. Your notes stay.
+
+### From source
+
 One command on either system. It sets up Python and the packages, shows the terms (type `I agree`), downloads the
 models once and starts the background recorder. No admin rights, no virtual audio drivers. Running it again is
-safe.
+safe. `./ctl.sh app` or `.\ctl app` then opens the same desktop app.
 
 **Mac** (Apple silicon, macOS 14.4 or later, ~10 GB free):
 
@@ -102,7 +122,7 @@ cd MeetingScribe
 
 No Python? The installer gets one for you: Homebrew or [uv](https://docs.astral.sh/uv/) on the Mac, `winget` on
 Windows. The model download is the only step that uses the network; after it every run is offline
-(`HF_HUB_OFFLINE=1`). Windows doesn't need scipy or torch, whose DLLs Smart App Control would block.
+(`HF_HUB_OFFLINE=1`). MeetingScribe doesn't need scipy or torch, whose DLLs Smart App Control would block on Windows.
 
 <details>
 <summary>What the installer creates</summary>
@@ -112,7 +132,7 @@ Windows. The model download is the only step that uses the network; after it eve
 | Launcher | `~/Applications/MeetingScribe.app`, so macOS permissions go to *MeetingScribe* rather than Terminal | — |
 | Background start | Launch agent `~/Library/LaunchAgents/local.meetingscribe.plist` | Scheduled task *MeetingScribe* (at logon, rechecked every 5 minutes) |
 | Logs | `~/Library/Logs/MeetingScribe/` | `%LOCALAPPDATA%\MeetingScribe\Logs\` |
-| Recordings and voiceprints | `~/Library/Application Support/MeetingScribe/` | `%LOCALAPPDATA%\MeetingScribe\` |
+| Recordings and saved voices | `~/Library/Application Support/MeetingScribe/` | `%LOCALAPPDATA%\MeetingScribe\` |
 
 `daemon.log` covers detecting and recording, `process.log` transcription and notes. `./uninstall.sh` or
 `.\uninstall` removes the background part and keeps your notes.
@@ -148,7 +168,8 @@ doesn't happen in real meetings.
 
 ## Everyday use
 
-There's nothing to do: join calls as usual. `ctl` is there when you want control. Examples below use the Mac's
+There's nothing to do: join calls as usual. Open the app to read notes and name voices, or use `ctl` from a source
+install. Examples below use the Mac's
 `./ctl.sh`; on Windows type `.\ctl` instead, with the same arguments.
 
 ```bash
@@ -157,6 +178,9 @@ There's nothing to do: join calls as usual. `ctl` is there when you want control
 ./ctl.sh restart      # after editing config.toml
 ./ctl.sh stop         # pause until ./ctl.sh start or next login
 ./ctl.sh start
+./ctl.sh app          # the desktop app
+./ctl.sh search "firewall change"                 # words across all meetings
+./ctl.sh ask "who is handling the firewall?"      # asks the local model
 ```
 
 If processing ever fails, the raw audio is kept so you can retry with `./ctl.sh process <session folder>`
@@ -169,29 +193,40 @@ on their own; the PC stays usable because processing runs at low priority.
 
 ## Speakers
 
-Everyone on the remote side arrives in one audio stream, so MeetingScribe tells them apart by voice. Each
-second of speech gets a voice fingerprint, similar fingerprints are grouped into one speaker, and each speaker is
-compared with your voiceprint library. Known voices get their name; new ones become *Speaker 1*, *Speaker 2* and
-so on, and the note lists them under **Unrecognized voices**.
+Everyone on the remote side arrives in one audio stream, so MeetingScribe tells them apart by voice. Each second of
+speech gets a voice fingerprint, and similar fingerprints are grouped into one speaker. A group that said almost
+nothing is treated as a stray sound, not a person.
+
+**A name only goes into a note when there's good reason.** New voices are *Speaker 1*, *Speaker 2* and so on. A saved
+person is named by itself only if all of these hold:
+
+- their voice is a very close match (similarity 0.7 or more) and clearly closer than anyone else's,
+- there are at least 20 seconds of it, and
+- there's evidence they attended: their name was on screen, or was said aloud in the meeting.
+
+Otherwise the name is only a question, shown as "Speaker 2 (maybe Priya?)" in the note and as **Is this Priya?** in the app.
+Suggestions come from three places: a similar saved voice, a name said aloud (the local model must quote the line,
+and the quote is checked against the transcript), and the highlighted name tile while that person talks (two looks
+at least 10 seconds apart must agree). You always make the final call.
+
+Naming a voice saves a clean 3 to 12 second clip of it. Matching never changes a saved voice, so a wrong match can't
+spread to later meetings. In the app, **Not this person** takes a wrong name off a meeting, and **People** shows
+every saved voice with a way to hear or forget it.
 
 ```bash
-./ctl.sh listen                               # play ~10 s of each unknown voice from the latest meeting
-./ctl.sh name "Speaker 2" "Priya Shah"        # name them: rewrites the note and saves the voiceprint
+./ctl.sh listen                               # play ~10 s of each unnamed voice from the latest meeting
+./ctl.sh name "Speaker 2" "Priya Shah"        # name them: rewrites the note and saves the voice
 ./ctl.sh name "Speaker 1" "Tom Berg" 2026-10-28   # a specific meeting
-./ctl.sh voices                               # list known voices
+./ctl.sh reject "Priya Shah"                  # that name is wrong for that voice
+./ctl.sh voices                               # list saved voices
 ./ctl.sh voices --forget "Priya Shah"         # delete one
 ```
 
-From the next meeting on, named people are labelled automatically, and each confident match refines their
-voiceprint. Voiceprints stay on the computer that made them (the Mac and Windows models differ).
+Saved voices stay on the computer that made them.
 
-- **Wrong person?** Rename the label in that meeting, then `--forget` the wrong voiceprint if it's polluted.
-- **One person split in two?** Give both labels the same name and they merge.
+- **One person split in two?** Give both labels the same name and they merge. "Anna" and "Anna Jones" count as one person.
 - **Two people merged into one?** Lower `speaker_cluster_threshold` (default 0.6).
 - **Too many fragments?** Raise `speaker_min_seconds` (default 15) or set `max_speakers`.
-
-In testing with synthetic voices, the same voice scored 0.83 to 0.90 against its voiceprint and different
-voices never scored above 0.51. Real call audio is noisier, so expect somewhat lower scores.
 
 ## Jira
 
@@ -226,7 +261,8 @@ Always read the drafts: the model can still pick the wrong due date or guess a f
 ```markdown
 # Migration sync
 **Date:** Wednesday 28 October 2026, 14:00–14:47 (47 min)
-**Participants:** Me, Samantha Lee, Daniel Ortiz, Speaker 3 (unrecognized)
+**Participants:** Me, Samantha Lee, Daniel Ortiz, Speaker 3 (maybe Tom Berg?)
+**Talk time:** Me 41%, Samantha Lee 33%, Daniel Ortiz 18%, Speaker 3 8%
 **Filtered:** 12 non-work line(s) left out
 
 ## Summary
@@ -240,6 +276,10 @@ Always read the drafts: the model can still pick the wrong due date or guess a f
 **[00:00:00] Me:** Good morning everyone, let's go through the migration status
 **[00:00:05] Samantha Lee:** The database migration finished last night...
 ```
+
+Next to each note is a `.json` file with the same content for AI tools and scripts, and `index.jsonl` in the folder
+lists every meeting, one per line. If the AI model ever fails, you still get a basic note with the full transcript
+and the likely commitments quoted word for word.
 
 Apart from the small-talk filter, nothing is deleted from the transcript. Lines that might be an echo of the
 remote side, or that Whisper wasn't sure about, are kept and tagged (`drop_suspect_lines = true` removes them).
@@ -265,7 +305,12 @@ Edit `config.toml`, then `./ctl.sh restart`. Every key is optional. The ones you
 | `whisper_model`, `mlx_llm_model` | Mac: smaller models for 8 GB Macs, e.g. `mlx-community/whisper-small-mlx` and `mlx-community/Qwen2.5-7B-Instruct-4bit` |
 | `gguf_model` | Windows: `owner/repo/file.gguf` on Hugging Face, e.g. the 14B one on a 16 GB PC with time to spare |
 | `llm_backend` | `"ollama"` to use a local Ollama server instead (loopback addresses only) |
+| `ollama_model` | An Ollama model, or `"running"` for whichever one is loaded, with `ollama_fallback_model` for when none is |
+| `config.local.toml` | Optional file next to `config.toml`; its keys win, and it stays out of git |
 | `speaker_*`, `max_speakers` | Speaker tuning, see [Speakers](#speakers) |
+| `speaker_require_attendance` | `false` lets a strong voice match name someone with no other evidence |
+| `screen_names` | `true` reads name tiles from the meeting window (the app asks at setup) |
+| `[vocabulary]` | Spelling fixes, e.g. `"app sumo" = "AppSumo"` |
 
 Model defaults depend on the system and are picked in `platforms/macos.py` and `platforms/windows.py`. Run
 `./ctl.sh download-models` after changing a model.
@@ -278,8 +323,10 @@ Model defaults depend on the system and are picked in `platforms/macos.py` and `
 - Offline flags are set before any ML library loads, and no saved Hugging Face token is ever sent. To check on a
   Mac, run `nettop -p $(pgrep -f "meeting_scribe.py process")` while a meeting is processed; on Windows, watch
   the python process in Resource Monitor's Network tab. There are no connections.
-- Voiceprints are a few hundred numbers per person in `voices.json`. They can't be turned back into audio, but
-  they are biometric data.
+- Saved voices are a short audio clip per named person, plus numbers made from it, in the `voices` folder. Both
+  are biometric data. Delete one any time in the app's **People** page, or with `voices --forget`.
+- With `screen_names` on, the recorder looks at the meeting window up to 12 times a call. Each picture is read for
+  names in memory and discarded; only the names are kept.
 
 > **You are responsible for how you use MeetingScribe.** Many places and employers require everyone in a meeting
 > to agree to being recorded, and voiceprints are covered by laws such as GDPR and Illinois' BIPA. Tell people,
@@ -296,6 +343,8 @@ Model defaults depend on the system and are picked in `platforms/macos.py` and `
 | `microphone delivers pure silence` | Mac: Microphone permission was denied. Windows: desktop apps' microphone access is off. |
 | `system audio is pure silence` | Mac: System Audio Recording permission was denied. Windows: see if the app's own speaker test is audible. |
 | The remote side is silent | Set `capture_mode = "all"`. |
+| Someone is named who wasn't there | In the app choose **Not this person**, or run `./ctl.sh reject "Name"`. |
+| The app warns that your microphone is silent | Check the selected mic and any mute switch on the headset. |
 | Meeting not detected | Run `./ctl.sh status` during a call: the app should show `mic in use=True`, and for a browser `meeting window` should name the meeting. |
 | Browser meetings not detected, or notes called "Microsoft Teams meeting" (Mac) | Grant the Screen Recording permission. |
 | `DLL load failed ... Application Control policy` (Windows) | Smart App Control blocked a package; re-run `.\install`, which only installs ones it allows. |
@@ -305,11 +354,14 @@ Model defaults depend on the system and are picked in `platforms/macos.py` and `
 | Path | What it is |
 |---|---|
 | `meeting_scribe.py` | The program: background daemon, processing pipeline and CLI |
+| `meetingscribe_app.py`, `ui/` | The desktop app: a window over the same program |
+| `screen_names.py` | Reading names from the meeting window |
+| `packaging/` | Building the Windows installer and the Mac disk image (run by `.github/workflows/release.yml`) |
 | `platforms/` | What differs per system: call detection, the app's audio capture, notifications, default models (`macos.py`, `windows.py`) |
 | `config.toml` | Your settings |
 | `install.sh`, `uninstall.sh`, `ctl.sh` | Mac: install, remove and control the background agent |
 | `install.cmd`, `uninstall.cmd`, `ctl.cmd`, `windows/` | Windows: the same, as PowerShell scripts |
-| `tests/` | Meeting-tab recognition, and checks that the Windows stand-ins match the Mac's libraries (`python -m pytest tests`) |
+| `tests/` | Who gets named, notes, search, the app's backend, OCR, meeting-tab recognition, and the numpy stand-ins (`python -m pytest tests`) |
 | `site/` | The website at meetingscribe.preetbohra.com, with the demo video |
 | `video/` | Source for the demo video: narration script, animation and build script |
 
