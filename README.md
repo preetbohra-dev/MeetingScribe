@@ -342,6 +342,12 @@ With less than 16 GB, notes keep the transcript without a summary, unless you ch
 named yourself, or one already installed, is left alone. To go past the limit anyway, set
 `ignore_memory_limit = true` in `config.toml`.
 
+**If the download fails in the app**, open *Download the models yourself with a command* on the download screen. It
+gives you one command to paste into Terminal or PowerShell, which needs only `curl` and can be run again if it stops.
+Then press **Check again**, and the app checks every file before accepting it. If this computer can't reach GitHub at
+all, run the same script on another computer with a folder as its argument, copy the result into
+`~/.cache/huggingface/hub`, and press **Check again**.
+
 Models come from this project's `models-v1` GitHub release, so networks that block Hugging Face can still install
 them. Each file is checked against a SHA-256 list inside the app, and Hugging Face is the fallback. On a work network,
 IT may need to allow `github.com` and `release-assets.githubusercontent.com`. Model downloads trust the certificates

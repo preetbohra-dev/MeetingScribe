@@ -157,8 +157,11 @@ class Api:
 
     def start_download(self):
         if not self._downloading():
-            self.download = subprocess.Popen(ms.self_command("download-models"), stdout=subprocess.DEVNULL,
-                                             stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+            cfg = self.cfg
+            cfg["log_dir"].mkdir(parents=True, exist_ok=True)
+            with open(cfg["log_dir"] / "download.log", "w", encoding="utf-8") as out:  # a crash before Python's own handling lands here
+                self.download = subprocess.Popen(ms.self_command("download-models"), stdout=out, stderr=subprocess.STDOUT,
+                                                 creationflags=CREATE_NO_WINDOW)
         return True
 
     def download_progress(self):
@@ -177,11 +180,30 @@ class Api:
                 except OSError:
                     pass
         failed = self.download is not None and self.download.poll() not in (None, 0)
-        try:
-            error = (cfg["work_dir"] / "download_error.txt").read_text(encoding="utf-8") if failed else ""
-        except OSError:
-            error = ""
+        error = self._download_error(cfg) if failed else ""
         return {"done": ms.models_ready(cfg), "failed": failed, "error": error, "got": got, "total": total}
+
+    def models_script(self):
+        try:
+            return {"command": ms.write_model_script(self.cfg)}
+        except ms.model_store.StoreError as e:
+            return {"command": "", "message": str(e)}
+
+    def models_check(self):
+        bad = ms.check_models(self.cfg)
+        return {"ok": not bad, "message": "" if not bad else f"{len(bad)} still missing or damaged, starting with {bad[0]}."}
+
+    @staticmethod
+    def _download_error(cfg):
+        """Its own reason if it recorded one, otherwise the last thing it printed before dying."""
+        for path in (cfg["work_dir"] / "download_error.txt", cfg["log_dir"] / "download.log"):
+            try:
+                lines = [ln.strip() for ln in path.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
+            except OSError:
+                continue
+            if lines:
+                return lines[-1][:500]
+        return "The download process stopped before it could say why."
 
     def finish_setup(self):
         cfg = self.cfg

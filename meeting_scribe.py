@@ -44,6 +44,7 @@ import logging
 import logging.handlers
 import math
 import re
+import shlex
 import ssl
 import subprocess
 import tempfile
@@ -4140,36 +4141,79 @@ def fetch_model(manifest, hub, ctx, repo, filename):
     if model_store.wanted_files(manifest, repo, filename):
         try:
             return model_store.install(manifest, repo, filename, hub, ctx)
-        except model_store.StoreError as e:
-            log.warning("%s: %s; trying Hugging Face", repo, e)
-            first = e
+        except Exception as e:
+            log.warning("%s: %s: %s; trying Hugging Face", repo, type(e).__name__, e)
+            first = e if isinstance(e, model_store.StoreError) else f"The download failed: {type(e).__name__}: {e}"
     try:
         snapshot_download(repo, allow_patterns=[filename] if filename else None)
     except Exception as e:
         raise model_store.StoreError(str(first or f"Couldn't download {repo}: {type(e).__name__}. {model_store.BLOCKED_HELP}")) from e
 
 
-def cmd_download(cfg, args):
+def check_models(cfg):
+    """Accept models put in place by hand. Returns what is still missing or damaged."""
     from huggingface_hub import constants
+    plan = model_plan(cfg)
+    bad = model_store.missing(model_manifest(), plan, constants.HF_HUB_CACHE)
+    if not bad:
+        cfg["work_dir"].mkdir(parents=True, exist_ok=True)
+        (cfg["work_dir"] / "models_ready.json").write_text(json.dumps(plan))
+        (cfg["work_dir"] / "download_error.txt").unlink(missing_ok=True)
+    return bad
+
+
+def cmd_check_models(cfg, args):
+    bad = check_models(cfg)
+    if bad:
+        sys.exit(f"Still missing or damaged: {', '.join(bad[:5])}" + (f" and {len(bad) - 5} more" if len(bad) > 5 else ""))
+    print("All models are in place.")
+
+
+def write_model_script(cfg):
+    """A script to download the models by hand, and the command that runs it."""
+    from huggingface_hub import constants
+    windows = sys.platform == "win32"
     cfg["work_dir"].mkdir(parents=True, exist_ok=True)
-    (cfg["work_dir"] / "models_ready.json").unlink(missing_ok=True)
+    path = cfg["work_dir"] / ("get-models.ps1" if windows else "get-models.sh")
+    text = model_store.script(model_manifest(), model_plan(cfg), constants.HF_HUB_CACHE, windows)
+    path.write_text(text, encoding="utf-8-sig" if windows else "utf-8", newline="\n")
+    return f'powershell -ExecutionPolicy Bypass -File "{path}"' if windows else "bash " + shlex.quote(str(path))
+
+
+def cmd_models_script(cfg, args):
+    print(write_model_script(cfg))
+
+
+def cmd_download(cfg, args):
+    """Whatever goes wrong, the app must be able to say what: it only sees this file."""
+    cfg["work_dir"].mkdir(parents=True, exist_ok=True)
     failure = cfg["work_dir"] / "download_error.txt"
     failure.unlink(missing_ok=True)
+    try:
+        return download_models(cfg)
+    except model_store.StoreError as e:
+        reason = str(e)
+    except Exception as e:
+        log.exception("model download failed")
+        reason = f"The download failed: {type(e).__name__}: {e}"
+    failure.write_text(reason, encoding="utf-8")
+    sys.exit(reason)
+
+
+def download_models(cfg):
+    from huggingface_hub import constants
+    (cfg["work_dir"] / "models_ready.json").unlink(missing_ok=True)
     plan, manifest = model_plan(cfg), model_manifest()
     size = download_size(cfg)
     (cfg["work_dir"] / "download_size.json").write_text(json.dumps(size))
     if not cfg.get("llm_fits", True):
         print(f"This computer has {plat.ram_gb():.0f} GB of memory, too little for a local note writer, so only the speech models are downloaded.")
-    try:
-        if size:
-            model_store.check_space(constants.HF_HUB_CACHE, size)
-        ctx = model_store.context(cfg["jira"]["ca_bundle"])
-        for repo, filename in plan:
-            print("Downloading", repo, filename or "")
-            fetch_model(manifest, constants.HF_HUB_CACHE, ctx, repo, filename)
-    except model_store.StoreError as e:
-        failure.write_text(str(e), encoding="utf-8")
-        sys.exit(str(e))
+    if size:
+        model_store.check_space(constants.HF_HUB_CACHE, size)
+    ctx = model_store.context(cfg["jira"]["ca_bundle"])
+    for repo, filename in plan:
+        print("Downloading", repo, filename or "", flush=True)
+        fetch_model(manifest, constants.HF_HUB_CACHE, ctx, repo, filename)
     if cfg["llm_backend"] == "ollama":
         print("Ollama backend: pull the model you want with `ollama pull`.")
     (cfg["work_dir"] / "models_ready.json").write_text(json.dumps(plan))
@@ -4234,6 +4278,8 @@ def main():
                    help="whose audio to record as Others")
     p.set_defaults(fn=cmd_test_capture)
     sub.add_parser("download-models").set_defaults(fn=cmd_download)
+    sub.add_parser("check-models").set_defaults(fn=cmd_check_models)
+    sub.add_parser("models-script").set_defaults(fn=cmd_models_script)
     p = sub.add_parser("name-speaker", help='e.g. name-speaker "Speaker 2" "Priya Shah"')
     p.add_argument("label")
     p.add_argument("name")
