@@ -214,7 +214,10 @@ POWERSHELL_SCRIPT = r'''# Downloads MeetingScribe's models with curl, for when t
 param([string]$Hub = __HUB__)
 $ErrorActionPreference = 'Stop'
 $Base = __BASE__
-function Sha($p) { (Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLower() }
+function Sha($p) {
+  $stream = [IO.File]::OpenRead($p); $hasher = [Security.Cryptography.SHA256]::Create()
+  try { ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-', '').ToLower() } finally { $stream.Close() }
+}
 function Get-Model($folder, $revision, $path, $sha, $parts) {
   $root = Join-Path $Hub $folder
   $dest = Join-Path (Join-Path (Join-Path $root 'snapshots') $revision) $path
