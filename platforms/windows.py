@@ -18,8 +18,10 @@ import sys
 
 sys.coinit_flags = 0  # COINIT_MULTITHREADED, read by comtypes when it initialises COM
 
+import base64  # noqa: E402
 import ctypes  # noqa: E402
 import glob  # noqa: E402
+import json  # noqa: E402
 import logging  # noqa: E402
 import msvcrt  # noqa: E402
 import os  # noqa: E402
@@ -610,3 +612,122 @@ class ProcessLoopbackCapture:
 
 def system_audio_capture(cfg, writer, app, mode):
     return ProcessLoopbackCapture(writer, app, mode)
+
+
+# --------------------------------------------------------------------------
+# Reading name tiles: the window's picture, and the OCR built into Windows
+# --------------------------------------------------------------------------
+
+_gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+for _f, _args, _res in (("GetDC", [HWND], c_void_p), ("ReleaseDC", [HWND, c_void_p], c_int),
+                        ("GetWindowRect", [HWND, c_void_p], BOOL), ("IsIconic", [HWND], BOOL),
+                        ("PrintWindow", [HWND, c_void_p, c_uint32], BOOL)):
+    getattr(_user32, _f).argtypes, getattr(_user32, _f).restype = _args, _res
+for _f, _args, _res in (("CreateCompatibleDC", [c_void_p], c_void_p), ("DeleteDC", [c_void_p], BOOL),
+                        ("CreateCompatibleBitmap", [c_void_p, c_int, c_int], c_void_p),
+                        ("SelectObject", [c_void_p, c_void_p], c_void_p), ("DeleteObject", [c_void_p], BOOL),
+                        ("GetDIBits", [c_void_p, c_void_p, c_uint32, c_uint32, c_void_p, c_void_p, c_uint32], c_int)):
+    getattr(_gdi32, _f).argtypes, getattr(_gdi32, _f).restype = _args, _res
+
+
+def window_image(app, is_meeting=None):
+    """The app's largest visible window as H x W x 3 RGB, preferring one that shows the
+    meeting. PrintWindow draws it even when other windows cover it; a minimized one has
+    nothing to draw, so that is None."""
+    _user32.SetThreadDpiAwarenessContext(c_void_p(-4))  # real pixels: PER_MONITOR_AWARE_V2
+    _, tree, _ = _app_tree(app)
+    found = []
+
+    def visit(hwnd, _):
+        pid = DWORD()
+        _user32.GetWindowThreadProcessId(hwnd, byref(pid))
+        if pid.value in tree and _user32.IsWindowVisible(hwnd) and not _user32.IsIconic(hwnd):
+            r = (c_int * 4)()
+            _user32.GetWindowRect(hwnd, r)
+            n = _user32.GetWindowTextLengthW(hwnd)
+            buf = ctypes.create_unicode_buffer(n + 1)
+            _user32.GetWindowTextW(hwnd, buf, n + 1)
+            if n and r[2] - r[0] >= 240 and r[3] - r[1] >= 160:
+                found.append((bool(is_meeting and is_meeting(buf.value)), (r[2] - r[0]) * (r[3] - r[1]),
+                              hwnd, r[2] - r[0], r[3] - r[1]))
+        return True
+
+    _user32.EnumWindows(_WNDENUMPROC(visit), 0)
+    if not found:
+        return None
+    _, _, hwnd, w, h = max(found, key=lambda f: f[:2])
+    screen = _user32.GetDC(hwnd)
+    mem = _gdi32.CreateCompatibleDC(screen)
+    bmp = _gdi32.CreateCompatibleBitmap(screen, w, h)
+    old = _gdi32.SelectObject(mem, bmp)
+    try:
+        if not _user32.PrintWindow(hwnd, mem, 2):  # PW_RENDERFULLCONTENT: GPU-drawn windows too
+            return None
+        header = (c_int * 10)(40, w, -h, 1 | (32 << 16), 0, 0, 0, 0, 0, 0)  # BITMAPINFOHEADER, top-down
+        data = np.zeros((h, w, 4), np.uint8)
+        if not _gdi32.GetDIBits(mem, bmp, 0, h, data.ctypes.data_as(c_void_p), header, 0):
+            return None
+    finally:
+        _gdi32.SelectObject(mem, old)
+        _gdi32.DeleteObject(bmp)
+        _gdi32.DeleteDC(mem)
+        _user32.ReleaseDC(hwnd, screen)
+    rgb = data[:, :, 2::-1].copy()
+    return rgb if rgb.max() > 0 else None
+
+
+_OCR_SCRIPT = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Foundation, ContentType = WindowsRuntime]
+$asTask = ([WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+  $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
+  $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+function Wait-Op($op, [Type]$type) {
+  $task = $asTask.MakeGenericMethod($type).Invoke($null, @($op))
+  $null = $task.Wait(-1)
+  $task.Result
+}
+$bytes = [Convert]::FromBase64String([Console]::In.ReadToEnd())
+$mem = New-Object IO.MemoryStream(, $bytes)
+$stream = [IO.WindowsRuntimeStreamExtensions]::AsRandomAccessStream($mem)
+$decoder = Wait-Op ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$bitmap = Wait-Op ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+$result = Wait-Op ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+$out = foreach ($line in $result.Lines) {
+  $r = $line.Words | ForEach-Object { $_.BoundingRect }
+  $x = ($r | ForEach-Object { $_.X } | Measure-Object -Minimum).Minimum
+  $y = ($r | ForEach-Object { $_.Y } | Measure-Object -Minimum).Minimum
+  $x2 = ($r | ForEach-Object { $_.X + $_.Width } | Measure-Object -Maximum).Maximum
+  $y2 = ($r | ForEach-Object { $_.Y + $_.Height } | Measure-Object -Maximum).Maximum
+  [pscustomobject]@{ text = $line.Text; x = $x; y = $y; w = $x2 - $x; h = $y2 - $y }
+}
+ConvertTo-Json -Compress -InputObject @($out)
+"""
+
+
+def read_text(img):
+    """Text lines in an RGB picture, from Windows' own OCR through PowerShell, the same
+    bridge as notify(), so no new native code has to get past Smart App Control. The picture
+    goes over a pipe and is never written to disk. Small windows are doubled first, because
+    tile names on them are tiny for OCR."""
+    scale = 2 if max(img.shape[:2]) < 1600 else 1
+    big = img.repeat(scale, axis=0).repeat(scale, axis=1)[::-1, :, ::-1]  # BMPs are bottom-up BGR
+    h, w = big.shape[:2]
+    row = (w * 3 + 3) & ~3
+    pad = np.zeros((h, row - w * 3), np.uint8)
+    body = np.concatenate([big.reshape(h, w * 3), pad], axis=1).tobytes()
+    header = (c_int * 10)(40, w, h, 1 | (24 << 16), 0, len(body), 0, 0, 0, 0)
+    bmp = (b"BM" + (54 + len(body)).to_bytes(4, "little") + bytes(4) + (54).to_bytes(4, "little")
+           + bytes(header) + body)
+    r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _OCR_SCRIPT],
+                       input=base64.b64encode(bmp), capture_output=True, timeout=60,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+    if r.returncode:
+        raise RuntimeError(r.stderr.decode("utf-8", "replace")[:300])
+    lines = json.loads(r.stdout.decode("utf-8-sig") or "[]")
+    return [{"text": ln["text"], "x": ln["x"] / scale, "y": ln["y"] / scale,
+             "w": ln["w"] / scale, "h": ln["h"] / scale} for ln in lines]

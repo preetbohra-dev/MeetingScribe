@@ -497,3 +497,58 @@ def system_audio_capture(cfg, writer, app, mode):
 
 
 AudioProbe = CoreAudioProbe
+
+
+# --------------------------------------------------------------------------
+# Reading name tiles: the window's picture, and Vision's on-device OCR
+# --------------------------------------------------------------------------
+
+def window_image(app, is_meeting=None):
+    """The app's largest on-screen window as H x W x 3 RGB, preferring one that shows the
+    meeting. None without the Screen Recording permission, which then only means no tiles."""
+    import Quartz
+    infos = Quartz.CGWindowListCopyWindowInfo(
+        Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+        Quartz.kCGNullWindowID) or []
+    found = []
+    for w in infos:
+        b = w.get("kCGWindowBounds") or {}
+        if (w.get("kCGWindowOwnerName") in app["mac_owner"] and w.get("kCGWindowLayer", 1) == 0
+                and b.get("Width", 0) >= 240 and b.get("Height", 0) >= 160):
+            title = w.get("kCGWindowName") or ""
+            found.append((bool(is_meeting and title and is_meeting(title)), b["Width"] * b["Height"],
+                          w["kCGWindowNumber"]))
+    if not found:
+        return None
+    cg = Quartz.CGWindowListCreateImage(Quartz.CGRectNull, Quartz.kCGWindowListOptionIncludingWindow,
+                                        max(found)[2], Quartz.kCGWindowImageBoundsIgnoreFraming)
+    if cg is None:
+        return None
+    w, h, stride = Quartz.CGImageGetWidth(cg), Quartz.CGImageGetHeight(cg), Quartz.CGImageGetBytesPerRow(cg)
+    data = Quartz.CGDataProviderCopyData(Quartz.CGImageGetDataProvider(cg))
+    px = np.frombuffer(bytes(data), np.uint8).reshape(h, stride // 4, 4)[:, :w]  # BGRA
+    return px[:, :, 2::-1].copy()
+
+
+def read_text(img):
+    """Text lines in an RGB picture, from Vision, on this Mac."""
+    import Quartz
+    import Vision
+    h, w = img.shape[:2]
+    rgba = np.dstack([img, np.full((h, w), 255, np.uint8)])
+    provider = Quartz.CGDataProviderCreateWithData(None, rgba.tobytes(), rgba.size, None)
+    cg = Quartz.CGImageCreate(w, h, 8, 32, 4 * w, Quartz.CGColorSpaceCreateDeviceRGB(),
+                              Quartz.kCGImageAlphaNoneSkipLast, provider, None, False,
+                              Quartz.kCGRenderingIntentDefault)
+    request = Vision.VNRecognizeTextRequest.alloc().init()
+    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(cg, {})
+    ok, err = handler.performRequests_error_([request], None)
+    if not ok:
+        raise RuntimeError(str(err))
+    out = []
+    for obs in request.results() or []:
+        box = obs.boundingBox()  # normalized, origin at the bottom left
+        out.append({"text": obs.topCandidates_(1)[0].string(), "x": box.origin.x * w,
+                    "y": (1 - box.origin.y - box.size.height) * h,
+                    "w": box.size.width * w, "h": box.size.height * h})
+    return out

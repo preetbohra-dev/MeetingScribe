@@ -12,3 +12,10 @@ video/narration.wav
 video/stills/
 
 graphify-out/
+
+# Settings for one computer only
+config.local.toml
+
+# Packaged app build output
+build/
+dist/

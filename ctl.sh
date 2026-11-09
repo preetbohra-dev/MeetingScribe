@@ -31,6 +31,12 @@ case "${1:-status}" in
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" voices "${@:2}" ;;
   refilter) # ./ctl.sh refilter [--session ID] [--force]
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" refilter "${@:2}" ;;
+  app)  # open the desktop app
+    "$HERE/.venv/bin/python" "$HERE/meetingscribe_app.py" ;;
+  reject)  # reject "Priya Shah" [session]: that name is wrong for that voice
+    "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" reject-name "$2" --session "${3:-latest}" ;;
+  search|ask)
+    "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" "$@" ;;
   terms)  # show and accept the terms of use
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" terms ;;
   jira)   # ./ctl.sh jira [--session ID] [--project KEY] [--refresh] [--dry-run] [--forget]
@@ -39,5 +45,5 @@ case "${1:-status}" in
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" "$@" ;;
   logs)
     tail -n 50 -F "$LOG/daemon.log" "$LOG/process.log" "$LOG/stderr.log" ;;
-  *) echo "usage: $0 start|stop|restart|status|logs|name|listen|voices|refilter|jira|terms|process|download-models"; exit 1 ;;
+  *) echo "usage: $0 app|start|stop|restart|status|logs|name|reject|listen|voices|search|ask|refilter|jira|terms|process|download-models"; exit 1 ;;
 esac

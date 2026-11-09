@@ -17,6 +17,8 @@
   app_windows(app)          [(owner, title)] for the app's top-level windows
   system_audio_capture(cfg, writer, app, mode)  the app's audio ("app") or all system
                             audio ("all") into a TrackWriter
+  window_image(app, is_meeting)  the app's meeting window as H x W x 3 RGB, or None
+  read_text(img)            text lines in a picture: [{"text", "x", "y", "w", "h"}]
 
 An app is an entry of MEETING_APPS in meeting_scribe.py.
 """

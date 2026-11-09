@@ -109,6 +109,16 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
 .space span { color: var(--muted); font-size: 22px; }
 .key { display: inline-grid; place-items: center; width: 64px; height: 64px; border-radius: 14px; background: #1f1f23; border: 1px solid #3a3a40;
   box-shadow: 0 6px 0 #121214; font-family: var(--mono); font-size: 32px; font-weight: 700; color: #fff; }
+.lim { padding: 26px 32px; }
+.lim b { display: block; font-size: 38px; font-weight: 700; letter-spacing: -.3px; }
+.lim p { font-size: 29px; line-height: 1.35; color: var(--muted); margin-top: 10px; }
+.lim small { display: block; font-size: 25px; line-height: 1.35; color: var(--amber); margin-top: 14px; }
+.gate { font-size: 25px; padding: 7px 0; display: flex; gap: 14px; align-items: center; color: #dcdce0; }
+.gate i { width: 30px; height: 30px; border-radius: 50%; background: rgba(52,211,153,.15); color: var(--green); display: grid; place-items: center; font-style: normal; font-weight: 800; font-size: 18px; flex: none; }
+.navi { padding: 12px 16px; border-radius: 10px; font-size: 21px; color: var(--muted); }
+.navi.on { background: #26262b; color: #fff; font-weight: 650; }
+.bar-row { font-size: 23px; margin-top: 15px; }
+.bar-row div { height: 14px; border-radius: 7px; background: var(--teal); margin-top: 6px; width: 0; }
 </style>
 </head>
 <body>
@@ -124,7 +134,8 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
     <div class="abs sub" id="t-tag" style="left:0;width:1920px;top:580px;text-align:center;font-size:38px">Your meetings, written down on your own computer.</div>
     <div class="abs" id="t-chips" style="left:0;width:1920px;top:680px;text-align:center">
       <span class="chip v" id="t-c1">+ Jira, with you in the loop</span>&nbsp;&nbsp;
-      <span class="chip" id="t-c2">100% on-device AI</span>
+      <span class="chip" id="t-c2">100% on-device AI</span>&nbsp;&nbsp;
+      <span class="chip g" id="t-c3">Desktop app for Mac and Windows</span>
     </div>
   </section>
 
@@ -142,6 +153,40 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
     <div class="abs card" id="p-c3" style="left:1230px;top:400px;width:440px;height:330px;padding:44px">
       <div class="icon" style="width:84px;height:84px;background:rgba(255,138,101,.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#ffa98c" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h3"/></svg></div>
       <div class="h3" style="margin-top:30px">Tickets never raised</div><div class="sub" style="font-size:24px;margin-top:10px">The work happens off the board.</div>
+    </div>
+  </section>
+
+  <!-- 2b DESKTOP APP -->
+  <section class="scene" id="s-app">
+    <div class="abs" style="left:110px;top:190px;width:560px">
+      <div class="card" id="a-exe" style="padding:30px 34px;margin-bottom:24px"><div class="h3" style="font-size:30px;font-family:var(--mono)">Setup.exe</div><div class="sub" style="font-size:23px;margin-top:6px">Windows · no admin rights</div></div>
+      <div class="card" id="a-dmg" style="padding:30px 34px;margin-bottom:24px"><div class="h3" style="font-size:30px;font-family:var(--mono)">MeetingScribe.dmg</div><div class="sub" style="font-size:23px;margin-top:6px">Mac · Apple silicon, macOS 14.4+</div></div>
+      <div id="a-tags"><span class="chip n">No terminal</span>&nbsp;&nbsp;<span class="chip n">Starts at login</span></div>
+    </div>
+    <div class="abs card" id="a-win" style="left:730px;top:150px;width:1080px;height:730px;overflow:hidden;display:flex">
+      <div style="width:250px;flex:none;border-right:1px solid var(--line);padding:26px 16px;display:flex;flex-direction:column;background:#141416">
+        <div style="font-size:24px;font-weight:700;padding:0 10px 18px">MeetingScribe</div>
+        <div class="navi on">Meetings</div><div class="navi">Search and ask</div><div class="navi">People</div><div class="navi">Settings</div>
+        <div id="a-status" style="margin-top:auto;font-size:19px;color:var(--muted);padding:0 10px"><span style="color:var(--green)">●</span> Watching for calls</div>
+      </div>
+      <div style="position:relative;flex:1">
+        <div class="abs" id="a-w1" style="left:50px;top:50px;width:730px">
+          <div class="h2" style="font-size:46px">Welcome</div>
+          <div class="sub" style="font-size:24px;margin-top:8px">A few questions, then it works by itself.</div>
+          <div style="margin-top:34px" class="lbl">Your name</div>
+          <div style="margin-top:10px;height:58px;border:1px solid var(--line);border-radius:10px;background:#111113;display:flex;align-items:center;padding:0 18px;font-size:25px"><span id="a-name"></span></div>
+          <div class="gate" style="margin-top:28px"><i>✓</i>I have read and accept the terms</div>
+          <div class="gate"><i>✓</i>Teams, Zoom and browser meetings</div>
+          <div class="gate"><i>✓</i>Read people's names from the meeting window</div>
+          <div class="sub" style="font-size:20px;margin:2px 0 0 44px">Optional. Pictures are never saved.</div>
+        </div>
+        <div class="abs" id="a-w2" style="left:50px;top:120px;width:730px">
+          <div class="h2" style="font-size:46px">Getting the AI models</div>
+          <div class="sub" style="font-size:24px;margin-top:8px">Only once. After this it works offline.</div>
+          <div style="margin-top:50px;height:22px;border-radius:11px;background:#111113;border:1px solid var(--line);overflow:hidden"><div id="a-bar" style="height:100%;width:0;background:var(--teal)"></div></div>
+          <div style="margin-top:14px;font-size:26px;font-family:var(--mono);color:var(--muted)"><span id="a-pct">0</span>%</div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -238,6 +283,7 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
       <div class="t" id="n-1"># Migration sync</div>
       <div class="m" id="n-2">Thursday 05 November 2026, 14:00–14:47 (47 min) · recorded on this Mac</div>
       <div class="m" id="n-3"><b>Participants:</b> Me, Samantha Lee, Daniel Ortiz, Speaker 3 <i>(unrecognized)</i></div>
+      <div class="m" id="n-t"><b>Talk time:</b> Samantha Lee 38%, Me 27%, Daniel Ortiz 21%, Speaker 3 14%</div>
       <div class="m" id="n-f" style="color:var(--amber)"><b style="color:var(--amber)">Filtered:</b> 3 non-work lines left out</div>
       <div class="s" id="n-4">## Summary</div>
       <ul id="n-sum">
@@ -262,11 +308,42 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
     <div class="abs chip b" id="n-file" style="left:1300px;top:700px;font-family:var(--mono);font-size:20px">2026-11-05 1400 - Migration sync.md</div>
   </section>
 
+  <!-- 5b WHO GETS A NAME -->
+  <section class="scene" id="s-who">
+    <div class="abs card" id="h-old" style="left:150px;top:135px;width:1620px;height:100px;padding:0 38px;display:flex;align-items:center;gap:26px;font-size:28px">
+      <span class="chip r">Before</span><span>Participants: Me, Samantha Lee, <span id="h-wrong" style="color:var(--red);font-weight:700">Priya Nair</span></span><span class="sub" style="margin-left:auto;font-size:24px">never joined this call</span>
+    </div>
+    <div class="abs card" id="h-voice" style="left:150px;top:265px;width:770px;height:280px;padding:28px 36px">
+      <div class="lbl">1 · The voice</div>
+      <div class="gate" style="margin-top:12px"><i>✓</i>Very close to a saved voice</div>
+      <div class="gate"><i>✓</i>Clearly ahead of the next-best person</div>
+      <div class="gate"><i>✓</i>At least 20 seconds of speech</div>
+    </div>
+    <div class="abs" id="h-plus" style="left:920px;top:365px;width:80px;text-align:center;font-size:62px;font-weight:300;color:var(--muted)">+</div>
+    <div class="abs card" id="h-seen" style="left:1000px;top:265px;width:770px;height:280px;padding:28px 36px">
+      <div class="lbl">2 · Evidence they attended</div>
+      <div class="gate" style="margin-top:12px"><i>✓</i>Their name on the meeting screen</div>
+      <div style="font-size:21px;color:var(--muted);margin:2px 0 2px 44px">or</div>
+      <div class="gate"><i>✓</i>Their name said aloud in the meeting</div>
+    </div>
+    <div class="abs card lim" id="h-r1" style="left:150px;top:575px;width:520px;height:190px"><div class="lbl">Both</div><b style="margin-top:12px;color:var(--green)">Ravi Kumar</b><p style="font-size:22px">Named automatically</p></div>
+    <div class="abs card lim" id="h-r2" style="left:700px;top:575px;width:520px;height:190px"><div class="lbl">Voice only</div><b style="margin-top:12px;color:var(--amber)">Speaker 2</b><p style="font-size:22px">Maybe Ravi Kumar? You decide.</p></div>
+    <div class="abs card lim" id="h-r3" style="left:1250px;top:575px;width:520px;height:190px"><div class="lbl">No match</div><b style="margin-top:12px;color:var(--muted)">Speaker 3</b><p style="font-size:22px">Stays unnamed</p></div>
+    <div class="abs" id="h-res" style="left:0;width:1920px;top:800px;text-align:center"><span class="chip g">Tested on 18 recorded meetings: no extra people added</span></div>
+  </section>
+
   <!-- 6 VOICES -->
   <section class="scene" id="s-voices">
-    <div class="abs term" id="v-term" style="left:120px;top:200px;width:1060px;height:420px">
-      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>Meeting Tracker — zsh</span></div>
-      <pre id="v-pre"></pre>
+    <div class="abs card" id="v-term" style="left:120px;top:200px;width:1060px;height:420px;padding:32px 42px">
+      <div class="h3">Who was this?</div>
+      <div class="sub" style="font-size:23px;margin-top:4px">Migration sync · Speaker 3 · 82 s of speech</div>
+      <div style="display:flex;align-items:center;gap:22px;margin-top:24px">
+        <div style="width:64px;height:64px;border-radius:50%;background:#26262b;display:grid;place-items:center;flex:none"><svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg></div>
+        <canvas id="v-cv" width="860" height="70"></canvas></div>
+      <div style="margin-top:18px;font-size:25px;color:#dcdce0">"I'll chase security on the firewall rule today."</div>
+      <div style="display:flex;gap:16px;margin-top:24px">
+        <div style="flex:1;height:60px;border:1px solid var(--line);border-radius:10px;background:#111113;display:flex;align-items:center;padding:0 20px;font-size:27px"><span id="v-typed"></span></div>
+        <div id="v-save" style="height:60px;padding:0 28px;border-radius:10px;background:#26262b;display:grid;place-items:center;font-size:24px;font-weight:650">Save name</div></div>
     </div>
     <div class="abs card" id="v-who" style="left:1240px;top:200px;width:560px;height:420px;padding:34px">
       <div class="lbl">Participants</div>
@@ -279,14 +356,51 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
     <div class="abs card" id="v-next" style="left:120px;top:680px;width:1680px;height:150px;padding:30px 40px;display:flex;align-items:center;gap:30px">
       <span class="chip g">Next meeting</span>
       <span style="font-size:27px">Participants: Me, Samantha Lee, Daniel Ortiz, <b style="color:var(--green)">Ravi Kumar</b></span>
-      <span class="sub" style="font-size:22px;margin-left:auto">recognised by voice, automatically</span>
+      <span class="sub" style="font-size:22px;margin-left:auto">recognised by voice, once there is evidence</span>
+    </div>
+  </section>
+
+  <!-- 6b SEARCH AND ASK -->
+  <section class="scene" id="s-find">
+    <div class="abs card" id="f-win" style="left:110px;top:140px;width:1130px;height:740px;padding:34px 42px">
+      <div class="h3">Search and ask</div>
+      <div style="margin-top:16px;height:62px;border:1px solid var(--line);border-radius:10px;background:#111113;display:flex;align-items:center;padding:0 20px;font-size:27px"><span id="f-q"></span><span class="caret"></span></div>
+      <div id="f-hits" style="margin-top:20px"></div>
+      <div id="f-ans" style="margin-top:20px;padding:22px 26px;border-radius:14px;background:#111113;border:1px solid var(--line)">
+        <div class="lbl">Answer</div>
+        <div style="font-size:26px;line-height:1.4;margin-top:8px">Ravi Kumar said he would chase security on the firewall rule. It was still open at the last meeting.</div>
+        <div class="sub" style="font-size:20px;margin-top:8px">From: Migration sync, Platform weekly</div>
+      </div>
+    </div>
+    <div class="abs card" id="f-talk" style="left:1290px;top:140px;width:520px;height:430px;padding:30px 34px"><div class="lbl">Talk time</div><div id="f-bars" style="margin-top:6px"></div></div>
+    <div class="abs card" id="f-json" style="left:1290px;top:610px;width:520px;height:270px;padding:30px 34px">
+      <div class="lbl">For your AI tools</div>
+      <div style="font-family:var(--mono);font-size:22px;margin-top:18px;color:var(--blue)">Migration sync.json</div>
+      <div style="font-family:var(--mono);font-size:22px;margin-top:10px;color:var(--blue)">index.jsonl</div>
+      <div class="sub" style="font-size:22px;margin-top:16px">Next to your notes. Stays on this computer.</div>
+    </div>
+  </section>
+
+  <!-- 6c WHEN THINGS GO WRONG -->
+  <section class="scene" id="s-guards">
+    <div class="abs card lim" id="g-mic" style="left:150px;top:270px;width:780px;height:400px;padding:40px 44px">
+      <div class="lbl">During the call</div>
+      <div style="margin-top:30px;padding:22px 26px;border-radius:12px;background:rgba(245,181,67,.13);border:1px solid rgba(245,181,67,.4);color:var(--amber);font-size:28px;font-weight:600">Your microphone is silent, so your side of this meeting is not being recorded.</div>
+      <p style="margin-top:28px">You find out while there is still time to fix it, not after the meeting.</p>
+    </div>
+    <div class="abs card lim" id="g-note" style="left:990px;top:270px;width:780px;height:400px;padding:40px 44px">
+      <div class="lbl">After the call</div>
+      <div class="md" style="margin-top:24px"><div class="s" style="margin-top:0">## Summary</div>
+      <ul><li>The AI summary could not be written for this meeting, so this is a basic note. The full transcript is below.</li></ul>
+      <div class="s">## Transcript</div>
+      <div class="m" style="margin-top:4px">[00:00:15] Me: Status on the cutover…</div></div>
     </div>
   </section>
 
   <!-- 7 JIRA TITLE -->
   <section class="scene" id="s-jira">
     <div class="abs" id="j-glow" style="left:560px;top:140px;width:800px;height:800px;border-radius:50%;background:none"></div>
-    <div class="abs" style="left:0;width:1920px;top:290px;text-align:center"><span class="chip v" id="j-new" style="font-size:30px;padding:12px 30px">NEW</span></div>
+    <div class="abs" style="left:0;width:1920px;top:290px;text-align:center"><span class="chip v" id="j-new" style="font-size:30px;padding:12px 30px">OPTIONAL</span></div>
     <div class="abs h1" id="j-h" style="left:0;width:1920px;top:390px;text-align:center;font-size:124px">Push to Jira</div>
     <div class="abs sub" id="j-s" style="left:0;width:1920px;top:560px;text-align:center;font-size:36px">You approve every ticket. The local model does the legwork.</div>
     <div class="abs" id="j-chips" style="left:0;width:1920px;top:660px;text-align:center">
@@ -296,9 +410,17 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
 
   <!-- 8 SIGN IN -->
   <section class="scene" id="s-signin">
-    <div class="abs term" id="si-term" style="left:90px;top:140px;width:1130px;height:740px">
-      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>Meeting Tracker — zsh</span></div>
-      <pre id="si-pre"></pre>
+    <div class="abs card" id="si-term" style="left:90px;top:140px;width:1130px;height:740px;padding:44px 54px">
+      <div class="h2" style="font-size:46px">Connect Jira</div>
+      <div class="lbl" style="margin-top:34px">Jira site</div>
+      <div style="margin-top:10px;height:66px;border:1px solid var(--line);border-radius:10px;background:#111113;display:flex;align-items:center;padding:0 22px;font-size:27px;font-family:var(--mono)"><span id="si-site"></span></div>
+      <div class="lbl" style="margin-top:26px">How to sign in</div>
+      <div style="margin-top:10px;height:66px;border:1px solid var(--line);border-radius:10px;background:#111113;display:flex;align-items:center;padding:0 22px;font-size:27px"><span id="si-how">Browser session cookie</span></div>
+      <div class="lbl" style="margin-top:26px">Session cookie</div>
+      <div style="margin-top:10px;height:66px;border:1px solid var(--line);border-radius:10px;background:#111113;display:flex;align-items:center;padding:0 22px;font-size:27px"><span id="si-dots"></span></div>
+      <div style="display:flex;align-items:center;gap:24px;margin-top:32px">
+        <div id="si-btn" style="height:66px;padding:0 36px;border-radius:10px;background:#e5483a;display:grid;place-items:center;font-size:27px;font-weight:650">Connect</div>
+        <span class="chip g" id="si-ok" style="font-size:25px">Connected as Me</span></div>
     </div>
     <div class="abs" id="si-opts" style="left:1280px;top:140px;width:550px">
       <div class="card" id="si-o1" style="padding:24px 28px;margin-bottom:18px"><div class="h3" style="font-size:28px">Personal access token</div><div class="sub" style="font-size:21px">Jira Server / Data Center</div></div>
@@ -320,6 +442,19 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
     </div>
   </section>
 
+  <!-- 9b LEARNING THE SPACE -->
+  <section class="scene" id="s-learn">
+    <div class="abs h2" id="le-h" style="left:0;width:1920px;top:115px;text-align:center;font-size:56px">Every team's Jira is different</div>
+    <div id="le-tix"></div>
+    <div class="abs card" id="le-card" style="left:800px;top:225px;width:1000px;height:640px;padding:36px 44px">
+      <div class="h3">How EDA writes Tasks</div>
+      <div class="sub" style="font-size:23px;margin-top:4px">From 48 recent tickets · read-only · kept on this computer</div>
+      <div id="le-rows" style="margin-top:20px"></div>
+      <div class="lbl" style="margin-top:22px" id="le-sl">Description sections</div>
+      <div id="le-sec" style="margin-top:10px"><span class="chip n">Background</span>&nbsp;&nbsp;<span class="chip n">Definition of done</span>&nbsp;&nbsp;<span class="chip n">Risks</span></div>
+    </div>
+  </section>
+
   <!-- 10 EXTRACT -->
   <section class="scene" id="s-extract">
     <div class="abs card md" id="x-src" style="left:90px;top:170px;width:700px;height:520px;padding:36px 40px">
@@ -330,7 +465,7 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
         <li class="todo"><b>Ravi Kumar</b>: Chase security on firewall rule</li>
         <li class="todo"><b>Daniel Ortiz</b>: Investigate order feed lag</li>
       </ul>
-      <div style="margin-top:34px"><span class="chip v" id="x-model">Qwen 2.5 14B · running locally</span></div>
+      <div style="margin-top:34px"><span class="chip v" id="x-model">Qwen 2.5 · running locally</span></div>
     </div>
     <div id="x-cards"></div>
   </section>
@@ -368,11 +503,11 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
       <div style="margin-top:16px" id="dr-cl"></div>
     </div>
     <div class="abs card" id="dr-ask" style="left:1220px;top:630px;width:590px;height:290px;padding:30px 36px">
-      <div style="font-family:var(--mono);font-size:24px;color:#d6d6db">Create this in EDA?</div>
-      <div style="display:flex;gap:18px;margin-top:22px;align-items:center">
-        <span class="key" id="dr-y">y</span><span class="sub" style="font-size:22px">yes</span>
-        <span class="key" style="opacity:.5">n</span><span class="sub" style="font-size:22px">no</span>
-        <span class="key" style="opacity:.5">e</span><span class="sub" style="font-size:22px">edit</span></div>
+      <div class="lbl">Your decision</div>
+      <div style="display:flex;gap:16px;margin-top:22px;align-items:center">
+        <span class="key" id="dr-y" style="width:auto;padding:0 26px;font-family:inherit;font-size:27px;background:#e5483a">Create in EDA</span>
+        <span class="key" style="width:auto;padding:0 24px;font-family:inherit;font-size:27px;opacity:.6">Edit</span>
+        <span class="key" style="width:auto;padding:0 24px;font-family:inherit;font-size:27px;opacity:.6">No</span></div>
       <div id="dr-ok" class="chip g" style="margin-top:28px;font-size:26px">✓ Created EDA-202 · linked EDA-101</div>
     </div>
   </section>
@@ -416,20 +551,32 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
   <!-- 17 WINDOWS (roadmap) -->
   <section class="scene" id="s-windows">
     <div class="abs h2" id="w-h" style="left:0;width:1920px;top:130px;text-align:center;font-size:56px">Mac and Windows</div>
-    <div class="abs card" id="w-mac" style="left:300px;top:270px;width:580px;height:300px;padding:40px">
+    <div class="abs card" id="w-mac" style="left:300px;top:250px;width:580px;height:350px;padding:40px">
       <div class="icon" style="width:84px;height:84px;background:rgba(52,211,153,.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg></div>
       <div class="h3" style="margin-top:24px">Mac</div><div class="sub" style="font-size:22px;margin-top:6px">Apple Silicon · macOS 14.4+</div>
       <div style="margin-top:20px"><span class="chip g">Available now</span></div>
     </div>
-    <div class="abs card" id="w-win" style="left:1040px;top:270px;width:580px;height:300px;padding:40px">
+    <div class="abs card" id="w-win" style="left:1040px;top:250px;width:580px;height:350px;padding:40px">
       <div class="icon" style="width:84px;height:84px;background:rgba(245,181,67,.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#f5b543" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/></svg></div>
       <div class="h3" style="margin-top:24px">Windows</div><div class="sub" style="font-size:22px;margin-top:6px">Windows 11 PCs</div>
       <div style="margin-top:20px"><span class="chip g">Available now</span></div>
     </div>
     <div class="abs" id="w-steps" style="left:300px;top:640px;width:1320px;display:flex;gap:40px">
-      <div class="card" id="w-s1" style="flex:1;padding:26px 30px;display:flex;gap:20px;align-items:center"><div style="width:56px;height:56px;border-radius:50%;background:rgba(245,181,67,.15);color:var(--amber);display:grid;place-items:center;font-size:26px;font-weight:800;flex:none">1</div><div><b style="font-size:26px">One command to install</b><div class="sub" style="font-size:20px">./install.sh or .\install</div></div></div>
+      <div class="card" id="w-s1" style="flex:1;padding:26px 30px;display:flex;gap:20px;align-items:center"><div style="width:56px;height:56px;border-radius:50%;background:rgba(245,181,67,.15);color:var(--amber);display:grid;place-items:center;font-size:26px;font-weight:800;flex:none">1</div><div><b style="font-size:26px">Installer, or one command</b><div class="sub" style="font-size:20px">.dmg, .exe, ./install.sh or .\install</div></div></div>
       <div class="card" id="w-s2" style="flex:1;padding:26px 30px;display:flex;gap:20px;align-items:center"><div style="width:56px;height:56px;border-radius:50%;background:rgba(245,181,67,.15);color:var(--amber);display:grid;place-items:center;font-size:26px;font-weight:800;flex:none">2</div><div><b style="font-size:26px">No Apple silicon needed</b><div class="sub" style="font-size:20px">CPU, or an NVIDIA GPU</div></div></div>
     </div>
+  </section>
+
+  <!-- 17b WHAT IT GETS WRONG -->
+  <section class="scene" id="s-limits">
+    <div class="abs h2" id="l-h" style="left:0;width:1920px;top:115px;text-align:center;font-size:56px">What it can still get wrong</div>
+    <div id="l-grid"></div>
+  </section>
+
+  <!-- 17c WHAT IS NOT PROVEN -->
+  <section class="scene" id="s-early">
+    <div class="abs h2" id="e-h" style="left:0;width:1920px;top:105px;text-align:center;font-size:56px">What to know before you rely on it</div>
+    <div id="e-grid"></div>
   </section>
 
   <!-- 18 OUTRO -->
@@ -458,7 +605,7 @@ project  = <span class="y">"EDA"</span></pre></div>
 // ---------------------------------------------------------------- timeline data
 // timeline.js (written by build_video.py from the narration) sets window.TIMELINE.
 // Without it, line lengths are estimated so the page still previews.
-const FALLBACK_IDS = ["title","problem","detect","apps","browser","pipeline","note","voices","jira","signin","space","extract","search","decide","draft","board","usecases","privacy","windows","outro"];
+const FALLBACK_IDS = ["title","problem","app","detect","apps","browser","pipeline","note","who","voices","find","guards","jira","signin","space","learn","extract","search","decide","draft","board","usecases","privacy","windows","limits","early","outro"];
 const TL = window.TIMELINE || (() => {
   let t = 0; const scenes = FALLBACK_IDS.map(id => { const s = {id, start: t, dur: 10, lines: [{t: .6, dur: 4, text: ""}, {t: 4.8, dur: 4, text: ""}, {t: 8, dur: 2, text: ""}, {t: 9, dur: 1, text: ""}]}; t += 10; return s; });
   return {scenes, total: t};
@@ -548,6 +695,7 @@ scene("title", (s, L, e) => {
   IN("#t-tag", s + 1.0);
   POP("#t-c1", L[1] + .2);
   POP("#t-c2", L[2] + .2);
+  POP("#t-c3", L[2] + 1.4);
 });
 
 scene("problem", (s, L, e) => {
@@ -555,6 +703,17 @@ scene("problem", (s, L, e) => {
   ["#p-c1", "#p-c2", "#p-c3"].forEach((c, i) => {
     A(c, L[1] + .3 + i * .9, .8, {opacity: [0, 1], y: [60, 0], rot: [i - 1 ? 3 : -3, 0]}, "back");
   });
+});
+
+scene("app", (s, L, e) => {
+  A("#a-exe", s + .2, .7, {opacity: [0, 1], x: [-50, 0]});
+  A("#a-dmg", s + .5, .7, {opacity: [0, 1], x: [-50, 0]});
+  IN("#a-tags", L[0] + 1.6);
+  A("#a-win", L[1] - .1, .8, {opacity: [0, 1], x: [60, 0]});
+  typeText("#a-name", L[1] + .9, "Alex Morgan", 9);
+  A("#a-w1", L[2] - .3, .4, {opacity: [1, 0]});
+  A("#a-w2", L[2] - .1, .5, {opacity: [0, 1], y: [20, 0]});
+  F(L[2] + .3, e - L[2] - .7, p => { const v = Math.round(EASE.inout(p) * 100); $("#a-bar").style.width = v + "%"; $("#a-pct").textContent = v; });
 });
 
 scene("detect", (s, L, e) => {
@@ -700,9 +859,9 @@ scene("pipeline", (s, L, e) => {
   POP("#pl-lock", s + .3);
   const nodes = [
     ["Transcribe", "Whisper large-v3-turbo", "#2dd4bf", '<path d="M12 3v12M8 7v4M16 6v6M4 10v1M20 9v3"/><path d="M5 19h14"/>'],
-    ["Who said what", "Voiceprints · ECAPA", "#ff8a65", '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/><path d="M17 6c1.5 1 1.5 4 0 5M19.5 4c3 2 3 7 0 9"/>'],
+    ["Who said what", "Voiceprints · WeSpeaker", "#ff8a65", '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/><path d="M17 6c1.5 1 1.5 4 0 5M19.5 4c3 2 3 7 0 9"/>'],
     ["Work only", "Small talk removed", "#f5b543", '<path d="M4 5h16l-6 8v6l-4-2v-4z"/>'],
-    ["Summarise", "Qwen 2.5 14B · local", "#60a5fa", '<path d="M5 5h14M5 10h14M5 15h9"/><path d="M17 15l2 2 3-4"/>'],
+    ["Summarise", "Qwen 2.5 · local", "#60a5fa", '<path d="M5 5h14M5 10h14M5 15h9"/><path d="M17 15l2 2 3-4"/>'],
     ["Markdown note", "~/Documents/Meeting Notes", "#34d399", '<path d="M6 3h9l4 4v14H6z"/><path d="M9 13l2 2 4-4"/>'],
   ];
   const X0 = 150, gap = 330, Y = 290, wires = $("#pl-wires");
@@ -742,7 +901,7 @@ scene("pipeline", (s, L, e) => {
 
 scene("note", (s, L, e) => {
   A("#n-doc", s + .1, .8, {opacity: [0, 1], y: [40, 0]});
-  const seq = ["#n-1", "#n-2", "#n-3", "#n-f", "#n-4", ...document.querySelectorAll("#n-sum li"), "#n-5", ...document.querySelectorAll("#n-act li")];
+  const seq = ["#n-1", "#n-2", "#n-3", "#n-t", "#n-f", "#n-4", ...document.querySelectorAll("#n-sum li"), "#n-5", ...document.querySelectorAll("#n-act li")];
   const span = (L[1] + 2.4) - (s + .6);
   seq.forEach((el, i) => IN(el, s + .6 + i * span / seq.length, .45, 12));
   IN("#n-folder", s + .8);
@@ -752,19 +911,57 @@ scene("note", (s, L, e) => {
   A("#n-folder", L[1] + .85, .35, {scale: [1.08, 1]});
 });
 
+scene("who", (s, L, e) => {
+  A("#h-old", s + .1, .7, {opacity: [0, 1], y: [-24, 0]});
+  F(L[0] + 1.6, .5, p => { $("#h-wrong").style.textDecoration = p > 0 ? "line-through" : "none"; });
+  A("#h-old", L[1] - .2, .6, {opacity: [1, .4]});
+  A("#h-voice", L[1] + .4, .7, {opacity: [0, 1], x: [-50, 0]});
+  A("#h-plus", L[1] + 3.4, .4, {opacity: [0, 1]});
+  A("#h-seen", L[1] + 3.5, .7, {opacity: [0, 1], x: [50, 0]});
+  POP("#h-r1", L[2] - .3);
+  POP("#h-r2", L[2] + .4);
+  POP("#h-r3", L[2] + 1.1);
+  IN("#h-res", L[2] + 2.2, .6, 16);
+});
+
 scene("voices", (s, L, e) => {
   IN("#v-term", s + .1);
   IN("#v-who", s + .3);
   const t0 = s + .9;
-  terminal("#v-pre", [
-    {t: t0, text: "./ctl.sh listen", prompt: 1, cls: "c", cps: 26},
-    {t: t0 + 1.0, text: "▶ Speaker 3: 82 s of speech · playing a 10 s clip…"},
-    {t: t0 + 1.9, text: './ctl.sh name "Speaker 3" "Ravi Kumar"', prompt: 1, cls: "c", cps: 30},
-    {t: t0 + 3.7, text: "'Speaker 3' is now 'Ravi Kumar'; voiceprint saved.", cls: "y"},
-  ], s, e - s);
+  const cv = $("#v-cv"), g = cv.getContext("2d");
+  F(s, e - s, (p, t) => {
+    g.clearRect(0, 0, cv.width, cv.height);
+    const n = 86, w = cv.width / n, played = Math.max(0, Math.min(1, (t - t0) / 3));
+    for (let i = 0; i < n; i++) {
+      const h = 6 + 58 * Math.abs(Math.sin(i * .71) * Math.cos(i * .23));
+      g.fillStyle = i / n < played ? "#2dd4bf" : "#3a3a40";
+      g.fillRect(i * w + 2, (cv.height - h) / 2, w - 4, h);
+    }
+  });
+  typeText("#v-typed", t0 + 1.7, "Ravi Kumar", 8);
+  F(t0 + 3.4, .5, p => { $("#v-save").style.background = p > 0 ? "var(--teal)" : ""; $("#v-save").style.color = p > 0 ? "#05211d" : ""; });
   A("#v-old", t0 + 3.8, .4, {opacity: [1, 0], y: [0, -14]});
   A("#v-new", t0 + 3.9, .5, {opacity: [0, 1], y: [14, 0]});
   A("#v-next", L[1], .7, {opacity: [0, 1], y: [40, 0]});
+});
+
+scene("find", (s, L, e) => {
+  IN("#f-win", s + .1);
+  typeText("#f-q", s + .8, "Who is handling the firewall rule?", 22);
+  const hits = [["Migration sync", "Ravi Kumar: I'll chase security on the firewall rule today."], ["Platform weekly", "Me: The firewall rule is still waiting on security."]];
+  hits.forEach(([m, x], i) => { const r = html(`<div class="tline" style="white-space:normal"><strong style="color:var(--blue)">${m}</strong>${x}</div>`); $("#f-hits").appendChild(r); IN(r, s + 2.5 + i * .4, .4, 10); });
+  IN("#f-ans", L[0] + 3.6, .6, 16);
+  IN("#f-talk", L[1] - 2.2);
+  [["Samantha Lee", 38], ["Me", 27], ["Daniel Ortiz", 21], ["Ravi Kumar", 14]].forEach(([n, v], i) => {
+    const r = html(`<div class="bar-row">${n} · ${v}%<div></div></div>`); $("#f-bars").appendChild(r);
+    F(L[1] - 1.9 + i * .2, .8, p => { r.children[0].style.width = EASE.out(p) * v * 2.3 + "%"; });
+  });
+  IN("#f-json", L[1] + .2);
+});
+
+scene("guards", (s, L, e) => {
+  A("#g-mic", s + .2, .7, {opacity: [0, 1], x: [-50, 0]});
+  A("#g-note", L[1] - .1, .7, {opacity: [0, 1], x: [50, 0]});
 });
 
 scene("jira", (s, L, e) => {
@@ -778,18 +975,12 @@ scene("jira", (s, L, e) => {
 scene("signin", (s, L, e) => {
   IN("#si-term", s + .1);
   const t = s + .7;
-  terminal("#si-pre", [
-    {t, text: "./ctl.sh jira", prompt: 1, cls: "c", cps: 18},
-    {t: t + 1.0, text: "Meeting: Migration sync (Thu 05 Nov 2026 14:00)"},
-    {t: t + 1.6, text: "How do you want to sign in to Jira?", cls: "c"},
-    {t: t + 1.9, text: "  1) Personal access token (Jira Server / Data Center)"},
-    {t: t + 2.1, text: "  2) API token + email (Jira Cloud)"},
-    {t: t + 2.3, text: "  3) Browser session cookie (works on SSO-only sites)"},
-    {t: t + 2.9, text: "Choose 1, 2 or 3: ", inline: 1, cls: "q"}, {t: t + 3.6, text: "3", cls: "c"},
-    {t: t + 4.2, text: "Paste your Jira session cookie (input is hidden): ", inline: 1, cls: "q"}, {t: t + 5.0, text: "••••••••••••••••••••", cls: "c", cps: 22},
-    {t: L[1] - .3, text: "Signed in to https://yourcompany.atlassian.net as Me.", cls: "y"},
-    {t: L[1] + .5, text: "Save it in your macOS Keychain for next time? [y/n] ", inline: 1, cls: "q"}, {t: L[1] + 1.6, text: "y", cls: "c"},
-  ], s, e - s);
+  typeText("#si-site", t + .1, "https://yourcompany.atlassian.net", 34);
+  A("#si-how", s, .01, {opacity: [0, 0]});
+  A("#si-how", t + 3.4, .3, {opacity: [0, 1]});
+  typeText("#si-dots", t + 4.4, "••••••••••••••••••••••••", 22);
+  A("#si-ok", s, .01, {opacity: [0, 0]});
+  POP("#si-ok", L[1] - .2);
   ["#si-o1", "#si-o2", "#si-o3"].forEach((o, i) => IN(o, t + 1.9 + i * .2, .5, 16));
   A("#si-ring", s, .01, {opacity: [0, 0]});
   A("#si-ring", t + 3.6, .4, {opacity: [0, 1]});
@@ -811,7 +1002,26 @@ scene("space", (s, L, e) => {
     } else A(c, s + 3.0, .5, {opacity: [1, .35]});
   });
   IN("#sp-term", s + 1.0, .5, 20);
-  terminal("#sp-pre", [{t: s + 1.3, text: "Which space should new tickets go to? [EDA] ", inline: 1, cls: "q"}, {t: s + 2.6, text: "EDA", cls: "c", cps: 8}], s, e - s);
+  terminal("#sp-pre", [{t: s + 1.3, text: "New tickets go to: ", inline: 1, cls: "q"}, {t: s + 2.6, text: "EDA", cls: "c", cps: 8}], s, e - s);
+});
+
+scene("learn", (s, L, e) => {
+  A("#le-h", s + .1, .8, {opacity: [0, 1], y: [24, 0]});
+  ["EDA-188", "EDA-176", "EDA-150", "EDA-142", "EDA-131"].forEach((k, i) => {
+    const c = html(`<div class="abs tk" style="left:${120 + (i % 2) * 30}px;top:${240 + i * 122}px;width:600px"><span class="st">TASK</span><span class="k">${k}</span><div class="stub" style="margin-top:12px;width:${78 - i * 7}%"></div></div>`);
+    $("#le-tix").appendChild(c);
+    A(c, L[1] - .2 + i * .3, .6, {opacity: [0, 1], x: [-120, 0]});
+  });
+  A("#le-card", L[1] + .6, .7, {opacity: [0, 1], x: [60, 0]});
+  const rows = [["Environment", "PROD"], ["Team", "Data"], ["Components", "Reports"], ["Epic and sprint", "usually set"]];
+  rows.forEach(([k, v], i) => {
+    const r = html(`<div class="field"><span>${k}</span><span id="le-v${i}" style="color:#fff">${v}</span></div>`);
+    $("#le-rows").appendChild(r);
+    IN(r, L[1] + 1.8 + i * .55, .4, 10);
+  });
+  IN("#le-sl", L[1] + 4.2, .4, 8);
+  IN("#le-sec", L[1] + 4.6, .5, 10);
+  F(L[2] + 1.6, .5, p => { const v = $("#le-v1"); v.textContent = p > 0 ? "Ops  (set by you)" : "Data"; v.style.color = p > 0 ? "var(--green)" : "#fff"; });
 });
 
 scene("extract", (s, L, e) => {
@@ -887,7 +1097,7 @@ scene("decide", (s, L, e) => {
 
 scene("draft", (s, L, e) => {
   IN("#dr-card", s + .1);
-  const fields = [["Space", "EDA"], ["Type", "Task"], ["Summary", "Validate store_sales row counts: Informix vs Delta Lake"], ["Priority", "High"], ["Due date", "2026-11-09"], ["Assignee", "Samantha Lee"], ["Components", "Validation"], ["Environment", "PROD   (required custom field)"], ["Labels", "meetingscribe, delta-lake"], ["Links to", "EDA-101  (relates)"]];
+  const fields = [["Space", "EDA"], ["Type", "Task"], ["Summary", "Validate store_sales row counts: Informix vs Delta Lake"], ["Priority", "High"], ["Due date", "2026-11-09"], ["Assignee", "Samantha Lee"], ["Components", "Validation"], ["Environment", "PROD   (required custom field)"], ["Epic, sprint", "EDA-90 · Sprint 42"], ["Links to", "EDA-101  (relates)"]];
   const span = (L[1] + 3.2) - (s + .7);
   fields.forEach(([k, v], i) => {
     const f = html(`<div class="field"><span>${k}</span><span></span></div>`);
@@ -904,7 +1114,6 @@ scene("draft", (s, L, e) => {
   IN("#dr-ask", L[2] - .2);
   A("#dr-y", L[2] + 2.4, .15, {y: [0, 6]}, "lin");
   A("#dr-y", L[2] + 2.6, .25, {y: [6, 0]});
-  F(L[2] + 2.4, .5, p => { $("#dr-y").style.background = p > 0 && p < 1 ? "var(--teal)" : ""; $("#dr-y").style.color = p > 0 && p < 1 ? "#05211d" : ""; });
   A("#dr-ok", s, .01, {opacity: [0, 0]});
   POP("#dr-ok", L[2] + 2.9);
 });
@@ -950,7 +1159,7 @@ scene("usecases", (s, L, e) => {
 
 scene("privacy", (s, L, e) => {
   IN("#pv-mac", s + .1);
-  const items = [["Audio", "#2dd4bf"], ["Whisper", "#2dd4bf"], ["Voiceprints", "#ff8a65"], ["Qwen 2.5 14B", "#60a5fa"], ["Work filter", "#f5b543"], ["Notes", "#34d399"]];
+  const items = [["Audio", "#2dd4bf"], ["Whisper", "#2dd4bf"], ["Voiceprints", "#ff8a65"], ["Qwen 2.5", "#60a5fa"], ["Work filter", "#f5b543"], ["Notes", "#34d399"]];
   items.forEach(([t, c], i) => {
     const el = html(`<div class="abs" style="left:${130 + (i % 3) * 260}px;top:${150 + Math.floor(i / 3) * 170}px;width:230px;height:130px;border-radius:18px;background:${c}18;border:1px solid ${c}66;display:grid;place-items:center;font-size:26px;font-weight:700;color:${c}">${t}</div>`);
     $("#pv-items").appendChild(el);
@@ -971,10 +1180,37 @@ scene("windows", (s, L, e) => {
   IN("#w-s2", L[1] + 2.4, .6, 24);
 });
 
+scene("limits", (s, L, e) => {
+  A("#l-h", s + .1, .8, {opacity: [0, 1], y: [24, 0]});
+  [["Quiet people can be missed", "Too little speech to tell them apart.", "Test average: 0.5 people missed per 3-minute meeting, 0.17 per 6-minute"],
+   ["Expect more Speaker 2s", "A wrong name is worse than no name, so unsure voices stay unnamed.", "Reading names off the screen is optional, and off by default"],
+   ["Transcripts are not perfect", "People talking over each other is the hardest case.", "Add your team's terms under vocabulary fixes in Settings"],
+   ["AI notes can be wrong", "Smaller models write noisier notes.", "In one test, a small model invented a speaker and repeated an action owner"],
+  ].forEach(([b, x, f], i) => {
+    const c = html(`<div class="abs card lim" style="left:${150 + (i % 2) * 840}px;top:${225 + Math.floor(i / 2) * 320}px;width:780px;height:290px"><b>${b}</b><p>${x}</p><small>${f}</small></div>`);
+    $("#l-grid").appendChild(c);
+    A(c, L[i + 1] - .1, .6, {opacity: [0, 1], y: [30, 0]});
+  });
+});
+
+scene("early", (s, L, e) => {
+  A("#e-h", s + .1, .8, {opacity: [0, 1], y: [24, 0]});
+  [["Needs a capable computer", "A meeting can take longer to process than to hold.", "16 GB PC, no graphics card: a 3-minute meeting took 10 to 12 minutes"],
+   ["Installers are not signed", "Your computer will warn you the first time.", "Windows: More info, then Run anyway. Mac: Open Anyway in Settings"],
+   ["The desktop app is new", "Not yet used in real Teams or Zoom meetings.", "Mac app tested only on automated machines, not with a real mic"],
+   ["The Jira screen is new", "It has only created tickets on a simulated Jira.", "Read each draft before you press Create"],
+   ["Consent is your job", "Tell people they are being recorded.", "Follow the law and your company's policy"],
+  ].forEach(([b, x, f], i) => {
+    const c = html(`<div class="abs card lim" style="left:${i < 3 ? 130 + i * 565 : 412 + (i - 3) * 565}px;top:${i < 3 ? 205 : 540}px;width:530px;height:305px"><b style="font-size:34px">${b}</b><p>${x}</p><small>${f}</small></div>`);
+    $("#e-grid").appendChild(c);
+    A(c, L[i] + .1, .6, {opacity: [0, 1], y: [30, 0]});
+  });
+});
+
 scene("outro", (s, L, e) => {
   POP("#o-logo", s + .1, .8);
   IN("#o-h", s + .4);
-  const steps = [["1", "./install.sh", "once"], ["2", "Join meetings", "as usual"], ["3", "./ctl.sh jira", "review & push"]];
+  const steps = [["1", "Install the app", "once"], ["2", "Join meetings", "as usual"], ["3", "Review tickets", "create, edit or no"]];
   steps.forEach(([n, c, d], i) => {
     const el = html(`<div class="abs card" style="left:${300 + i * 460}px;top:410px;width:400px;height:170px;padding:28px 30px;display:flex;gap:22px;align-items:center">
       <div style="width:64px;height:64px;border-radius:50%;background:rgba(45,212,191,.15);color:var(--teal);display:grid;place-items:center;font-size:30px;font-weight:800;flex:none">${n}</div>
@@ -987,9 +1223,9 @@ scene("outro", (s, L, e) => {
 });
 
 // ---------------------------------------------------------------- persistent chrome
-const SECTIONS = {title: "", problem: "Why", detect: "Capture", apps: "Meeting apps", browser: "In the browser", pipeline: "On-device processing", note: "Notes", voices: "Voices",
-  jira: "New · Jira", signin: "Jira · sign in", space: "Jira · space", extract: "Jira · extract", search: "Jira · search", decide: "Jira · decide",
-  draft: "Jira · review", board: "Jira · pushed", usecases: "Use cases", privacy: "Privacy", windows: "Platforms", outro: ""};
+const SECTIONS = {title: "", problem: "Why", app: "Desktop app", detect: "Capture", apps: "Meeting apps", browser: "In the browser", pipeline: "On-device processing", note: "Notes", who: "Who gets a name", voices: "Voices", find: "Search and ask", guards: "Safety nets",
+  jira: "Jira", signin: "Jira · sign in", space: "Jira · space", learn: "Jira · learning your space", extract: "Jira · extract", search: "Jira · search", decide: "Jira · decide",
+  draft: "Jira · review", board: "Jira · pushed", usecases: "Use cases", privacy: "Privacy", windows: "Platforms", limits: "Shortcomings", early: "Shortcomings", outro: ""};
 F(0, TL.total, (p, t) => {
   const s = TL.scenes.find(x => t >= x.start && t < x.start + x.dur) || TL.scenes[TL.scenes.length - 1];
   const label = SECTIONS[s.id];

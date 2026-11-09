@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   MeetingScribe control, the Windows twin of ctl.sh. Run it as .\ctl from the repository:
-  .\ctl start | stop | restart | status | logs | name | listen | voices | refilter | jira | terms
+  .\ctl app | start | stop | restart | status | logs | name | reject | listen | voices | search | ask | refilter | jira | terms
 #>
 
 param([Parameter(Position = 0)][string]$Command = 'status',
@@ -48,6 +48,11 @@ switch ($Command) {
     '--- live detection'
     Invoke-Scribe status
   }
+  'app' { Start-Process (Join-Path $Root '.venv\Scripts\pythonw.exe') "`"$(Join-Path $Root 'meetingscribe_app.py')`"" }
+  'reject' {  # .\ctl reject "Priya Shah" [session]: that name is wrong for that voice
+    $session = if ($Rest.Count -ge 2) { $Rest[1] } else { 'latest' }
+    Invoke-Scribe reject-name $Rest[0] --session $session
+  }
   'logs' { Get-Content (Join-Path $Logs 'daemon.log'), (Join-Path $Logs 'process.log') -Tail 50 -Wait -ErrorAction SilentlyContinue }
   'name' {  # .\ctl name "Speaker 2" "Priya Shah" [session]
     $session = if ($Rest.Count -ge 3) { $Rest[2] } else { 'latest' }
@@ -58,9 +63,9 @@ switch ($Command) {
     $session = if ($Rest.Count -ge 2) { $Rest[1] } else { 'latest' }
     Invoke-Scribe listen @label --session $session
   }
-  { $_ -in 'voices', 'refilter', 'terms', 'jira', 'process', 'download-models' } { Invoke-Scribe $Command @Rest }
+  { $_ -in 'voices', 'search', 'ask', 'refilter', 'terms', 'jira', 'process', 'download-models' } { Invoke-Scribe $Command @Rest }
   default {
-    'usage: .\ctl start|stop|restart|status|logs|name|listen|voices|refilter|jira|terms|process|download-models'
+    'usage: .\ctl app|start|stop|restart|status|logs|name|reject|listen|voices|search|ask|refilter|jira|terms|process|download-models'
     exit 1
   }
 }
