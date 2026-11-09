@@ -4,10 +4,12 @@
 """
 
 import hashlib
+import http.client
 import http.server
 import importlib.util
 import json
 import ssl
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -28,7 +30,7 @@ REV = "a" * 40
 def config(tmp_path, monkeypatch):
     def make(text="", ram=32.0):
         p = tmp_path / "config.toml"
-        p.write_text(f'notify = false\nwork_dir = {json.dumps(str(tmp_path / "w"))}\noutput_dir = {json.dumps(str(tmp_path / "n"))}\n{text}\n', encoding="utf-8")
+        p.write_text(f'notify = false\nwork_dir = {json.dumps(str(tmp_path / "w"))}\noutput_dir = {json.dumps(str(tmp_path / "n"))}\nlog_dir = {json.dumps(str(tmp_path / "l"))}\n{text}\n', encoding="utf-8")
         monkeypatch.setenv("MEETINGSCRIBE_CONFIG", str(p))
         monkeypatch.setattr(ms.plat, "ram_gb", lambda: ram)
         (tmp_path / "w").mkdir(exist_ok=True)
@@ -200,6 +202,33 @@ def test_a_connection_that_drops_is_retried_from_where_it_got_to(release, monkey
     assert (hub / "models--org--model" / "snapshots" / REV / "sub" / "model.bin").read_bytes() == big
 
 
+def test_a_network_that_gives_nothing_is_reported_quickly(release, monkeypatch):
+    manifest, _, hub, _ = release
+    naps = []
+    monkeypatch.setattr(store.time, "sleep", naps.append)
+    with pytest.raises(store.StoreError, match="Couldn't reach GitHub"):
+        store.install(manifest, "org/model", None, hub, ssl.create_default_context(), "http://127.0.0.1:9/")
+    assert len(naps) == 1
+
+
+def test_a_garbled_answer_from_a_proxy_is_an_explained_failure(release, monkeypatch):
+    manifest, base, hub, _ = release
+    monkeypatch.setattr(store.time, "sleep", lambda s: None)
+
+    class Garbled:
+        def open(self, *a, **k):
+            raise http.client.BadStatusLine("<html>blocked</html>")
+    monkeypatch.setattr(store.urllib.request, "build_opener", lambda *a: Garbled())
+    with pytest.raises(store.StoreError, match="BadStatusLine"):
+        fetch(manifest, base, hub)
+
+
+def test_broken_trust_store_falls_back_to_certificates_that_exist(monkeypatch):
+    import truststore
+    monkeypatch.setattr(truststore, "SSLContext", lambda *a: 1 / 0)
+    assert store.context().verify_mode == ssl.CERT_REQUIRED
+
+
 def test_a_finished_file_is_not_fetched_again(release):
     manifest, base, hub, _ = release
     fetch(manifest, base, hub)
@@ -293,3 +322,110 @@ def test_when_both_fail_the_reason_reaches_the_app(download, monkeypatch):
     api = app.Api()
     api.download = type("P", (), {"poll": lambda self: 1})()
     assert "refused" in api.download_progress()["error"]
+
+
+def crashing(download, monkeypatch, error):
+    cfg, _, _ = download
+
+    def boom(*a, **k):
+        raise error
+    monkeypatch.setattr(ms.model_store, "check_space", boom)
+    with pytest.raises(SystemExit):
+        ms.cmd_download(cfg, None)
+    api = app.Api()
+    api.download = type("P", (), {"poll": lambda self: 1})()
+    return api.download_progress()["error"]
+
+
+@pytest.mark.parametrize("error,words", [(PermissionError("no access to .cache"), "PermissionError: no access"), (RuntimeError("odd"), "RuntimeError: odd")])
+def test_an_unexpected_crash_still_says_what_happened(download, monkeypatch, error, words):
+    assert words in crashing(download, monkeypatch, error)
+
+
+def test_install_crashing_oddly_still_tries_hugging_face(download, monkeypatch):
+    cfg, calls, plan = download
+
+    def odd(*a):
+        raise ValueError("strange")
+    monkeypatch.setattr(ms.model_store, "install", odd)
+    ms.cmd_download(cfg, None)
+    assert calls == [("hf", r) for r, _ in plan]
+
+
+def test_the_last_printed_line_is_shown_when_nothing_was_recorded(config, tmp_path):
+    cfg = config()
+    cfg["log_dir"].mkdir(parents=True, exist_ok=True)
+    (cfg["log_dir"] / "download.log").write_text("Downloading a\nKilled: 9\n", encoding="utf-8")
+    api = app.Api()
+    api.download = type("P", (), {"poll": lambda self: 9})()
+    assert api.download_progress()["error"] == "Killed: 9"
+
+
+def test_no_record_at_all_is_still_a_clear_message(config):
+    config()
+    api = app.Api()
+    api.download = type("P", (), {"poll": lambda self: 1})()
+    assert "before it could say why" in api.download_progress()["error"]
+
+
+# -- downloading by hand
+
+
+def run_script(release, tmp_path):
+    manifest, base, hub, _ = release
+    windows = sys.platform == "win32"
+    path = tmp_path / ("get.ps1" if windows else "get.sh")
+    path.write_text(store.script(manifest, [("org/model", None)], str(hub), windows, base), encoding="utf-8-sig" if windows else "utf-8", newline="\n")
+    return subprocess.run(["powershell", "-ExecutionPolicy", "Bypass", "-File", str(path)] if windows else ["bash", str(path)], capture_output=True, text=True, timeout=120)
+
+
+def test_the_hand_command_installs_what_the_app_accepts(release, tmp_path):
+    manifest, base, hub, big = release
+    r = run_script(release, tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert store.missing(manifest, [("org/model", None)], hub) == []
+    from huggingface_hub import hf_hub_download
+    assert Path(hf_hub_download("org/model", "sub/model.bin", cache_dir=hub, local_files_only=True)).read_bytes() == big
+
+
+def test_the_hand_command_can_be_run_again(release, tmp_path):
+    manifest, _, hub, _ = release
+    assert run_script(release, tmp_path).returncode == 0
+    Release.requests.clear()
+    assert run_script(release, tmp_path).returncode == 0
+    assert Release.requests == [] and store.missing(manifest, [("org/model", None)], hub) == []
+
+
+def test_the_hand_command_refuses_a_damaged_download(release, tmp_path):
+    manifest, _, hub, _ = release
+    Release.files["p.001"] = b"x" * len(Release.files["p.001"])
+    assert run_script(release, tmp_path).returncode != 0
+    assert store.missing(manifest, [("org/model", None)], hub)
+
+
+def test_a_damaged_file_is_found(release):
+    manifest, base, hub, _ = release
+    fetch(manifest, base, hub)
+    assert store.missing(manifest, [("org/model", None)], hub) == []
+    target = hub / "models--org--model" / "snapshots" / REV / "config.json"
+    target.write_text("{}")
+    assert store.missing(manifest, [("org/model", None)], hub) == ["org/model/config.json"]
+
+
+def test_a_path_with_quotes_and_spaces_is_safe_in_the_script(release):
+    manifest, _, _, _ = release
+    for windows in (True, False):
+        text = store.script(manifest, [("org/model", None)], "/x/it's a folder; rm -rf ~", windows)
+        assert "it''s a folder" in text if windows else "'/x/it'\"'\"'s a folder; rm -rf ~'" in text
+
+
+def test_the_app_only_accepts_models_that_check_out(config, tmp_path, monkeypatch):
+    cfg = config(MLX + f'mlx_llm_model = "{MLX_14}"', 8)
+    from huggingface_hub import constants
+    monkeypatch.setattr(constants, "HF_HUB_CACHE", str(tmp_path / "hub"))
+    api = app.Api()
+    assert api.models_check()["ok"] is False and not (cfg["work_dir"] / "models_ready.json").exists()
+    monkeypatch.setattr(ms.model_store, "missing", lambda *a: [])
+    assert api.models_check()["ok"] is True and ms.models_ready(ms.load_config())
+    assert "get-models" in api.models_script()["command"]
+

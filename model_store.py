@@ -7,7 +7,9 @@ which is where the rest of the program already looks when it loads a model offli
 """
 
 import hashlib
+import http.client
 import json
+import shlex
 import shutil
 import ssl
 import time
@@ -55,10 +57,10 @@ def context(ca_bundle=""):
     """The computer's own trust store, so a certificate IT installed for its proxy is accepted."""
     try:
         import truststore
-    except ImportError:
-        ctx = ssl.create_default_context()
-    else:
         ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except Exception:  # a packaged Python has no certificates of its own to fall back on
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
     if ca_bundle:
         ctx.load_verify_locations(cafile=str(Path(ca_bundle).expanduser()))
     return ctx
@@ -78,7 +80,8 @@ def explain(e):
 
 
 def get_part(opener, url, target, size):
-    """One file of the release, continuing a partial one. Network drops are retried."""
+    """One file of the release, continuing a partial one. A drop partway through is retried; a
+    network that gives nothing at all is reported soon, not after minutes of silence."""
     for attempt in range(ATTEMPTS):
         have = target.stat().st_size if target.exists() else 0
         if have == size:
@@ -88,7 +91,7 @@ def get_part(opener, url, target, size):
             have = 0
         request = urllib.request.Request(url, headers={"Range": f"bytes={have}-"} if have else {})
         try:
-            with opener.open(request, timeout=60) as r:
+            with opener.open(request, timeout=30) as r:
                 mode = "ab" if have and r.status == 206 else "wb"  # a server may ignore the range
                 with open(target, mode) as out:
                     shutil.copyfileobj(r, out, CHUNK)
@@ -97,8 +100,9 @@ def get_part(opener, url, target, size):
                 raise StoreError(explain(e)) from e
             if e.code == 416:
                 target.unlink(missing_ok=True)
-        except OSError as e:
-            if attempt == ATTEMPTS - 1:
+        except (OSError, http.client.HTTPException) as e:
+            now = target.stat().st_size if target.exists() else 0
+            if attempt == ATTEMPTS - 1 or (attempt and now == have):
                 raise StoreError(explain(e)) from e
         time.sleep(min(2 ** attempt, 20) if attempt else 0)
     if not target.exists() or target.stat().st_size != size:
@@ -153,3 +157,124 @@ def install(manifest, repo, filename, hub, ctx, base=RELEASE):
     (root / "refs").mkdir(parents=True, exist_ok=True)
     (root / "refs" / "main").write_text(entry["revision"], encoding="utf-8")
     shutil.rmtree(root / ".parts", ignore_errors=True)
+
+
+def missing(manifest, plan, hub):
+    """What the plan still needs in hub, checking every file's content. Empty means ready."""
+    out = []
+    for repo, filename in plan:
+        files = wanted_files(manifest, repo, filename)
+        root = Path(hub) / ("models--" + repo.replace("/", "--"))
+        if not files or not (root / "refs" / "main").is_file():
+            out.append(repo)
+            continue
+        snapshot = root / "snapshots" / manifest[repo]["revision"]
+        out += [f"{repo}/{f['path']}" for f in files
+                if not ((snapshot / f["path"]).is_file() and (snapshot / f["path"]).stat().st_size == f["size"] and sha256(snapshot / f["path"]) == f["sha256"])]
+    return out
+
+
+BASH_SCRIPT = r'''#!/bin/bash
+# Downloads MeetingScribe's models with curl, for when the app can't. Safe to run again.
+# Optional argument: another folder to put them in, to copy to the right place afterwards.
+set -euo pipefail
+HUB=__HUB__
+HUB="${1:-$HUB}"
+BASE=__BASE__
+
+get() {
+  local root="$HUB/$1" dest="$HUB/$1/snapshots/$2/$3" sha="$4"
+  shift 4
+  mkdir -p "$(dirname "$dest")" "$root/.parts"
+  if [ -f "$dest" ] && [ "$(shasum -a 256 "$dest" | cut -d' ' -f1)" = "$sha" ]; then return; fi
+  echo "Getting $(basename "$dest")"
+  local part name size out joined="$root/.parts/$sha.joined"
+  for part in "$@"; do
+    name="${part%%:*}"; size="${part##*:}"; out="$root/.parts/$name"
+    if [ ! -f "$out" ] || [ "$(wc -c < "$out" | tr -d ' ')" != "$size" ]; then
+      curl -fL --retry 5 --retry-delay 3 --connect-timeout 30 -C - -o "$out" "$BASE$name"
+    fi
+  done
+  : > "$joined"
+  for part in "$@"; do
+    out="$root/.parts/${part%%:*}"; cat "$out" >> "$joined"; rm "$out"
+  done
+  if [ "$(shasum -a 256 "$joined" | cut -d' ' -f1)" != "$sha" ]; then
+    rm "$joined"; echo "$(basename "$dest") arrived damaged. Run this again." >&2; exit 1
+  fi
+  mv "$joined" "$dest"
+}
+
+__CALLS__
+echo "Done. Go back to MeetingScribe and press Check again."
+'''
+
+POWERSHELL_SCRIPT = r'''# Downloads MeetingScribe's models with curl, for when the app can't. Safe to run again.
+# Optional argument: another folder to put them in, to copy to the right place afterwards.
+param([string]$Hub = __HUB__)
+$ErrorActionPreference = 'Stop'
+$Base = __BASE__
+function Sha($p) { (Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLower() }
+function Get-Model($folder, $revision, $path, $sha, $parts) {
+  $root = Join-Path $Hub $folder
+  $dest = Join-Path (Join-Path (Join-Path $root 'snapshots') $revision) $path
+  $temp = Join-Path $root '.parts'
+  New-Item -ItemType Directory -Force (Split-Path $dest), $temp | Out-Null
+  if ((Test-Path -LiteralPath $dest) -and (Sha $dest) -eq $sha) { return }
+  Write-Output "Getting $(Split-Path -Leaf $dest)"
+  foreach ($part in $parts) {
+    $name, $size = $part -split ':'
+    $out = Join-Path $temp $name
+    if (-not (Test-Path -LiteralPath $out) -or (Get-Item -LiteralPath $out).Length -ne [int64]$size) {
+      & curl.exe -fL --retry 5 --retry-delay 3 --connect-timeout 30 -C - -o $out "$Base$name"
+      if ($LASTEXITCODE) { throw "curl could not download $name" }
+    }
+  }
+  $joined = Join-Path $temp "$sha.joined"
+  $writer = [IO.File]::Create($joined)
+  try {
+    foreach ($part in $parts) {
+      $out = Join-Path $temp ($part -split ':')[0]
+      $reader = [IO.File]::OpenRead($out)
+      try { $reader.CopyTo($writer) } finally { $reader.Close() }
+    }
+  } finally { $writer.Close() }
+  foreach ($part in $parts) { Remove-Item -LiteralPath (Join-Path $temp ($part -split ':')[0]) }
+  if ((Sha $joined) -ne $sha) { Remove-Item -LiteralPath $joined; throw "$(Split-Path -Leaf $dest) arrived damaged. Run this again." }
+  Move-Item -Force -LiteralPath $joined -Destination $dest
+}
+function Set-Ref($folder, $revision) {
+  $refs = Join-Path (Join-Path $Hub $folder) 'refs'
+  New-Item -ItemType Directory -Force $refs | Out-Null
+  [IO.File]::WriteAllText((Join-Path $refs 'main'), $revision)
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path (Join-Path $Hub $folder) '.parts')
+}
+
+__CALLS__
+Write-Output 'Done. Go back to MeetingScribe and press Check again.'
+'''
+
+
+def script(manifest, plan, hub, windows, base=RELEASE):
+    """A script that needs only curl and the operating system, for when the app can't download."""
+    if windows:
+        def quote(s):
+            return "'" + str(s).replace("'", "''") + "'"
+        template = POWERSHELL_SCRIPT
+    else:
+        template = BASH_SCRIPT
+        quote = shlex.quote
+    calls = []
+    for repo, filename in plan:
+        files, folder = wanted_files(manifest, repo, filename), "models--" + repo.replace("/", "--")
+        if not files:
+            raise StoreError(f"{repo} isn't in this project's release, so the command can't fetch it.")
+        revision = manifest[repo]["revision"]
+        for f in files:
+            parts = [f"{p['name']}:{p['size']}" for p in f["parts"]]
+            if windows:
+                calls.append(f"Get-Model {quote(folder)} {quote(revision)} {quote(f['path'])} {quote(f['sha256'])} @({','.join(quote(p) for p in parts)})")
+            else:
+                calls.append(" ".join(["get", quote(folder), quote(revision), quote(f["path"]), quote(f["sha256"]), *map(quote, parts)]))
+        calls.append(f"Set-Ref {quote(folder)} {quote(revision)}" if windows else f'mkdir -p "$HUB/{folder}/refs"; printf %s {quote(revision)} > "$HUB/{folder}/refs/main"; rm -rf "$HUB/{folder}/.parts"')
+    return template.replace("__HUB__", quote(hub)).replace("__BASE__", quote(base)).replace("__CALLS__", "\n".join(calls))
