@@ -35,6 +35,10 @@ MODEL_DEFAULTS = {
 }
 
 
+def ram_gb():
+    return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2**30
+
+
 def notify(text):
     script = f'display notification {json.dumps(text)} with title "MeetingScribe"'
     subprocess.Popen(["/usr/bin/osascript", "-e", script],

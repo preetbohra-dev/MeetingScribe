@@ -10,8 +10,8 @@ ROOT = Path(SPECPATH).parent
 VERSION = (ROOT / "packaging" / "VERSION").read_text().strip()
 MAC = sys.platform == "darwin"
 
-datas = [(str(ROOT / "config.toml"), "."), (str(ROOT / "ui"), "ui")]
-binaries, hiddenimports = [], ["screen_names", "cloud_llm", "task_agent", "connectors", *collect_submodules("keyring.backends")]
+datas = [(str(ROOT / "config.toml"), "."), (str(ROOT / "models.json"), "."), (str(ROOT / "ui"), "ui")]
+binaries, hiddenimports = [], ["screen_names", "cloud_llm", "task_agent", "connectors", "model_store", "truststore", *collect_submodules("keyring.backends")]
 
 packages = ["onnxruntime", "webview", "huggingface_hub", "anthropic", "google.auth", "boto3", "botocore"]
 packages += ["mlx", "mlx_whisper", "mlx_lm", "transformers", "tokenizers"] if MAC else [

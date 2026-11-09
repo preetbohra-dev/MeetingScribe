@@ -217,7 +217,7 @@ def test_download_progress_counts_cached_files(api, tmp_path, monkeypatch):
     (folder / "x.incomplete").write_bytes(b"1" * 1000)
     (cfg["work_dir"] / "download_size.json").write_text("4000")
     p = api.download_progress()
-    assert p == {"done": False, "failed": False, "got": 1000, "total": 4000}
+    assert p == {"done": False, "failed": False, "error": "", "got": 1000, "total": 4000}
 
 
 # -- the recorder obeying the app
