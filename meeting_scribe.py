@@ -17,8 +17,8 @@ and meetings in a web browser (Google Meet, Teams or Zoom on the web, Webex, ...
 
 Unless you choose company AI (llm_backend = "cloud"), recording and processing never
 talk to a remote host. Model loading runs with HF_HUB_OFFLINE=1, and the Ollama backend
-refuses any non-loopback URL. The other network traffic is the `jira` command, and only
-to the [jira].base_url you set. With company AI, transcript text goes to the provider
+refuses any non-loopback URL. The other network traffic is the `jira` command, only to the
+[jira].base_url you set, and what you choose to send with a connector (connectors.py). With company AI, transcript text goes to the provider
 you agreed to; audio, voiceprints and screen pictures never leave the computer. A task
 you hand to the AI (task_agent.py) also sends code to that provider and pushes draft PRs.
 """

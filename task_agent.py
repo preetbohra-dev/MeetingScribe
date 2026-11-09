@@ -1,6 +1,6 @@
 """Hand a meeting's action item to the AI: it asks what it needs, changes the code, and opens draft PRs.
 
-The AI only ever reads and edits files, inside a worktree made for the task. It never gets a shell.
+The AI only ever reads, creates, edits and deletes files, inside a worktree made for the task. It never gets a shell.
 MeetingScribe itself runs the commands, and only the ones the user approved for that repository.
 A task can span repositories: each gets its own worktree and branch, and the PRs link to each other.
 """
@@ -75,6 +75,7 @@ FOLDERS, one per repository or project, the only places you may work:
 
 Rules:
 - Change only what the task needs. Follow the style already in each repository.
+- You may create new files, edit existing ones, and delete files the task makes obsolete or that are not relevant to it. Name each file you delete, and why, in your last message.
 - Add or update tests that prove the change works. Never delete or weaken an existing test to make it pass.
 - You cannot run commands. MeetingScribe runs these checks after you finish, and shows you any failure:
 {commands}
@@ -90,13 +91,19 @@ You act one step at a time. Reply with exactly one JSON object and nothing else,
 {"tool": "read", "repo": "<name>", "path": "<file>", "start": <line number, optional>}
 {"tool": "search", "repo": "<name>", "text": "<words to find>"}
 {"tool": "replace", "repo": "<name>", "path": "<file>", "old": "<exact text, must occur once>", "new": "<new text>"}
-{"tool": "write", "repo": "<name>", "path": "<file>", "content": "<whole file>"}
+{"tool": "write", "repo": "<name>", "path": "<file>", "content": "<whole file, new or existing>"}
+{"tool": "delete", "repo": "<name>", "path": "<file or folder>"}
 {"tool": "test"}
 {"tool": "done", "summary": "<what you changed>"}
 Prefer replace to write. Use test before done.
 
 STEPS SO FAR:
 """
+
+
+DELETE_LIST = ".meetingscribe-delete"
+DELETE_RULE = f"""
+To delete files, write a file named {DELETE_LIST} at the top of that folder, with one relative path per line. MeetingScribe deletes them when you finish."""
 
 
 class TaskError(Exception):
@@ -192,7 +199,7 @@ class FileTools:
 
     def run(self, step):
         tool = step.get("tool")
-        if tool not in ("list", "read", "search", "replace", "write"):
+        if tool not in ("list", "read", "search", "replace", "write", "delete"):
             raise TaskError(f"unknown tool {tool!r}")
         root = self.root(step)
         if tool == "search":
@@ -207,6 +214,8 @@ class FileTools:
                 f"\n(file has {len(lines)} lines)" if len(lines) >= start + 300 else "")
         if PROTECTED.search(target.relative_to(Path(root).resolve()).as_posix()):
             raise TaskError("that file is protected: CI, git and tool settings can't be changed here")
+        if tool == "delete":
+            return self.delete(Path(root).resolve(), target)
         if tool == "write":
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(str(step["content"]), encoding="utf-8")
@@ -216,6 +225,25 @@ class FileTools:
             raise TaskError(f"old text occurs {text.count(str(step['old']))} times; it must occur exactly once")
         target.write_text(text.replace(str(step["old"]), str(step["new"])), encoding="utf-8")
         return "replaced"
+
+    @staticmethod
+    def delete(root, target):
+        """Only ever touches the task's own copy; the PR or the folder's Undo is the way back."""
+        if target == root:
+            raise TaskError("the whole repository can't be deleted")
+        if not target.exists():
+            raise TaskError("there is nothing at that path to delete")
+        for p in ([target] if target.is_file() else [p for p in target.rglob("*") if p.is_file()]):
+            path = p.relative_to(root).as_posix()
+            if PROTECTED.search(path):
+                raise TaskError(f"{path} is protected: CI, git and tool settings can't be changed here")
+            if TEST_FILE.search(path):
+                raise TaskError(f"{path} is a test, and tests are not deleted")
+        if target.is_file():
+            target.unlink()
+        else:
+            shutil.rmtree(target)
+        return "deleted"
 
     @staticmethod
     def search(root, text):
@@ -297,7 +325,28 @@ class CliWorker(cloud_llm.CliClient):
     def work(self, prompt, folders, test, parse):
         paths = [str(p) for p in folders.values()]
         with tempfile.TemporaryDirectory(prefix="meetingscribe-agent-") as scratch:
-            return self.execute(self.agent_arguments(paths, scratch), prompt, paths[0], timeout=3600)
+            summary = self.execute(self.agent_arguments(paths, scratch), prompt + DELETE_RULE, paths[0], timeout=3600)
+        refused = self.deletions(folders)
+        return summary + ("\n\nNot deleted: " + "; ".join(refused) if refused else "")
+
+    @staticmethod
+    def deletions(folders):
+        """These agents have no delete tool, and a shell is what they must not have, so they list
+        what should go and MeetingScribe removes it under the same rules as FileTools."""
+        refused = []
+        for name, place in folders.items():
+            wanted = Path(place) / DELETE_LIST
+            if not wanted.is_file():
+                continue
+            paths = [ln.strip() for ln in wanted.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
+            wanted.unlink()
+            tools = FileTools({name: place})
+            for path in paths:
+                try:
+                    tools.run({"tool": "delete", "repo": name, "path": path})
+                except (TaskError, OSError) as e:
+                    refused.append(f"{name}/{path} ({e})")
+        return refused
 
 
 class Tasks:
@@ -527,7 +576,7 @@ class Tasks:
                 result.update(state="no changes", output="")
                 continue
             problems = self.guard(name, place)
-            result["files"] = [ln[3:].strip().strip('"') for ln in git(place, "status", "--porcelain", "--no-renames", "-uall").splitlines()][:200]
+            result["files"] = [ln[3:].strip().strip('"') + (" (deleted)" if "D" in ln[:2] else "") for ln in git(place, "status", "--porcelain", "--no-renames", "-uall").splitlines()][:200]
             output = []
             for command in known[name]["commands"]:
                 self.say(t, f"{name}: running {command}")

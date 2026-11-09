@@ -225,7 +225,7 @@ function showDownload(s) {
 
 // -- main frame --------------------------------------------------------------
 function showMain() {
-  const items = [["meetings", "Meetings"], ["search", "Search and ask"], ["people", "People"], ["jira", "Jira"], ["tasks", "Tasks"], ["settings", "Settings"]];
+  const items = [["meetings", "Meetings"], ["search", "Search and ask"], ["people", "People"], ["connectors", "Connectors"], ["tasks", "Tasks"], ["settings", "Settings"]];
   const navEl = h("nav", null);
   const brand = h("div", {class: "brand"}); brand.innerHTML = LOGO; brand.append("MeetingScribe");
   navEl.append(brand);
@@ -238,7 +238,7 @@ function showMain() {
 }
 function go(id, meeting) {
   view = id; openId = meeting || null;
-  document.querySelectorAll("nav button[id]").forEach(b => b.classList.toggle("on", b.id === "nav-" + id));
+  document.querySelectorAll("nav button[id]").forEach(b => b.classList.toggle("on", b.id === "nav-" + (["jira", "send"].includes(id) ? "connectors" : id)));
   render();
 }
 async function tick() {
@@ -262,8 +262,9 @@ function render() {
   const main = document.getElementById("main"); if (!main) return;
   main.scrollTop = 0;
   if (openId && view === "jira") return renderReview(main);
+  if (openId && view === "send") return renderSend(main);
   if (openId && view !== "tasks") return renderMeeting(main);
-  ({meetings: renderList, search: renderSearch, people: renderPeople, jira: renderJira, tasks: renderTasks, settings: renderSettings})[view](main);
+  ({meetings: renderList, search: renderSearch, people: renderPeople, connectors: renderConnectors, jira: renderJira, tasks: renderTasks, settings: renderSettings})[view](main);
 }
 async function renderList(main) {
   lastList = "";
@@ -303,7 +304,9 @@ async function renderMeeting(main) {
   }
   col.append(h("h2", null, "Summary"), h("div", {class: "panel"}, m.summary.length ? h("ul", {class: "plain"}, m.summary.map(s => h("li", null, rich(s)))) : h("p", {class: "soft"}, "No summary.")));
   col.append(h("h2", null, "Action items"), h("div", {class: "panel"}, m.actions.length ? h("ul", {class: "plain"}, m.actions.map(s => { const item = s.replace(/^\[[ x]\]\s*/, ""); return h("li", null, rich(item), " ", h("button", {class: "link small", onclick: () => handToAi(m.id, item.replace(/\*\*/g, ""))}, "Hand to AI")); })) : h("p", {class: "soft"}, "None."),
-    h("button", {style: "margin-top:10px", onclick: () => go("jira", m.id)}, "Review for Jira")));
+    h("div", {class: "row wrap", style: "gap:10px;margin-top:10px"},
+      m.destinations.length ? h("button", {class: "primary", onclick: () => go("send", m.id)}, "Send recap and follow-ups") : h("button", {onclick: () => go("connectors")}, "Connect Slack, Teams, Gmail or Outlook"),
+      m.jira ? h("button", {onclick: () => go("jira", m.id)}, "Review for Jira") : null)));
   if (known.length || m.talk.length) {
     const people = h("div", {class: "panel"});
     if (m.talk.length) people.append(h("p", null, h("b", null, "Talk time: "), m.talk.map(([n, p]) => n + " " + p + "%").join(", ")));
@@ -546,6 +549,99 @@ function taskQuestions(t, s) {
       if (r.ok) { taskHead = ""; refreshTasks(); } else problem.textContent = r.message;
     }}, "Start the work"));
 }
+// -- connectors --------------------------------------------------------------
+const CHANNEL_HELP = {
+  slack: "In Slack, create an app at api.slack.com/apps, turn on Incoming Webhooks, add a webhook to your channel, and paste its link here. Some workspaces ask an admin to approve the app.",
+  teams: "In the Teams channel, open Workflows and choose “Send webhook alerts to a channel”, then copy the link it gives you. Some companies turn Workflows off."};
+const MAIL_SERVICES = ["gmail", "outlook"];
+
+async function renderConnectors(main) {
+  const st = await call("connector_state");
+  const card = (name, blurb, ...body) => h("div", {class: "panel"}, h("b", null, name), h("p", {class: "soft", style: "margin:4px 0 10px"}, blurb), ...body);
+  const refresh = () => renderConnectors(document.getElementById("main"));
+  const remove = (d, label) => h("button", {class: "link small", onclick: async () => { const r = await call("connector_remove", d.id); if (r.message) toast(r.message); refresh(); }}, label);
+  function channels(service) {
+    const name = h("input", {type: "text", placeholder: service === "slack" ? "#migration-team" : "Migration team", "aria-label": "Channel name"});
+    const link = h("input", {type: "password", autocomplete: "off", "aria-label": "Webhook link"});
+    const msg = h("p", {class: "problem"});
+    const add = h("button", {onclick: async () => {
+      add.disabled = true; msg.textContent = "";
+      try {
+        const r = await call("connector_add_channel", service, name.value, link.value);
+        if (r.ok) { toast(r.message); return refresh(); }
+        msg.textContent = r.message;
+      } finally { add.disabled = false; }
+    }}, "Save and post a test message");
+    const form = h("details", null, h("summary", {class: "small"}, "Add a channel"),
+      h("p", {class: "soft small"}, CHANNEL_HELP[service]),
+      h("div", {class: "field"}, h("label", null, "Name you'll know it by"), name),
+      h("div", {class: "field"}, h("label", null, "Webhook link"), link),
+      h("p", {class: "soft small"}, "Kept in this computer's secure password store. It is never written to a file."), msg, add);
+    return [...st.destinations.filter(d => d.service === service).map(d => h("div", {class: "row"}, h("span", {class: "dot ok"}), h("span", {class: "grow"}, d.name), remove(d, "Remove"))), form];
+  }
+  function mail(service) {
+    const on = st.destinations.find(d => d.id === service);
+    if (on) return [h("div", {class: "row"}, h("span", {class: "dot ok"}), h("span", {class: "grow"}, "On" + (service === "outlook" ? (on.account === "work" ? ", work or school account" : ", personal account") : "")), remove(on, "Turn off"))];
+    const account = service === "outlook" ? h("select", {"aria-label": "Outlook account"}, h("option", {value: "work"}, "Work or school account"), h("option", {value: "personal"}, "Personal account")) : null;
+    return [account, h("button", {style: account ? "margin-left:10px" : "", onclick: async () => { await call("connector_set_email", service, account ? account.value : "work"); refresh(); }}, "Turn on")];
+  }
+  main.replaceChildren(h("div", {class: "column"}, h("h1", null, "Connectors"),
+    h("p", {class: "soft"}, "Use the ones your team works in, and ignore the rest. Nothing is sent or changed until you approve it."),
+    h("h2", null, "Turn meetings into work"),
+    card("Jira", "Draft tickets from action items, checked against what already exists.", h("button", {onclick: () => go("jira")}, st.jira ? "Open Jira" : "Connect Jira")),
+    card("Hand to AI", "An AI creates, edits and removes files to finish an action item, then opens a draft pull request or updates a folder.", h("button", {onclick: () => go("tasks")}, st.task_places ? "Open Tasks" : "Set up a repository or folder")),
+    h("h2", null, "Send the recap and follow-ups"),
+    card("Slack", "Post to a channel. Follow-ups can mention each owner.", ...channels("slack")),
+    card("Microsoft Teams", "Post to a channel. Follow-ups name each owner.", ...channels("teams")),
+    card("Gmail", "A draft opens in your own mailbox, and you press Send there. No sign-in here.", ...mail("gmail")),
+    card("Outlook", "A draft opens in Outlook on the web, and you press Send there. No sign-in here.", ...mail("outlook"))));
+}
+async function renderSend(main) {
+  const sid = openId, c = await call("connector_compose", sid);
+  const col = h("div", {class: "column"}, h("button", {class: "link", onclick: () => go("meetings", sid)}, "‹ Meeting"), h("h1", {style: "margin-top:8px"}, "Send: " + c.title));
+  if (!c.destinations.length) { col.append(h("div", {class: "panel"}, h("p", null, "Nothing is connected yet."), h("button", {onclick: () => go("connectors")}, "Open Connectors"))); return main.replaceChildren(col); }
+  const place = h("select", {"aria-label": "Where to send", onchange: () => sync()}, c.destinations.map(d => h("option", {value: d.id}, d.name + (MAIL_SERVICES.includes(d.service) ? " draft" : d.service === "teams" ? " (Teams)" : " (Slack)"))));
+  const dest = () => c.destinations.find(d => d.id === place.value), rows = [];
+  function textBox(value, size, label) { const t = h("textarea", {rows: size, "aria-label": label}); t.value = value; return t; }
+  function sender(kind, owner, area, to, slack, subject) {
+    const msg = h("p", {class: "problem"}), stamp = h("span", {class: "soft small"});
+    const key = () => kind + ":" + owner + ":" + place.value;
+    const btn = h("button", {class: "primary", onclick: async () => {
+      btn.disabled = true; msg.textContent = "";
+      try {
+        const d = dest(), r = await call("connector_send", sid, d.id, kind, owner, subject.value, area.value, to.value, slack ? slack.value : "", !!c.sent[key()]);
+        if (r.ok) { toast(r.message); c.sent[key()] = {at: new Date().toISOString(), name: d.name, draft: MAIL_SERVICES.includes(d.service)}; sync(); }
+        else msg.textContent = r.message;
+      } finally { btn.disabled = false; }
+    }});
+    rows.push(() => {
+      const d = dest(), done = c.sent[key()];
+      btn.textContent = (MAIL_SERVICES.includes(d.service) ? "Open draft" : "Send") + (done ? " again" : "");
+      stamp.textContent = done ? (done.draft ? "Draft opened " : "Sent ") + when(done.at) : "";
+    });
+    return h("div", null, msg, h("div", {class: "row", style: "gap:12px"}, btn, stamp));
+  }
+  const showFor = (el, test) => rows.push(() => { el.style.display = test(dest()) ? "" : "none"; });
+  const subject = h("input", {type: "text", value: c.subject, "aria-label": "Subject"}), to = h("input", {type: "text", value: c.to, placeholder: "name@company.com, name@company.com", "aria-label": "To"});
+  const mailFields = h("div", null, h("div", {class: "field"}, h("label", null, "To"), to), h("div", {class: "field"}, h("label", null, "Subject"), subject));
+  showFor(mailFields, d => MAIL_SERVICES.includes(d.service));
+  const recap = textBox(c.recap, 14, "Recap");
+  col.append(h("div", {class: "field"}, h("label", null, "Where to send"), place),
+    h("h2", null, "Recap"), h("div", {class: "panel"}, mailFields, recap, h("div", {style: "margin-top:10px"}, sender("recap", "", recap, to, null, subject))),
+    h("h2", null, "Follow-ups"), h("p", {class: "soft small"}, "One message per person, each sent only when you press its button. Owners come from the notes, so check the name is right."));
+  c.followups.forEach(f => {
+    const area = textBox(f.text, 4, "Message to " + f.owner), email = h("input", {type: "text", value: f.email, placeholder: "name@company.com", "aria-label": "Email for " + f.owner}), slack = h("input", {type: "text", value: f.slack, placeholder: "U012AB3CD (optional, to mention them)", "aria-label": "Slack member ID for " + f.owner});
+    const emailF = h("div", {class: "field"}, h("label", null, "Email address"), email), slackF = h("div", {class: "field"}, h("label", null, "Slack member ID"), slack);
+    showFor(emailF, d => MAIL_SERVICES.includes(d.service)); showFor(slackF, d => d.service === "slack");
+    col.append(h("div", {class: "panel"}, h("b", null, f.owner), emailF, slackF, area, h("div", {style: "margin-top:10px"}, sender("followup", f.owner, area, email, slack, {value: "Follow-up: " + c.title}))));
+  });
+  if (!c.followups.length) col.append(h("div", {class: "panel soft"}, "No action item has a named owner other than you."));
+  if (c.no_owner) col.append(h("p", {class: "soft small"}, c.no_owner + (c.no_owner === 1 ? " action item has" : " action items have") + " no named owner, so " + (c.no_owner === 1 ? "it stays" : "they stay") + " in the recap only."));
+  function sync() { rows.forEach(f => f()); }
+  sync();
+  main.replaceChildren(col);
+}
+
 // -- Jira --------------------------------------------------------------------
 const SIGN_IN_HELP = {
   basic: "For sites ending in atlassian.net. Create an API token at id.atlassian.com, under Security.",
@@ -556,7 +652,7 @@ let reviewStamps = {}, reviewHead = "";
 
 async function renderJira(main) {
   const conn = h("div", null, h("div", {class: "panel soft"}, "Checking your connection…")), list = h("div", null, h("p", {class: "soft"}, "Loading…"));
-  main.replaceChildren(h("div", {class: "column"}, h("h1", null, "Jira"),
+  main.replaceChildren(h("div", {class: "column"}, h("button", {class: "link", onclick: () => go("connectors")}, "‹ Connectors"), h("h1", {style: "margin-top:8px"}, "Jira"),
     h("p", {class: "soft"}, "Turn what was agreed in a meeting into tickets. The AI drafts them, and nothing reaches Jira until you approve it."),
     h("h2", null, "Connection"), conn, h("h2", null, "Meetings"), list, h("div", {id: "habits"})));
   renderConnection(conn);

@@ -186,6 +186,7 @@ footer a{color:var(--ink-2)}
     <nav aria-label="Page">
       <a class="opt" href="#note">The note</a>
       <a class="opt" href="#how">How it works</a>
+      <a class="opt" href="#connectors">Connectors</a>
       <a href="#install">Install</a>
       <a href="https://preetbohra.com/">More projects &#8599;</a>
     </nav>
@@ -196,7 +197,7 @@ footer a{color:var(--ink-2)}
   <div class="wrap hero">
     <p class="kicker">Teams, Zoom and Meet · Mac and Windows</p>
     <h1><span>Join the call. Hang up.</span> <span>The notes are written.</span></h1>
-    <p class="lede">MeetingScribe sits quietly in the background. When Teams, Zoom or a meeting in your browser picks up your microphone it starts recording, and a few minutes after you leave it saves a note with a summary, action items and a transcript that knows who said what. Everything runs on your own computer, unless you choose your company&rsquo;s AI.</p>
+    <p class="lede">MeetingScribe sits quietly in the background. When Teams, Zoom or a meeting in your browser picks up your microphone it starts recording, and a few minutes after you leave it saves a note with a summary, action items and a transcript that knows who said what. Everything runs on your own computer, unless you choose your company&rsquo;s AI. Connectors then send the meeting wherever your team works.</p>
     <div class="ctas">
       <a class="btn primary" href="#film">Watch the demo</a>
       <a class="btn ghost" href="https://github.com/preetbohra-dev/MeetingScribe">Source on GitHub</a>
@@ -207,8 +208,8 @@ footer a{color:var(--ink-2)}
   <figure class="wrap film" id="film">
     <div class="frame">
       <video controls playsinline preload="metadata" poster="poster.jpg?v=5">
-        <source src="demo.mp4?v=6" type="video/mp4">
-        Your browser can't play this video. <a href="demo.mp4?v=6">Download it</a> instead.
+        <source src="demo.mp4?v=7" type="video/mp4">
+        Your browser can't play this video. <a href="demo.mp4?v=7">Download it</a> instead.
       </video>
     </div>
     <figcaption>About eight minutes, narrated, including what it still gets wrong. The people, meetings and tickets in it are made up.</figcaption>
@@ -303,13 +304,45 @@ footer a{color:var(--ink-2)}
     </div>
   </section>
 
+  <section class="wrap" id="connectors">
+    <div class="rise">
+      <p class="eyebrow">Connectors</p>
+      <h2>Works with what your team already uses.</h2>
+      <p class="intro">A meeting is only useful if the follow-up reaches people. Use the connectors you have and ignore the rest. Nothing is sent or changed until you approve it.</p>
+    </div>
+    <div class="facts rise">
+      <div><h3>Slack</h3><p>Post the recap to a channel, and a follow-up for each owner.</p></div>
+      <div><h3>Microsoft Teams</h3><p>The same recap and follow-ups, in a Teams channel.</p></div>
+      <div><h3>Gmail</h3><p>Drafts open in your own mailbox, and you press Send. No sign-in to MeetingScribe.</p></div>
+      <div><h3>Outlook</h3><p>Drafts open in Outlook on the web, for work or personal accounts.</p></div>
+      <div><h3>Jira</h3><p>Tickets drafted from action items, checked against the ones you already have.</p></div>
+      <div><h3>Hand to AI</h3><p>An AI takes on an action item and finishes with a draft pull request.</p></div>
+    </div>
+  </section>
+
+  <section class="wrap" id="send">
+    <div class="split rise">
+      <div>
+        <p class="eyebrow">Connectors: Slack, Teams, Gmail, Outlook</p>
+        <h2>The recap, and a follow-up for each owner.</h2>
+        <p class="intro" style="margin-bottom:14px">Choose <b>Send recap and follow-ups</b> on a finished meeting. Each person who took something on gets a message with only their work.</p>
+        <p>You can edit every message, and each one goes only when you press its button. Slack and Teams need a webhook link for the channel, which some companies restrict. These connectors are new, and have only been tested against stand-ins so far.</p>
+      </div>
+      <ul class="jira">
+        <li><em class="nw">Channel</em><span>Slack and Teams post to the channel you pick. They can&rsquo;t send direct messages.</span></li>
+        <li><em class="cm">Email</em><span>A draft opens in Gmail or Outlook, addressed by you, and you press Send.</span></li>
+        <li><em class="sk">Owners</em><span>Names come from the notes and addresses from you. Nothing is guessed.</span></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="wrap" id="jira">
     <div class="split rise">
       <div>
-        <p class="eyebrow">Jira, if you use it</p>
+        <p class="eyebrow">Connector: Jira</p>
         <h2>Action items become tickets. You approve each one.</h2>
-        <p class="intro" style="margin-bottom:14px">Run <code>ctl jira</code> after a meeting. It drafts each piece of work, searches every Jira space you can see for tickets that already cover it, and suggests what to do.</p>
-        <p>Nothing is sent until you press <b>y</b>. You can edit any field first, and it remembers what it pushed, so running it twice doesn&rsquo;t create duplicates.</p>
+        <p class="intro" style="margin-bottom:14px">Connect your Jira site once. For each meeting it drafts the work, searches every Jira space you can see for tickets that already cover it, and suggests what to do.</p>
+        <p>Nothing is sent until you approve it. You can edit any field first, and it remembers what it pushed, so reviewing twice doesn&rsquo;t create duplicates.</p>
       </div>
       <ul class="jira">
         <li><em class="cm">Comment</em><span>The work is already in an open ticket. Add the meeting&rsquo;s update to it.</span></li>
@@ -322,10 +355,10 @@ footer a{color:var(--ink-2)}
   <section class="wrap" id="tasks">
     <div class="split rise">
       <div>
-        <p class="eyebrow">Tasks, if you want</p>
+        <p class="eyebrow">Connector: Hand to AI</p>
         <h2>Hand an action item to the AI.</h2>
         <p class="intro" style="margin-bottom:14px">Choose <b>Hand to AI</b> on an action item. It reads the task, asks what it needs, and works in a separate copy, across several repositories if the work spans them.</p>
-        <p>The AI can only edit files. MeetingScribe runs the commands you approved and shows it any failure. Those commands do run the AI&rsquo;s code on your computer, so read a task before you start it. Small local models will only finish small, clearly described changes.</p>
+        <p>The AI can create, edit and delete files, but it can&rsquo;t run anything. MeetingScribe runs the commands you approved and shows it any failure. Those commands do run the AI&rsquo;s code on your computer, so read a task before you start it. Small local models will only finish small, clearly described changes.</p>
       </div>
       <ul class="jira">
         <li><em class="nw">Repository</em><span>When your checks pass, it opens a draft PR. PRs for one task link to each other.</span></li>
@@ -339,7 +372,7 @@ footer a{color:var(--ink-2)}
     <div class="rise">
       <p class="eyebrow">Privacy</p>
       <h2>Your meetings stay on your computer, unless you choose otherwise.</h2>
-      <p class="intro">By default the models are downloaded once, and after that MeetingScribe runs with the network switched off for them. If you&rsquo;d rather not run a local model, you can use your company&rsquo;s Claude, Gemini or Copilot, after agreeing to send it the text.</p>
+      <p class="intro">By default the models are downloaded once, and after that MeetingScribe runs with the network switched off for them. If you&rsquo;d rather not run a local model, you can use your company&rsquo;s Claude, Gemini or Copilot, after agreeing to send it the text. A connector sends only the messages you approve.</p>
     </div>
     <div class="facts rise">
       <div><h3>Audio</h3><p>Written to a local app folder while the call runs, and deleted as soon as the note is saved.</p></div>

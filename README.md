@@ -21,7 +21,8 @@ Markdown note to `Documents/Meeting Notes/` with:
 
 You never press record. Recording, transcription and every model run on your computer, and nothing is uploaded.
 There's a desktop app for reading notes, naming voices, searching past meetings and asking them questions.
-If you use Jira, the app's Jira screen (or `ctl jira`) can turn the meeting's action items into tickets, and you approve each one.
+**Connectors** then put the meeting to work in whatever your team uses: Slack, Teams, Gmail, Outlook, Jira, or an AI
+that takes on an action item. Use the ones you have and ignore the rest. Nothing is sent until you approve it.
 
 ## Contents
 
@@ -30,6 +31,7 @@ If you use Jira, the app's Jira screen (or `ctl jira`) can turn the meeting's ac
 - [Install](#install)
 - [Everyday use](#everyday-use)
 - [Speakers](#speakers)
+- [Connectors](#connectors)
 - [Jira](#jira)
 - [What a note looks like](#what-a-note-looks-like)
 - [Settings](#settings)
@@ -230,10 +232,39 @@ Saved voices stay on the computer that made them.
 - **Two people merged into one?** Lower `speaker_cluster_threshold` (default 0.6).
 - **Too many fragments?** Raise `speaker_min_seconds` (default 10) or set `max_speakers`.
 
+## Connectors
+
+The app's **Connectors** page lists everything a meeting can go to. None is required.
+
+| Connector | What it does | What you set up |
+|---|---|---|
+| Slack | Posts the recap and per-owner follow-ups to a channel | An incoming webhook link for each channel |
+| Microsoft Teams | Posts the recap and per-owner follow-ups to a channel | A Workflows webhook link for each channel |
+| Gmail | Opens drafts in your own mailbox, and you press Send | Turn it on |
+| Outlook | Opens drafts in Outlook on the web, and you press Send | Turn it on, and choose work or personal |
+| [Jira](#jira) | Drafts tickets, checked against what already exists | Your site and a token |
+| [Hand to AI](#handing-tasks-to-the-ai) | Finishes an action item and opens a draft PR | A repository or folder, and its test commands |
+
+On a finished meeting, choose **Send recap and follow-ups**. You get an editable recap, and one editable message for
+each person who owns an action item. Every message goes only when you press its button, and sending the same one again
+has to be asked for. Action items without a named owner stay in the recap.
+
+Owners come from the notes, so check each name. Email addresses and Slack member IDs are never guessed: you type one
+the first time, and it is remembered on this computer. A webhook can only post to a channel, so Slack and Teams
+follow-ups are channel messages rather than direct messages. In Slack, a saved member ID mentions the person; Teams
+messages use their name.
+
+Webhook links stay in your Keychain or Credential Manager. Anyone holding one can post to that channel, so treat it
+as a password. Only links from Slack or Microsoft are accepted, and each is checked by posting a test message. If your
+company inspects TLS, the `ca_bundle` and `ssl_strict` settings in `[jira]` also apply to Slack and Teams.
+
+Draft links use Gmail's and Outlook's compose addresses, which neither company documents as a stable interface, and
+links have a length limit, so a very long recap has to be shortened first.
+
 ## Jira
 
-The app's **Jira** screen, or `./ctl.sh jira` in a terminal, turns a meeting's work into Jira tickets. It's the only
-part of MeetingScribe that uses the network, it only runs when you start it, and it only talks to your own Jira site.
+The app's **Jira** connector, or `./ctl.sh jira` in a terminal, turns a meeting's work into Jira tickets. It only runs
+when you start it, and it only talks to your own Jira site.
 In the app you connect once, press **Review for Jira** on a meeting, and approve, edit or say no to each card.
 
 Every team's Jira is different, so the first time you use a space MeetingScribe reads its recent tickets (read-only)
@@ -363,7 +394,7 @@ local folder for work with no repository. Then:
 1. You read and can reword the task, because it came from what people said.
 2. The AI says which repositories it touches and asks what it needs. You confirm the repositories and answer.
 3. Each repository gets a separate worktree and branch. Your own checkouts are not touched.
-4. The AI edits files. MeetingScribe runs your commands, and shows the AI any failure, up to 4 attempts.
+4. The AI creates, edits and deletes files as the task needs. MeetingScribe runs your commands, and shows the AI any failure, up to 4 attempts.
 5. When every changed repository passes, MeetingScribe pushes the branches and opens **draft** PRs, without asking
    again. PRs for one task link to each other and suggest a merge order.
 
@@ -374,7 +405,8 @@ files and press **Apply** yourself. If you edited one of those files meanwhile, 
 If one place keeps failing, nothing is published, so everything stays in step. You can try again with a hint, or
 choose to open PRs for those that passed.
 
-**What limits it.** The AI can only read and edit files in the task's worktrees; it is given no shell. It can't change
+**What limits it.** The AI can read, create, edit and delete files only in the task's worktrees or copy; it is given
+no shell. Deletions are listed in the task's files and the PR, and a folder's **Undo** restores them. It can't change
 CI, git hooks or tool settings, delete a test file, or push anything that looks like a key. Commits and pushes skip git
 hooks, because those are files it could have edited.
 
@@ -392,6 +424,8 @@ it, and only start tasks you trust. With company AI, the code it reads is sent t
   So are the notes and names used for `ask` and Jira drafts. Audio, voiceprints and screen pictures are never sent.
   Nothing is sent until you have agreed to that provider, even if `config.toml` is edited by hand. Your company's
   agreement with the provider decides how the text is kept.
+- A connector sends only the text you approved, to the channel or mailbox you chose. Once delivered, that service's
+  own retention rules apply.
 - Offline flags are set before any ML library loads, and no saved Hugging Face token is ever sent. With a local LLM,
   you can check on a Mac by running `nettop -p $(pgrep -f "meeting_scribe.py process")` while a meeting is processed;
   on Windows, watch the python process in Resource Monitor's Network tab. There are no connections.

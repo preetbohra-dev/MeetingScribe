@@ -3,7 +3,7 @@ window.TIMELINE = {
   {
    "id": "title",
    "start": 0.0,
-   "dur": 11.276,
+   "dur": 12.279,
    "lines": [
     {
      "t": 0.6,
@@ -12,11 +12,11 @@ window.TIMELINE = {
     },
     {
      "t": 2.117,
-     "dur": 4.821,
-     "text": "It turns your Teams, Zoom and Google Meet calls into clean notes and Jira tickets."
+     "dur": 5.824,
+     "text": "It turns your Teams, Zoom and Google Meet calls into clean notes, and sends them where your team works."
     },
     {
-     "t": 7.219,
+     "t": 8.221,
      "dur": 3.157,
      "text": "Without anything leaving your computer, unless you say so."
     }
@@ -24,7 +24,7 @@ window.TIMELINE = {
   },
   {
    "id": "problem",
-   "start": 11.276,
+   "start": 12.279,
    "dur": 8,
    "lines": [
     {
@@ -41,7 +41,7 @@ window.TIMELINE = {
   },
   {
    "id": "app",
-   "start": 19.276,
+   "start": 20.279,
    "dur": 16.78,
    "lines": [
     {
@@ -63,7 +63,7 @@ window.TIMELINE = {
   },
   {
    "id": "detect",
-   "start": 36.056,
+   "start": 37.059,
    "dur": 13.196,
    "lines": [
     {
@@ -85,7 +85,7 @@ window.TIMELINE = {
   },
   {
    "id": "apps",
-   "start": 49.252,
+   "start": 50.255,
    "dur": 11.849,
    "lines": [
     {
@@ -102,7 +102,7 @@ window.TIMELINE = {
   },
   {
    "id": "browser",
-   "start": 61.101,
+   "start": 62.104,
    "dur": 17.676,
    "lines": [
     {
@@ -124,7 +124,7 @@ window.TIMELINE = {
   },
   {
    "id": "pipeline",
-   "start": 78.777,
+   "start": 79.78,
    "dur": 17.423,
    "lines": [
     {
@@ -151,7 +151,7 @@ window.TIMELINE = {
   },
   {
    "id": "note",
-   "start": 96.2,
+   "start": 97.203,
    "dur": 11,
    "lines": [
     {
@@ -168,7 +168,7 @@ window.TIMELINE = {
   },
   {
    "id": "who",
-   "start": 107.2,
+   "start": 108.203,
    "dur": 19,
    "lines": [
     {
@@ -190,7 +190,7 @@ window.TIMELINE = {
   },
   {
    "id": "voices",
-   "start": 126.2,
+   "start": 127.203,
    "dur": 10.5,
    "lines": [
     {
@@ -207,7 +207,7 @@ window.TIMELINE = {
   },
   {
    "id": "find",
-   "start": 136.7,
+   "start": 137.703,
    "dur": 11,
    "lines": [
     {
@@ -224,7 +224,7 @@ window.TIMELINE = {
   },
   {
    "id": "guards",
-   "start": 147.7,
+   "start": 148.703,
    "dur": 9.524,
    "lines": [
     {
@@ -240,17 +240,56 @@ window.TIMELINE = {
    ]
   },
   {
-   "id": "jira",
-   "start": 157.224,
-   "dur": 8.884,
+   "id": "connectors",
+   "start": 158.227,
+   "dur": 13.748,
    "lines": [
     {
      "t": 0.6,
-     "dur": 1.92,
-     "text": "Then, if your team uses Jira."
+     "dur": 4.075,
+     "text": "Then, connectors put the meeting to work in whatever your team already uses."
     },
     {
-     "t": 2.8,
+     "t": 4.955,
+     "dur": 7.893,
+     "text": "Slack, Teams, Gmail and Outlook. Jira. Or an AI that takes on the work. Use the ones you have, and ignore the rest."
+    }
+   ]
+  },
+  {
+   "id": "sendout",
+   "start": 171.975,
+   "dur": 17,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 5.547,
+     "text": "Send the recap to a Slack or Teams channel, or open it as a draft in Gmail or Outlook."
+    },
+    {
+     "t": 6.427,
+     "dur": 3.712,
+     "text": "Everyone who took something on can get a follow-up with only their work."
+    },
+    {
+     "t": 10.419,
+     "dur": 4.224,
+     "text": "You can edit every message, and each one goes only when you press its button."
+    }
+   ]
+  },
+  {
+   "id": "jira",
+   "start": 188.975,
+   "dur": 10.249,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 3.285,
+     "text": "If your team uses Jira, there is a connector for that too."
+    },
+    {
+     "t": 4.165,
      "dur": 5.184,
      "text": "MeetingScribe can turn those action items into Jira tickets, with you approving every one."
     }
@@ -258,7 +297,7 @@ window.TIMELINE = {
   },
   {
    "id": "signin",
-   "start": 166.108,
+   "start": 199.224,
    "dur": 15.113,
    "lines": [
     {
@@ -275,7 +314,7 @@ window.TIMELINE = {
   },
   {
    "id": "space",
-   "start": 181.221,
+   "start": 214.337,
    "dur": 6,
    "lines": [
     {
@@ -287,7 +326,7 @@ window.TIMELINE = {
   },
   {
    "id": "learn",
-   "start": 187.221,
+   "start": 220.337,
    "dur": 17,
    "lines": [
     {
@@ -309,7 +348,7 @@ window.TIMELINE = {
   },
   {
    "id": "extract",
-   "start": 204.221,
+   "start": 237.337,
    "dur": 9.417,
    "lines": [
     {
@@ -326,7 +365,7 @@ window.TIMELINE = {
   },
   {
    "id": "search",
-   "start": 213.639,
+   "start": 246.755,
    "dur": 12,
    "lines": [
     {
@@ -343,7 +382,7 @@ window.TIMELINE = {
   },
   {
    "id": "decide",
-   "start": 225.639,
+   "start": 258.755,
    "dur": 15,
    "lines": [
     {
@@ -365,7 +404,7 @@ window.TIMELINE = {
   },
   {
    "id": "draft",
-   "start": 240.639,
+   "start": 273.755,
    "dur": 17.441,
    "lines": [
     {
@@ -387,7 +426,7 @@ window.TIMELINE = {
   },
   {
    "id": "board",
-   "start": 258.08,
+   "start": 291.196,
    "dur": 8.5,
    "lines": [
     {
@@ -404,7 +443,7 @@ window.TIMELINE = {
   },
   {
    "id": "handoff",
-   "start": 266.58,
+   "start": 299.696,
    "dur": 18.145,
    "lines": [
     {
@@ -426,8 +465,8 @@ window.TIMELINE = {
   },
   {
    "id": "handwork",
-   "start": 284.725,
-   "dur": 23.695,
+   "start": 317.841,
+   "dur": 26.34,
    "lines": [
     {
      "t": 0.6,
@@ -436,16 +475,16 @@ window.TIMELINE = {
     },
     {
      "t": 3.781,
-     "dur": 7.893,
-     "text": "It can only edit files. MeetingScribe runs the test commands you approved, and shows the AI any failure, until they pass."
+     "dur": 10.539,
+     "text": "It can create, edit and delete files, but it cannot run anything. MeetingScribe runs the test commands you approved, and shows the AI any failure, until they pass."
     },
     {
-     "t": 11.955,
+     "t": 14.6,
      "dur": 4.736,
      "text": "Then it opens draft pull requests, one per repository, linked to each other."
     },
     {
-     "t": 16.971,
+     "t": 19.616,
      "dur": 5.824,
      "text": "A plain folder has no pull request, so its files are updated, with a backup and an undo button."
     }
@@ -453,7 +492,7 @@ window.TIMELINE = {
   },
   {
    "id": "usecases",
-   "start": 308.42,
+   "start": 344.181,
    "dur": 13,
    "lines": [
     {
@@ -470,8 +509,8 @@ window.TIMELINE = {
   },
   {
    "id": "privacy",
-   "start": 321.42,
-   "dur": 11.529,
+   "start": 357.181,
+   "dur": 11.508,
    "lines": [
     {
      "t": 0.6,
@@ -480,14 +519,14 @@ window.TIMELINE = {
     },
     {
      "t": 5.296,
-     "dur": 5.333,
-     "text": "The only thing that leaves is the Jira update you approved, sent straight to your own Jira site."
+     "dur": 5.312,
+     "text": "The only things that leave are the messages and Jira updates you approve, sent where you chose."
     }
    ]
   },
   {
    "id": "company",
-   "start": 332.949,
+   "start": 368.689,
    "dur": 21.153,
    "lines": [
     {
@@ -509,7 +548,7 @@ window.TIMELINE = {
   },
   {
    "id": "windows",
-   "start": 354.103,
+   "start": 389.843,
    "dur": 14.729,
    "lines": [
     {
@@ -526,7 +565,7 @@ window.TIMELINE = {
   },
   {
    "id": "limits",
-   "start": 368.832,
+   "start": 404.572,
    "dur": 27.537,
    "lines": [
     {
@@ -558,7 +597,7 @@ window.TIMELINE = {
   },
   {
    "id": "early",
-   "start": 396.369,
+   "start": 432.109,
    "dur": 37.905,
    "lines": [
     {
@@ -590,8 +629,8 @@ window.TIMELINE = {
   },
   {
    "id": "newer",
-   "start": 434.275,
-   "dur": 25.551,
+   "start": 470.015,
+   "dur": 27.023,
    "lines": [
     {
      "t": 0.6,
@@ -610,14 +649,14 @@ window.TIMELINE = {
     },
     {
      "t": 15.371,
-     "dur": 9.28,
-     "text": "Of the company routes, only the signed-in Claude command has been run for real. And pull requests have only been tested against a stand-in for GitHub."
+     "dur": 10.752,
+     "text": "Of the company routes, only the signed-in Claude command has been run for real. And pull requests, Slack, Teams and email drafts have only been tested against stand-ins."
     }
    ]
   },
   {
    "id": "outro",
-   "start": 459.825,
+   "start": 497.037,
    "dur": 9.716,
    "lines": [
     {
@@ -633,5 +672,5 @@ window.TIMELINE = {
    ]
   }
  ],
- "total": 469.541
+ "total": 506.753
 };
