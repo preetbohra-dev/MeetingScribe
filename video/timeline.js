@@ -403,8 +403,57 @@ window.TIMELINE = {
    ]
   },
   {
-   "id": "usecases",
+   "id": "handoff",
    "start": 266.58,
+   "dur": 18.145,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 2.603,
+     "text": "And action items do not have to wait for you."
+    },
+    {
+     "t": 3.483,
+     "dur": 8.576,
+     "text": "Choose Hand to AI on any one. Your local or company AI reads the task, works out where it belongs, and asks what it needs to know."
+    },
+    {
+     "t": 12.339,
+     "dur": 4.907,
+     "text": "You answer, and choose where it works: one repository, several, or a plain folder."
+    }
+   ]
+  },
+  {
+   "id": "handwork",
+   "start": 284.725,
+   "dur": 23.695,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 2.901,
+     "text": "It changes a separate copy, never your own checkout."
+    },
+    {
+     "t": 3.781,
+     "dur": 7.893,
+     "text": "It can only edit files. MeetingScribe runs the test commands you approved, and shows the AI any failure, until they pass."
+    },
+    {
+     "t": 11.955,
+     "dur": 4.736,
+     "text": "Then it opens draft pull requests, one per repository, linked to each other."
+    },
+    {
+     "t": 16.971,
+     "dur": 5.824,
+     "text": "A plain folder has no pull request, so its files are updated, with a backup and an undo button."
+    }
+   ]
+  },
+  {
+   "id": "usecases",
+   "start": 308.42,
    "dur": 13,
    "lines": [
     {
@@ -421,24 +470,46 @@ window.TIMELINE = {
   },
   {
    "id": "privacy",
-   "start": 279.58,
-   "dur": 10.825,
+   "start": 321.42,
+   "dur": 11.529,
    "lines": [
     {
      "t": 0.6,
-     "dur": 3.712,
-     "text": "Recording, transcription, and every model stay on your computer."
+     "dur": 4.416,
+     "text": "By default, recording, transcription, and every model stay on your computer."
     },
     {
-     "t": 4.592,
+     "t": 5.296,
      "dur": 5.333,
      "text": "The only thing that leaves is the Jira update you approved, sent straight to your own Jira site."
     }
    ]
   },
   {
+   "id": "company",
+   "start": 332.949,
+   "dur": 21.153,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 4.267,
+     "text": "Do not want a local model? Let your company's AI write the notes instead."
+    },
+    {
+     "t": 5.147,
+     "dur": 10.133,
+     "text": "Use an API key, your Amazon, Google or Azure account, a company gateway, or the Claude, Gemini or Copilot command you are already signed in to."
+    },
+    {
+     "t": 15.56,
+     "dur": 4.693,
+     "text": "Only text is sent, and only after you agree. Audio and voices never leave."
+    }
+   ]
+  },
+  {
    "id": "windows",
-   "start": 290.405,
+   "start": 354.103,
    "dur": 14.729,
    "lines": [
     {
@@ -455,7 +526,7 @@ window.TIMELINE = {
   },
   {
    "id": "limits",
-   "start": 305.135,
+   "start": 368.832,
    "dur": 27.537,
    "lines": [
     {
@@ -487,7 +558,7 @@ window.TIMELINE = {
   },
   {
    "id": "early",
-   "start": 332.672,
+   "start": 396.369,
    "dur": 37.905,
    "lines": [
     {
@@ -518,8 +589,35 @@ window.TIMELINE = {
    ]
   },
   {
+   "id": "newer",
+   "start": 434.275,
+   "dur": 25.551,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 2.347,
+     "text": "The newest features have limits of their own."
+    },
+    {
+     "t": 3.227,
+     "dur": 6.123,
+     "text": "The commands you approve run the code the AI just wrote, on your computer, so read a task before you start it."
+    },
+    {
+     "t": 9.629,
+     "dur": 5.461,
+     "text": "Small local models struggle with code. In our test, one went in circles and never finished."
+    },
+    {
+     "t": 15.371,
+     "dur": 9.28,
+     "text": "Of the company routes, only the signed-in Claude command has been run for real. And pull requests have only been tested against a stand-in for GitHub."
+    }
+   ]
+  },
+  {
    "id": "outro",
-   "start": 370.577,
+   "start": 459.825,
    "dur": 9.716,
    "lines": [
     {
@@ -535,5 +633,5 @@ window.TIMELINE = {
    ]
   }
  ],
- "total": 380.293
+ "total": 469.541
 };

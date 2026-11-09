@@ -33,6 +33,8 @@ If you use Jira, the app's Jira screen (or `ctl jira`) can turn the meeting's ac
 - [Jira](#jira)
 - [What a note looks like](#what-a-note-looks-like)
 - [Settings](#settings)
+- [Using your company's AI](#using-your-companys-ai)
+- [Handing tasks to the AI](#handing-tasks-to-the-ai)
 - [Privacy and consent](#privacy-and-consent)
 - [Troubleshooting](#troubleshooting)
 - [Repository layout](#repository-layout)
@@ -122,7 +124,7 @@ cd MeetingScribe
 
 No Python? The installer gets one for you: Homebrew or [uv](https://docs.astral.sh/uv/) on the Mac, `winget` on
 Windows. The model download is the only step that uses the network; after it every run is offline
-(`HF_HUB_OFFLINE=1`). MeetingScribe doesn't need scipy or torch, whose DLLs Smart App Control would block on Windows.
+(`HF_HUB_OFFLINE=1`), unless you choose [your company's AI](#using-your-companys-ai) to write the notes. MeetingScribe doesn't need scipy or torch, whose DLLs Smart App Control would block on Windows.
 
 <details>
 <summary>What the installer creates</summary>
@@ -180,7 +182,7 @@ install. Examples below use the Mac's
 ./ctl.sh start
 ./ctl.sh app          # the desktop app
 ./ctl.sh search "firewall change"                 # words across all meetings
-./ctl.sh ask "who is handling the firewall?"      # asks the local model
+./ctl.sh ask "who is handling the firewall?"      # asks the AI that writes your notes
 ```
 
 If processing ever fails, the raw audio is kept so you can retry with `./ctl.sh process <session folder>`
@@ -309,7 +311,7 @@ Edit `config.toml`, then `./ctl.sh restart`. Every key is optional. The ones you
 | `capture_mode` | `"all"` records all system audio if the remote side comes out silent |
 | `whisper_model`, `mlx_llm_model` | Mac: smaller models for 8 GB Macs, e.g. `mlx-community/whisper-small-mlx` and `mlx-community/Qwen2.5-7B-Instruct-4bit` |
 | `gguf_model` | Windows: `owner/repo/file.gguf` on Hugging Face, e.g. the 14B one on a 16 GB PC with time to spare |
-| `llm_backend` | `"ollama"` to use a local Ollama server instead (loopback addresses only) |
+| `llm_backend` | `"ollama"` to use a local Ollama server instead (loopback addresses only); `"cloud"` for [your company's AI](#using-your-companys-ai) |
 | `ollama_model` | An Ollama model, or `"running"` for whichever one is loaded, with `ollama_fallback_model` for when none is |
 | `config.local.toml` | Optional file next to `config.toml`; its keys win, and it stays out of git |
 | `speaker_*`, `max_speakers` | Speaker tuning, see [Speakers](#speakers) |
@@ -320,14 +322,79 @@ Edit `config.toml`, then `./ctl.sh restart`. Every key is optional. The ones you
 Model defaults depend on the system and are picked in `platforms/macos.py` and `platforms/windows.py`. Run
 `./ctl.sh download-models` after changing a model.
 
+## Using your company's AI
+
+Don't want a local model? Choose **With my company's AI** when the app first opens, or under **Settings**, or run
+`./ctl.sh ai --set <provider>`. Speech recognition and voices still run on your computer, so those models are still
+downloaded, but the large note-writing model is not.
+
+| Your company has | Provider | What you need |
+|---|---|---|
+| Anthropic API key | `anthropic` | The key |
+| Claude on AWS, Google Cloud or Azure | `bedrock`, `vertex`, `foundry` | Your AWS or `gcloud` sign-in on this computer (a key for Foundry) |
+| Claude Team or Enterprise seat | `claude-cli` | Claude Code installed and signed in |
+| Gemini API key | `gemini` | The key and a model name |
+| Gemini on Google Cloud | `gemini-vertex` | Your `gcloud` sign-in and a model name |
+| Gemini Code Assist or Workspace seat | `gemini-cli` | Gemini CLI installed and signed in, and a Google Cloud project |
+| GitHub Copilot seat | `copilot-cli` | Copilot CLI installed and signed in |
+| LiteLLM, Azure OpenAI or another gateway | `openai` | Its `https://` address, a key and a model name |
+
+A chat seat usually comes with no API key, so the three `-cli` providers run the vendor's own command, signed in by
+you. MeetingScribe never sees or stores that sign-in. They use your seat's quota, and each company's plan decides
+whether another app may run them, so check yours. `gemini-cli` and `copilot-cli` have not been tested against a real
+account yet.
+
+Those commands are agents that can run programs, and a transcript is text anyone on the call could have dictated, so
+MeetingScribe starts them with every tool turned off, in an empty folder.
+
+API keys are kept in your macOS Keychain or Windows Credential Manager. `./ctl.sh ai` tests the connection,
+`./ctl.sh ai --local` goes back to the local model, and `./ctl.sh ai --forget` also deletes the key. If the provider
+fails during a meeting, you still get a basic note with the full transcript.
+
+## Handing tasks to the AI
+
+Open a meeting and choose **Hand to AI** on an action item. It works with whichever AI writes your notes, but a model
+on your computer will only finish small, clearly described changes. You need `git`, and `gh` signed in with
+`gh auth login`.
+
+First add where work can happen on the **Tasks** page: a git repository with the commands that test it, or a plain
+local folder for work with no repository. Then:
+
+1. You read and can reword the task, because it came from what people said.
+2. The AI says which repositories it touches and asks what it needs. You confirm the repositories and answer.
+3. Each repository gets a separate worktree and branch. Your own checkouts are not touched.
+4. The AI edits files. MeetingScribe runs your commands, and shows the AI any failure, up to 4 attempts.
+5. When every changed repository passes, MeetingScribe pushes the branches and opens **draft** PRs, without asking
+   again. PRs for one task link to each other and suggest a merge order.
+
+A **local folder** has no branch or PR. The AI works on a copy, and when your commands pass the changes are copied
+back, with a backup and an **Undo** button. With no commands there, nothing proves the work, so you read the list of
+files and press **Apply** yourself. If you edited one of those files meanwhile, nothing is applied.
+
+If one place keeps failing, nothing is published, so everything stays in step. You can try again with a hint, or
+choose to open PRs for those that passed.
+
+**What limits it.** The AI can only read and edit files in the task's worktrees; it is given no shell. It can't change
+CI, git hooks or tool settings, delete a test file, or push anything that looks like a key. Commits and pushes skip git
+hooks, because those are files it could have edited.
+
+**What doesn't.** Your approved commands run the code the AI just wrote, with your account's access to this computer.
+Secrets are removed from their environment, but that code could still read your files. Read the task before you start
+it, and only start tasks you trust. With company AI, the code it reads is sent to your provider.
+
 ## Privacy and consent
 
 - Audio is written only to the recordings folder (see *What the installer creates*) and deleted once the note is
   saved.
-- Whisper and the LLM run on your computer through MLX, faster-whisper and llama.cpp (or Ollama on 127.0.0.1).
-- Offline flags are set before any ML library loads, and no saved Hugging Face token is ever sent. To check on a
-  Mac, run `nettop -p $(pgrep -f "meeting_scribe.py process")` while a meeting is processed; on Windows, watch
-  the python process in Resource Monitor's Network tab. There are no connections.
+- Whisper runs on your computer through MLX or faster-whisper. So does the LLM, through MLX or llama.cpp (or Ollama
+  on 127.0.0.1), unless you choose your company's AI.
+- With your company's AI, transcript text, including what other people said, is sent to the provider you agreed to.
+  So are the notes and names used for `ask` and Jira drafts. Audio, voiceprints and screen pictures are never sent.
+  Nothing is sent until you have agreed to that provider, even if `config.toml` is edited by hand. Your company's
+  agreement with the provider decides how the text is kept.
+- Offline flags are set before any ML library loads, and no saved Hugging Face token is ever sent. With a local LLM,
+  you can check on a Mac by running `nettop -p $(pgrep -f "meeting_scribe.py process")` while a meeting is processed;
+  on Windows, watch the python process in Resource Monitor's Network tab. There are no connections.
 - Saved voices are a short audio clip per named person, plus numbers made from it, in the `voices` folder. Both
   are biometric data. Delete one any time in the app's **People** page, or with `voices --forget`.
 - With `screen_names` on, the recorder looks at the meeting window up to 12 times a call. Each picture is read for
@@ -361,6 +428,8 @@ Model defaults depend on the system and are picked in `platforms/macos.py` and `
 | `meeting_scribe.py` | The program: background daemon, processing pipeline and CLI |
 | `meetingscribe_app.py`, `ui/` | The desktop app: a window over the same program |
 | `screen_names.py` | Reading names from the meeting window |
+| `cloud_llm.py` | Writing notes with your company's AI |
+| `task_agent.py` | Handing an action item to the AI, through to draft PRs |
 | `packaging/` | Building the Windows installer and the Mac disk image (run by `.github/workflows/release.yml`) |
 | `platforms/` | What differs per system: call detection, the app's audio capture, notifications, default models (`macos.py`, `windows.py`) |
 | `config.toml` | Your settings |

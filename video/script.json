@@ -188,6 +188,25 @@
       ]
     },
     {
+      "id": "handoff",
+      "min": 15,
+      "lines": [
+        "And action items do not have to wait for you.",
+        "Choose Hand to AI on any one. Your local or company AI reads the task, works out where it belongs, and asks what it needs to know.",
+        "You answer, and choose where it works: one repository, several, or a plain folder."
+      ]
+    },
+    {
+      "id": "handwork",
+      "min": 22,
+      "lines": [
+        "It changes a separate copy, never your own checkout.",
+        "It can only edit files. MeetingScribe runs the test commands you approved, and shows the AI any failure, until they pass.",
+        "Then it opens draft pull requests, one per repository, linked to each other.",
+        "A plain folder has no pull request, so its files are updated, with a backup and an undo button."
+      ]
+    },
+    {
       "id": "usecases",
       "min": 13,
       "lines": [
@@ -199,8 +218,17 @@
       "id": "privacy",
       "min": 10,
       "lines": [
-        "Recording, transcription, and every model stay on your computer.",
+        "By default, recording, transcription, and every model stay on your computer.",
         "The only thing that leaves is the Jira update you approved, sent straight to your own Jira site."
+      ]
+    },
+    {
+      "id": "company",
+      "min": 17,
+      "lines": [
+        "Do not want a local model? Let your company's AI write the notes instead.",
+        "Use an API key, your Amazon, Google or Azure account, a company gateway, or the Claude, Gemini or Copilot command you are already signed in to.",
+        "Only text is sent, and only after you agree. Audio and voices never leave."
       ]
     },
     {
@@ -231,6 +259,16 @@
         "The desktop app is new. It has been tested with recorded voices and a simulated call, not yet in real Teams or Zoom meetings, and the Mac app only on automated test machines.",
         "The Jira screen is new too. So far it has only created tickets on a simulated Jira.",
         "And recording people comes with rules. Tell them, and follow the law and your company's policy."
+      ]
+    },
+    {
+      "id": "newer",
+      "min": 22,
+      "lines": [
+        "The newest features have limits of their own.",
+        "The commands you approve run the code the AI just wrote, on your computer, so read a task before you start it.",
+        "Small local models struggle with code. In our test, one went in circles and never finished.",
+        "Of the company routes, only the signed-in Claude command has been run for real. And pull requests have only been tested against a stand-in for GitHub."
       ]
     },
     {

@@ -26,7 +26,7 @@ min_meeting_s = 10
 # Left unset, each OS picks its own: Mac = mlx-whisper + mlx Qwen 2.5 14B; Windows =
 # faster-whisper + llama.cpp Qwen 2.5 GGUF (14B with 24 GB of RAM or more, else 7B).
 # whisper_model = "mlx-community/whisper-large-v3-turbo"   # Windows: "dropbox-dash/faster-whisper-large-v3-turbo"
-# llm_backend = "mlx"         # "mlx" (Mac), "llamacpp" (Windows) or "ollama" (local server)
+# llm_backend = "mlx"         # "mlx" (Mac), "llamacpp" (Windows), "ollama" (local server) or "cloud" (see [cloud_llm])
 mlx_llm_model = "mlx-community/Qwen2.5-14B-Instruct-4bit"   # summary, action items and work filter
 # gguf_model = "bartowski/Qwen2.5-14B-Instruct-GGUF/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
 ollama_model = "qwen2.5:14b"
@@ -39,6 +39,20 @@ work_filter_model = ""        # "" = same model as mlx_llm_model (loaded once); 
 
 # Suspected echo / low-confidence lines are kept and tagged in the note; true = delete them
 drop_suspect_lines = false
+
+# Company AI (optional): choose it in the app's Settings, or with `./ctl.sh ai --set <provider>`.
+# Transcript text goes to that provider; audio, voices and screen pictures stay here. API keys are kept
+# in your keychain, not this file, and nothing is sent until you have agreed to the provider.
+# Providers: anthropic, bedrock, vertex, foundry, gemini, gemini-vertex, openai, claude-cli, gemini-cli, copilot-cli
+[cloud_llm]
+provider = ""
+model = ""                    # "" = the provider's default, where it has one
+base_url = ""                 # https:// address of an OpenAI-compatible gateway ("openai")
+region = ""                   # "bedrock", "vertex", "gemini-vertex"
+project = ""                  # Google Cloud project: "vertex", "gemini-vertex", "gemini-cli"
+resource = ""                 # "foundry"
+ssl_strict = false            # false = accept Zscaler-style proxy CAs (chain and hostname still checked)
+ca_bundle = ""                # corporate root CA .pem, if HTTPS fails with a certificate error
 
 # Jira (optional): `./ctl.sh jira` drafts tickets from a meeting and asks you before every push.
 # Credentials never go in this file: you paste a token or browser session cookie when asked, and

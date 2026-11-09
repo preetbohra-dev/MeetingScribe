@@ -83,6 +83,7 @@ class Api:
         self.download = None
         self._window = None  # underscore: pywebview walks every public attribute for methods to expose
         self._jira_jobs = {}
+        self._task_jobs = {}
         self._jira_lock = threading.Lock()  # a card can't be approved twice by a double click
 
     @property
@@ -103,12 +104,48 @@ class Api:
     def setup_state(self):
         cfg = self.cfg
         return {"terms_ok": ms.terms_accepted(cfg), "models_ok": ms.models_ready(cfg), "terms": ms.DISCLAIMER,
+                "ai_chosen": bool(ms.ai_choice(cfg)) or ms.models_ready(cfg), "cloud": cfg["llm_backend"] == "cloud",
                 "platform": sys.platform, "downloading": self._downloading()}
 
     def accept_terms(self, screen_names):
         cfg = self.cfg
         ms.save_settings({"screen_names": bool(screen_names)})
         ms.record_terms(cfg)
+        return True
+
+    # -- who writes the notes. A key goes from the page to the keychain and never comes back.
+
+    def cloud_state(self):
+        cfg = self.cfg
+        s = cfg["cloud_llm"]
+        return {"cloud": cfg["llm_backend"] == "cloud", "settings": {k: s[k] for k in ms.CLOUD_FIELDS},
+                "providers": [{"id": k, "label": p["label"], "key": p["key"], "model": p["model"], "fields": p["fields"],
+                               "optional": p.get("optional", []), "note": p.get("note", ""),
+                               "saved": bool(p["key"] and ms.ai_key(k)), "notice": ms.AI_NOTICE.format(p["label"])}
+                              for k, p in ms.cloud_llm.PROVIDERS.items()]}
+
+    def cloud_save(self, values, key, agreed):
+        """Tests the connection and switches to it only if that worked."""
+        if agreed is not True:
+            return {"ok": False, "message": "Tick the box to agree first."}
+        cfg = self.cfg
+        settings = {k: values[k].strip() for k in ms.CLOUD_FIELDS if isinstance(values.get(k), str)}
+        key = key.strip() if isinstance(key, str) else ""
+        try:
+            ms.try_cloud_settings(settings, key)
+            ms.save_cloud_choice(cfg, settings, key)
+        except Exception as e:  # shown on the page: a wrong key, a missing command, no network
+            return {"ok": False, "message": str(e)}
+        (cfg["work_dir"] / "reload").touch()
+        return {"ok": True}
+
+    def use_local(self, forget=False):
+        cfg = self.cfg
+        provider = cfg["cloud_llm"]["provider"]
+        if forget and ms.cloud_llm.PROVIDERS.get(provider, {}).get("key"):
+            ms.keychain("delete", provider, service=ms.cloud_llm.KEY_SERVICE)
+        ms.use_local_ai(cfg)
+        (cfg["work_dir"] / "reload").touch()
         return True
 
     def _downloading(self):
@@ -451,6 +488,121 @@ class Api:
         if isinstance(key, str) and ms.ISSUE_KEY.fullmatch(key) and self.cfg["jira"]["base_url"]:
             import webbrowser
             webbrowser.open(f"{self.cfg['jira']['base_url'].rstrip('/')}/browse/{key}")
+        return True
+
+    # -- tasks handed to the AI
+
+    @property
+    def _tasks(self):
+        return ms.task_agent.Tasks(ms, self.cfg)
+
+    def _task_running(self, tid):
+        job = self._task_jobs.get(tid)
+        return bool(job and job.poll() is None)
+
+    def _spawn_task(self, tid):
+        self._task_jobs[tid] = subprocess.Popen(ms.self_command("task-run", tid), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                                creationflags=CREATE_NO_WINDOW, start_new_session=sys.platform != "win32")
+
+    def _task_call(self, fn, *args):
+        """Runs fn; a TaskError is a sentence for the page."""
+        try:
+            return {"ok": True, "value": fn(*args)}
+        except ms.task_agent.TaskError as e:
+            return {"ok": False, "message": str(e)}
+
+    def task_setup(self):
+        cfg = self.cfg
+        provider = self._tasks.provider()
+        info = ms.cloud_llm.PROVIDERS.get(provider, {})
+        return {"repos": self._tasks.repos(), "provider": info.get("label", ""), "note": info.get("note", ""),
+                "local": cfg["llm_backend"] != "cloud", "gh": bool(ms.cloud_llm.find_command("gh"))}
+
+    def task_repo_suggest(self, path):
+        return ms.task_agent.suggest_commands(path) if isinstance(path, str) and Path(path).is_dir() else []
+
+    def task_repo_save(self, path, commands, kind="repo"):
+        return self._task_call(self._tasks.save_repo, str(path), commands if isinstance(commands, list) else [], "folder" if kind == "folder" else "repo")
+
+    def task_repo_forget(self, name):
+        self._tasks.forget_repo(str(name))
+        return True
+
+    def tasks(self):
+        return [self._task_view(t) for t in self._tasks.all()]
+
+    def _task_view(self, t):
+        if t["status"] == "working" and not self._task_running(t["id"]):
+            t = {**t, "status": "attention", "error": "That was interrupted before it finished."}
+        return {k: t.get(k) for k in ("id", "meeting", "task", "status", "stage", "understanding", "plan", "questions", "order", "repos",
+                                      "round", "results", "prs", "applied", "log", "error", "title", "summary", "created")}
+
+    def task(self, tid):
+        return self._task_view(self._tasks.get(tid))
+
+    def task_start(self, sid, task, agreed):
+        d = self._session(sid)
+        _, meta = ms.session_speakers(d)
+        note = Path(meta.get("notes") or "/missing")
+        text = note.read_text(encoding="utf-8") if note.exists() else ""
+        lines = "\n".join("- " + s for s in ms.note_section(text, "Summary"))
+        turns = ms.read_json(d / "transcript.json", []) or []
+        said = "\n".join(f"{t['speaker']}: {t['text']}" for t in turns)
+        r = self._task_call(self._tasks.new, sid, meta.get("title", "Meeting"), task, f"SUMMARY:\n{lines}\n\nTRANSCRIPT:\n{said}", agreed)
+        if r["ok"]:
+            self._spawn_task(r["value"]["id"])
+            r["value"] = r["value"]["id"]
+        return r
+
+    def task_answer(self, tid, repos, answers):
+        r = self._task_call(self._tasks.answer, tid, repos if isinstance(repos, list) else [], answers)
+        if r["ok"]:
+            self._spawn_task(tid)
+            r["value"] = tid
+        return r
+
+    def task_retry(self, tid, note=""):
+        if self._task_running(tid):
+            return {"ok": False, "message": "It's already working."}
+        r = self._task_call(self._tasks.retry, tid, note)
+        if r["ok"]:
+            self._spawn_task(tid)
+            r["value"] = tid
+        return r
+
+    def task_publish_passing(self, tid):
+        if self._task_running(tid):
+            return {"ok": False, "message": "It's already working."}
+        tasks = self._tasks
+        t = tasks.get(tid)
+        threading.Thread(target=tasks.publish_passing, args=(t,), daemon=True).start()
+        return {"ok": True}
+
+    def task_apply(self, tid):
+        return self._task_call(self._tasks.apply_reviewed, tid)
+
+    def task_undo(self, tid):
+        return self._task_call(self._tasks.undo, tid)
+
+    def task_stop(self, tid):
+        if self._task_running(tid):
+            ms.task_agent.kill_tree(self._task_jobs[tid])
+        tasks = self._tasks
+        t = tasks.get(tid)
+        if t["status"] == "working":
+            t.update(status="stopped", error="")
+            tasks.save(t)
+        return True
+
+    def task_discard(self, tid):
+        self.task_stop(tid)
+        self._tasks.discard(tid)
+        return True
+
+    def task_open(self, url):
+        if isinstance(url, str) and re.fullmatch(r"https://[\w.-]+/[\w./-]+/pull/\d+", url):
+            import webbrowser
+            webbrowser.open(url)
         return True
 
     # -- settings

@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   MeetingScribe control, the Windows twin of ctl.sh. Run it as .\ctl from the repository:
-  .\ctl app | start | stop | restart | status | logs | name | reject | listen | voices | search | ask | refilter | jira | terms
+  .\ctl app | start | stop | restart | status | logs | name | reject | listen | voices | search | ask | refilter | jira | ai | terms
 #>
 
 param([Parameter(Position = 0)][string]$Command = 'status',
@@ -63,9 +63,9 @@ switch ($Command) {
     $session = if ($Rest.Count -ge 2) { $Rest[1] } else { 'latest' }
     Invoke-Scribe listen @label --session $session
   }
-  { $_ -in 'voices', 'search', 'ask', 'refilter', 'terms', 'jira', 'process', 'download-models' } { Invoke-Scribe $Command @Rest }
+  { $_ -in 'voices', 'search', 'ask', 'refilter', 'terms', 'jira', 'ai', 'process', 'download-models' } { Invoke-Scribe $Command @Rest }
   default {
-    'usage: .\ctl app|start|stop|restart|status|logs|name|reject|listen|voices|search|ask|refilter|jira|terms|process|download-models'
+    'usage: .\ctl app|start|stop|restart|status|logs|name|reject|listen|voices|search|ask|refilter|jira|ai|terms|process|download-models'
     exit 1
   }
 }

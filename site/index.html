@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MeetingScribe: meeting notes that write themselves</title>
-<meta name="description" content="MeetingScribe records your Teams, Zoom and Google Meet calls on your Mac or Windows PC and writes the notes for you: a summary, action items and a transcript that knows who said what. Nothing leaves the machine.">
+<meta name="description" content="MeetingScribe records your Teams, Zoom and Google Meet calls on your Mac or Windows PC and writes the notes for you: a summary, action items and a transcript that knows who said what. By default, nothing leaves the machine.">
 <meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="MeetingScribe">
@@ -196,7 +196,7 @@ footer a{color:var(--ink-2)}
   <div class="wrap hero">
     <p class="kicker">Teams, Zoom and Meet · Mac and Windows</p>
     <h1><span>Join the call. Hang up.</span> <span>The notes are written.</span></h1>
-    <p class="lede">MeetingScribe sits quietly in the background. When Teams, Zoom or a meeting in your browser picks up your microphone it starts recording, and a few minutes after you leave it saves a note with a summary, action items and a transcript that knows who said what. Everything runs on your own computer.</p>
+    <p class="lede">MeetingScribe sits quietly in the background. When Teams, Zoom or a meeting in your browser picks up your microphone it starts recording, and a few minutes after you leave it saves a note with a summary, action items and a transcript that knows who said what. Everything runs on your own computer, unless you choose your company&rsquo;s AI.</p>
     <div class="ctas">
       <a class="btn primary" href="#film">Watch the demo</a>
       <a class="btn ghost" href="https://github.com/preetbohra-dev/MeetingScribe">Source on GitHub</a>
@@ -207,11 +207,11 @@ footer a{color:var(--ink-2)}
   <figure class="wrap film" id="film">
     <div class="frame">
       <video controls playsinline preload="metadata" poster="poster.jpg?v=5">
-        <source src="demo.mp4?v=5" type="video/mp4">
-        Your browser can't play this video. <a href="demo.mp4?v=5">Download it</a> instead.
+        <source src="demo.mp4?v=6" type="video/mp4">
+        Your browser can't play this video. <a href="demo.mp4?v=6">Download it</a> instead.
       </video>
     </div>
-    <figcaption>About six minutes, narrated, including what it still gets wrong. The people, meetings and tickets in it are made up.</figcaption>
+    <figcaption>About eight minutes, narrated, including what it still gets wrong. The people, meetings and tickets in it are made up.</figcaption>
   </figure>
 
   <section class="wrap" id="note">
@@ -319,17 +319,33 @@ footer a{color:var(--ink-2)}
     </div>
   </section>
 
+  <section class="wrap" id="tasks">
+    <div class="split rise">
+      <div>
+        <p class="eyebrow">Tasks, if you want</p>
+        <h2>Hand an action item to the AI.</h2>
+        <p class="intro" style="margin-bottom:14px">Choose <b>Hand to AI</b> on an action item. It reads the task, asks what it needs, and works in a separate copy, across several repositories if the work spans them.</p>
+        <p>The AI can only edit files. MeetingScribe runs the commands you approved and shows it any failure. Those commands do run the AI&rsquo;s code on your computer, so read a task before you start it. Small local models will only finish small, clearly described changes.</p>
+      </div>
+      <ul class="jira">
+        <li><em class="nw">Repository</em><span>When your checks pass, it opens a draft PR. PRs for one task link to each other.</span></li>
+        <li><em class="cm">Folder</em><span>No repository? The folder is updated, with a backup and an Undo button.</span></li>
+        <li><em class="sk">Failing</em><span>If one place keeps failing, nothing is published until you decide.</span></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="wrap" id="privacy">
     <div class="rise">
       <p class="eyebrow">Privacy</p>
-      <h2>Your meetings stay on your computer.</h2>
-      <p class="intro">The models are downloaded once. After that MeetingScribe runs with the network switched off for them, and Jira is the only thing that ever talks to the internet, and only when you start it.</p>
+      <h2>Your meetings stay on your computer, unless you choose otherwise.</h2>
+      <p class="intro">By default the models are downloaded once, and after that MeetingScribe runs with the network switched off for them. If you&rsquo;d rather not run a local model, you can use your company&rsquo;s Claude, Gemini or Copilot, after agreeing to send it the text.</p>
     </div>
     <div class="facts rise">
       <div><h3>Audio</h3><p>Written to a local app folder while the call runs, and deleted as soon as the note is saved.</p></div>
-      <div><h3>Models</h3><p>Whisper and Qwen run on your own hardware: MLX on a Mac, faster-whisper and llama.cpp on Windows. Ollama works too, if it&rsquo;s on your machine.</p></div>
+      <div><h3>Models</h3><p>Whisper and Qwen run on your own hardware: MLX on a Mac, faster-whisper and llama.cpp on Windows. Ollama works too, if it&rsquo;s on your machine. With company AI, transcript text goes to that provider; audio and voiceprints never do.</p></div>
       <div><h3>Voiceprints</h3><p>A few hundred numbers per person in a local file. They can&rsquo;t be turned back into audio, and you can delete any of them.</p></div>
-      <div><h3>Check for yourself</h3><p>Watch <code>nettop</code> on a Mac, or Resource Monitor on Windows, while a meeting is being processed. There are no connections to see.</p></div>
+      <div><h3>Check for yourself</h3><p>Watch <code>nettop</code> on a Mac, or Resource Monitor on Windows, while a meeting is being processed with a local model. There are no connections to see.</p></div>
     </div>
   </section>
 </main>
@@ -338,6 +354,7 @@ footer a{color:var(--ink-2)}
   <section class="wrap narrow">
     <p class="eyebrow">Install</p>
     <h2>One command. About fifteen minutes, most of it downloading.</h2>
+    <p>Prefer an installer? <a href="https://github.com/preetbohra-dev/MeetingScribe/releases/latest">Download the desktop app</a> for Mac or Windows.</p>
     <ul class="req">
       <li>Apple silicon Mac on macOS 14.4+, or Windows 11</li>
       <li>6&ndash;10 GB free</li>

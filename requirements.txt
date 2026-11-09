@@ -7,6 +7,7 @@ keyring
 huggingface_hub
 onnxruntime
 pywebview  # the desktop app's window
+anthropic[vertex,bedrock]  # company AI: Claude directly, on Google Cloud, AWS or Foundry
 
 # macOS: Apple-silicon models and the system frameworks
 mlx-whisper; sys_platform == "darwin"
