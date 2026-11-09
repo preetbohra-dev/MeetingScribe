@@ -3,7 +3,7 @@ window.TIMELINE = {
   {
    "id": "title",
    "start": 0.0,
-   "dur": 12.065,
+   "dur": 11.276,
    "lines": [
     {
      "t": 0.6,
@@ -12,11 +12,11 @@ window.TIMELINE = {
     },
     {
      "t": 2.117,
-     "dur": 5.611,
-     "text": "It turns your Teams, Zoom and Google Meet calls into clean notes, and now into Jira tickets."
+     "dur": 4.821,
+     "text": "It turns your Teams, Zoom and Google Meet calls into clean notes and Jira tickets."
     },
     {
-     "t": 8.008,
+     "t": 7.219,
      "dur": 3.157,
      "text": "Without anything leaving your computer, unless you say so."
     }
@@ -24,7 +24,7 @@ window.TIMELINE = {
   },
   {
    "id": "problem",
-   "start": 12.065,
+   "start": 11.276,
    "dur": 8,
    "lines": [
     {
@@ -40,8 +40,30 @@ window.TIMELINE = {
    ]
   },
   {
+   "id": "app",
+   "start": 19.276,
+   "dur": 16.78,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 3.627,
+     "text": "MeetingScribe is now a desktop app, so you do not need a terminal."
+    },
+    {
+     "t": 4.507,
+     "dur": 5.568,
+     "text": "Download the installer for your Mac or Windows PC, open it, and answer a few questions."
+    },
+    {
+     "t": 10.355,
+     "dur": 5.525,
+     "text": "The first run downloads the AI models once, six gigabytes or more, with a progress bar."
+    }
+   ]
+  },
+  {
    "id": "detect",
-   "start": 20.065,
+   "start": 36.056,
    "dur": 13.196,
    "lines": [
     {
@@ -63,7 +85,7 @@ window.TIMELINE = {
   },
   {
    "id": "apps",
-   "start": 33.261,
+   "start": 49.252,
    "dur": 11.849,
    "lines": [
     {
@@ -80,7 +102,7 @@ window.TIMELINE = {
   },
   {
    "id": "browser",
-   "start": 45.111,
+   "start": 61.101,
    "dur": 17.676,
    "lines": [
     {
@@ -102,8 +124,8 @@ window.TIMELINE = {
   },
   {
    "id": "pipeline",
-   "start": 62.787,
-   "dur": 17.017,
+   "start": 78.777,
+   "dur": 17.423,
    "lines": [
     {
      "t": 0.6,
@@ -117,11 +139,11 @@ window.TIMELINE = {
     },
     {
      "t": 6.237,
-     "dur": 4.309,
-     "text": "Voiceprints tell the speakers apart, and recognise people it has heard before."
+     "dur": 4.715,
+     "text": "A voice model tells the speakers apart, and names only the people it is sure about."
     },
     {
-     "t": 10.827,
+     "t": 11.232,
      "dur": 5.291,
      "text": "A local language model drops the small talk, then writes the summary and the action items."
     }
@@ -129,50 +151,106 @@ window.TIMELINE = {
   },
   {
    "id": "note",
-   "start": 79.804,
+   "start": 96.2,
    "dur": 11,
    "lines": [
     {
      "t": 0.6,
-     "dur": 3.904,
-     "text": "A few minutes later, a Markdown note lands in your Meeting Notes folder."
+     "dur": 4.587,
+     "text": "When it finishes, a Markdown note lands in your Meeting Notes folder, and in the app."
     },
     {
-     "t": 4.784,
-     "dur": 2.816,
-     "text": "Who was there, what was decided, and who owes what."
+     "t": 5.467,
+     "dur": 3.925,
+     "text": "Who was there, who did the talking, what was decided, and who owes what."
+    }
+   ]
+  },
+  {
+   "id": "who",
+   "start": 107.2,
+   "dur": 19,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 3.861,
+     "text": "Earlier versions could add someone to the notes who was never in the meeting."
+    },
+    {
+     "t": 4.741,
+     "dur": 7.68,
+     "text": "Now a name needs two things: a very strong voice match, and evidence the person was there, their name on screen or said aloud."
+    },
+    {
+     "t": 12.701,
+     "dur": 4.011,
+     "text": "Anything less stays Speaker 2, with a maybe beside it for you to confirm."
     }
    ]
   },
   {
    "id": "voices",
-   "start": 90.804,
-   "dur": 8.5,
+   "start": 126.2,
+   "dur": 10.5,
    "lines": [
     {
      "t": 0.6,
-     "dur": 2.112,
-     "text": "An unknown voice? Name it once."
+     "dur": 2.773,
+     "text": "An unknown voice? Hear a clip, and name it once."
     },
     {
-     "t": 2.992,
-     "dur": 3.285,
-     "text": "From the next meeting on, it is recognised automatically."
+     "t": 3.653,
+     "dur": 4.8,
+     "text": "From then on, it is recognised, as long as there is evidence that person attended."
+    }
+   ]
+  },
+  {
+   "id": "find",
+   "start": 136.7,
+   "dur": 11,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 3.883,
+     "text": "Every meeting is searchable, and you can ask questions across all of them."
+    },
+    {
+     "t": 4.763,
+     "dur": 4.139,
+     "text": "Each note also saves a data file your other AI tools can read."
+    }
+   ]
+  },
+  {
+   "id": "guards",
+   "start": 147.7,
+   "dur": 9.524,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 3.221,
+     "text": "If your microphone goes silent during a call, it warns you."
+    },
+    {
+     "t": 4.101,
+     "dur": 4.523,
+     "text": "And if the AI model fails, you still get a basic note with the full transcript."
     }
    ]
   },
   {
    "id": "jira",
-   "start": 99.304,
-   "dur": 8.329,
+   "start": 157.224,
+   "dur": 8.884,
    "lines": [
     {
      "t": 0.6,
-     "dur": 1.365,
-     "text": "And now, the new part."
+     "dur": 1.92,
+     "text": "Then, if your team uses Jira."
     },
     {
-     "t": 2.245,
+     "t": 2.8,
      "dur": 5.184,
      "text": "MeetingScribe can turn those action items into Jira tickets, with you approving every one."
     }
@@ -180,7 +258,7 @@ window.TIMELINE = {
   },
   {
    "id": "signin",
-   "start": 107.633,
+   "start": 166.108,
    "dur": 17.631,
    "lines": [
     {
@@ -197,7 +275,7 @@ window.TIMELINE = {
   },
   {
    "id": "space",
-   "start": 125.264,
+   "start": 183.739,
    "dur": 6,
    "lines": [
     {
@@ -209,7 +287,7 @@ window.TIMELINE = {
   },
   {
    "id": "extract",
-   "start": 131.264,
+   "start": 189.739,
    "dur": 9.417,
    "lines": [
     {
@@ -226,7 +304,7 @@ window.TIMELINE = {
   },
   {
    "id": "search",
-   "start": 140.681,
+   "start": 199.156,
    "dur": 12,
    "lines": [
     {
@@ -243,7 +321,7 @@ window.TIMELINE = {
   },
   {
    "id": "decide",
-   "start": 152.681,
+   "start": 211.156,
    "dur": 15,
    "lines": [
     {
@@ -265,7 +343,7 @@ window.TIMELINE = {
   },
   {
    "id": "draft",
-   "start": 167.681,
+   "start": 226.156,
    "dur": 16.375,
    "lines": [
     {
@@ -287,7 +365,7 @@ window.TIMELINE = {
   },
   {
    "id": "board",
-   "start": 184.056,
+   "start": 242.531,
    "dur": 8.5,
    "lines": [
     {
@@ -304,7 +382,7 @@ window.TIMELINE = {
   },
   {
    "id": "usecases",
-   "start": 192.556,
+   "start": 251.031,
    "dur": 13,
    "lines": [
     {
@@ -321,7 +399,7 @@ window.TIMELINE = {
   },
   {
    "id": "privacy",
-   "start": 205.556,
+   "start": 264.031,
    "dur": 10.825,
    "lines": [
     {
@@ -338,8 +416,8 @@ window.TIMELINE = {
   },
   {
    "id": "windows",
-   "start": 216.381,
-   "dur": 13.407,
+   "start": 274.856,
+   "dur": 14.729,
    "lines": [
     {
      "t": 0.6,
@@ -348,28 +426,92 @@ window.TIMELINE = {
     },
     {
      "t": 4.976,
-     "dur": 7.531,
-     "text": "Both install with one command. On Windows it runs on the processor, or on an NVIDIA graphics card if you have one."
+     "dur": 8.853,
+     "text": "Use the installer, or one command in the terminal. On Windows it runs on the processor, or on an NVIDIA graphics card if you have one."
+    }
+   ]
+  },
+  {
+   "id": "limits",
+   "start": 289.585,
+   "dur": 27.537,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 3.093,
+     "text": "Now, the honest part. Here is what it can still get wrong."
+    },
+    {
+     "t": 3.973,
+     "dur": 5.056,
+     "text": "In a short meeting, someone who barely speaks can be missed, or folded into another voice."
+    },
+    {
+     "t": 9.309,
+     "dur": 7.125,
+     "text": "Strict naming means more Speaker 2s. Without a name on screen or said aloud, even people it knows stay a maybe."
+    },
+    {
+     "t": 16.715,
+     "dur": 3.797,
+     "text": "Cross-talk, accents and jargon can still garble the transcript."
+    },
+    {
+     "t": 20.792,
+     "dur": 5.845,
+     "text": "And a small local model can get details wrong, or invent them, so read the note before you act on it."
+    }
+   ]
+  },
+  {
+   "id": "early",
+   "start": 317.123,
+   "dur": 34.449,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 7.68,
+     "text": "It also asks a lot of your computer. Without a fast graphics card or an Apple chip, processing can take longer than the meeting."
+    },
+    {
+     "t": 8.56,
+     "dur": 5.184,
+     "text": "The installers are not signed yet, so Windows and macOS will warn you when you open them."
+    },
+    {
+     "t": 14.024,
+     "dur": 11.456,
+     "text": "The desktop app is new. It has been tested with recorded voices and a simulated call, not yet in real Teams or Zoom meetings, and the Mac app only on automated test machines."
+    },
+    {
+     "t": 25.76,
+     "dur": 1.899,
+     "text": "Jira still runs from the terminal."
+    },
+    {
+     "t": 27.939,
+     "dur": 5.611,
+     "text": "And recording people comes with rules. Tell them, and follow the law and your company's policy."
     }
    ]
   },
   {
    "id": "outro",
-   "start": 229.788,
-   "dur": 9.844,
+   "start": 351.572,
+   "dur": 9.716,
    "lines": [
     {
      "t": 0.6,
-     "dur": 4.843,
-     "text": "Install it once, join your meetings as usual, and review the tickets when you are ready."
+     "dur": 4.715,
+     "text": "Install it once, join your meetings as usual, and check the notes when you are ready."
     },
     {
-     "t": 5.723,
+     "t": 5.595,
      "dur": 3.221,
      "text": "MeetingScribe. Meetings, written down, and followed up."
     }
    ]
   }
  ],
- "total": 239.632
+ "total": 361.288
 };

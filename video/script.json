@@ -15,7 +15,7 @@
       "min": 7.5,
       "lines": [
         "Meet MeetingScribe.",
-        "It turns your Teams, Zoom and Google Meet calls into clean notes, and now into Jira tickets.",
+        "It turns your Teams, Zoom and Google Meet calls into clean notes and Jira tickets.",
         "Without anything leaving your computer, unless you say so."
       ]
     },
@@ -25,6 +25,15 @@
       "lines": [
         "Meetings create work.",
         "But notes go unwritten, action items get lost, and the tickets never get raised."
+      ]
+    },
+    {
+      "id": "app",
+      "min": 15,
+      "lines": [
+        "MeetingScribe is now a desktop app, so you do not need a terminal.",
+        "Download the installer for your Mac or Windows PC, open it, and answer a few questions.",
+        "The first run downloads the AI models once, six gigabytes or more, with a progress bar."
       ]
     },
     {
@@ -59,7 +68,7 @@
       "lines": [
         "When the call ends, everything runs right on your computer.",
         "Whisper transcribes both tracks.",
-        "Voiceprints tell the speakers apart, and recognise people it has heard before.",
+        "A voice model tells the speakers apart, and names only the people it is sure about.",
         "A local language model drops the small talk, then writes the summary and the action items."
       ]
     },
@@ -67,23 +76,48 @@
       "id": "note",
       "min": 11,
       "lines": [
-        "A few minutes later, a Markdown note lands in your Meeting Notes folder.",
-        "Who was there, what was decided, and who owes what."
+        "When it finishes, a Markdown note lands in your Meeting Notes folder, and in the app.",
+        "Who was there, who did the talking, what was decided, and who owes what."
+      ]
+    },
+    {
+      "id": "who",
+      "min": 19,
+      "lines": [
+        "Earlier versions could add someone to the notes who was never in the meeting.",
+        "Now a name needs two things: a very strong voice match, and evidence the person was there, their name on screen or said aloud.",
+        "Anything less stays Speaker 2, with a maybe beside it for you to confirm."
       ]
     },
     {
       "id": "voices",
-      "min": 8.5,
+      "min": 10.5,
       "lines": [
-        "An unknown voice? Name it once.",
-        "From the next meeting on, it is recognised automatically."
+        "An unknown voice? Hear a clip, and name it once.",
+        "From then on, it is recognised, as long as there is evidence that person attended."
+      ]
+    },
+    {
+      "id": "find",
+      "min": 11,
+      "lines": [
+        "Every meeting is searchable, and you can ask questions across all of them.",
+        "Each note also saves a data file your other AI tools can read."
+      ]
+    },
+    {
+      "id": "guards",
+      "min": 9,
+      "lines": [
+        "If your microphone goes silent during a call, it warns you.",
+        "And if the AI model fails, you still get a basic note with the full transcript."
       ]
     },
     {
       "id": "jira",
       "min": 6,
       "lines": [
-        "And now, the new part.",
+        "Then, if your team uses Jira.",
         "MeetingScribe can turn those action items into Jira tickets, with you approving every one."
       ]
     },
@@ -165,14 +199,36 @@
       "min": 9,
       "lines": [
         "MeetingScribe runs on Apple Silicon Macs and on Windows PCs.",
-        "Both install with one command. On Windows it runs on the processor, or on an NVIDIA graphics card if you have one."
+        "Use the installer, or one command in the terminal. On Windows it runs on the processor, or on an NVIDIA graphics card if you have one."
+      ]
+    },
+    {
+      "id": "limits",
+      "min": 24,
+      "lines": [
+        "Now, the honest part. Here is what it can still get wrong.",
+        "In a short meeting, someone who barely speaks can be missed, or folded into another voice.",
+        "Strict naming means more Speaker 2s. Without a name on screen or said aloud, even people it knows stay a maybe.",
+        "Cross-talk, accents and jargon can still garble the transcript.",
+        "And a small local model can get details wrong, or invent them, so read the note before you act on it."
+      ]
+    },
+    {
+      "id": "early",
+      "min": 30,
+      "lines": [
+        "It also asks a lot of your computer. Without a fast graphics card or an Apple chip, processing can take longer than the meeting.",
+        "The installers are not signed yet, so Windows and macOS will warn you when you open them.",
+        "The desktop app is new. It has been tested with recorded voices and a simulated call, not yet in real Teams or Zoom meetings, and the Mac app only on automated test machines.",
+        "Jira still runs from the terminal.",
+        "And recording people comes with rules. Tell them, and follow the law and your company's policy."
       ]
     },
     {
       "id": "outro",
       "min": 9,
       "lines": [
-        "Install it once, join your meetings as usual, and review the tickets when you are ready.",
+        "Install it once, join your meetings as usual, and check the notes when you are ready.",
         "MeetingScribe. Meetings, written down, and followed up."
       ]
     }
