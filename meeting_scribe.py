@@ -31,6 +31,7 @@ os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"  # every model is public; neve
 
 import argparse
 import base64
+import collections
 import datetime as dt
 import difflib
 import getpass
@@ -144,7 +145,7 @@ JIRA_DEFAULTS = {
     "verify_ssl": True,
     "ssl_strict": False,  # False = accept Zscaler-style proxy CAs (chain and hostname still checked)
     "ca_bundle": "",
-    "timeout_seconds": 30,
+    "timeout_seconds": 60,
 }
 
 log = logging.getLogger("meetingscribe")
@@ -250,6 +251,30 @@ def save_settings(values, vocabulary=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     log.info("settings changed: %s", sorted(values))
+
+
+def save_jira_settings(values):
+    """Change keys in config.toml's [jira] table, keeping everything else as it is."""
+    path = config_path()
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == "[jira]"), None)
+    if start is None:
+        lines += ["", "[jira]"]
+        start = len(lines) - 1
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+    for key, value in values.items():
+        text = f"{key} = {toml_value(value)}"
+        hit = next((i for i in range(start + 1, end) if re.match(rf"\s*{re.escape(key)}\s*=", lines[i])), None)
+        if hit is None:
+            lines.insert(start + 1, text)
+            end += 1
+        else:
+            comment = re.search(r'\s+#[^"\']*$', lines[hit])
+            lines[hit] = text + (comment.group(0) if comment else "")
+    text = "\n".join(lines) + "\n"
+    tomllib.loads(text)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
 def load_config():
@@ -2081,20 +2106,38 @@ class JiraError(Exception):
         self.status = status
 
 
+SECRET_PIECE = 1200  # Windows Credential Manager refuses anything over 1280 characters; SSO cookies can be longer
+PIECES_MARK = "meetingscribe-pieces:"
+
+
 def keychain(action, account, secret=None):
     """macOS login Keychain via the Security framework (keyring), so a secret is never put on a
-    command line where other processes could read it. "get" returns the secret or None."""
+    command line where other processes could read it. "get" returns the secret or None. A long
+    secret is kept in pieces, with the count under the account's own name."""
     import keyring
     import keyring.errors
+
+    def remove(name):
+        try:
+            keyring.delete_password(KEYCHAIN_SERVICE, name)
+        except keyring.errors.PasswordDeleteError:
+            pass
+
+    held = keyring.get_password(KEYCHAIN_SERVICE, account)
+    pieces = int(held[len(PIECES_MARK):]) if held and held.startswith(PIECES_MARK) else 0
     if action == "get":
-        return keyring.get_password(KEYCHAIN_SERVICE, account)
+        if not pieces:
+            return held
+        return "".join(keyring.get_password(KEYCHAIN_SERVICE, f"{account}#{i}") or "" for i in range(pieces))
+    for i in range(pieces):
+        remove(f"{account}#{i}")
     if action == "set":
-        keyring.set_password(KEYCHAIN_SERVICE, account, secret)
+        parts = [secret[i:i + SECRET_PIECE] for i in range(0, len(secret), SECRET_PIECE)]
+        for i, part in enumerate(parts if len(parts) > 1 else []):
+            keyring.set_password(KEYCHAIN_SERVICE, f"{account}#{i}", part)
+        keyring.set_password(KEYCHAIN_SERVICE, account, secret if len(parts) < 2 else f"{PIECES_MARK}{len(parts)}")
         return None
-    try:
-        keyring.delete_password(KEYCHAIN_SERVICE, account)
-    except keyring.errors.PasswordDeleteError:
-        pass
+    remove(account)
     return None
 
 
@@ -2148,7 +2191,7 @@ class JiraClient:
         require_https(j["base_url"])
         self.base = j["base_url"].rstrip("/")
         self.cloud = j["deployment"].lower() == "cloud"
-        self.timeout = j["timeout_seconds"]
+        self.timeout, self.secret = j["timeout_seconds"], secret
         self.headers = {"Accept": "application/json", "User-Agent": "MeetingScribe/1.0"}
         if auth == "cookie":
             self.headers["Cookie"] = secret
@@ -2170,6 +2213,8 @@ class JiraClient:
         url = self.base + path + ("?" + urllib.parse.urlencode(params) if params else "")
         headers, data = dict(self.headers), None
         if body is not None:
+            if self.secret in json.dumps(body, ensure_ascii=False):
+                raise JiraError("Refused: this text contains your Jira sign-in, so it was not sent.", 400)
             data = json.dumps(body).encode()
             # Jira's XSRF check rejects cookie-authenticated writes without this header.
             headers.update({"Content-Type": "application/json", "X-Atlassian-Token": "no-check"})
@@ -2179,7 +2224,7 @@ class JiraClient:
                 raw, ctype = r.read(), r.headers.get("Content-Type", "")
         except urllib.error.HTTPError as e:
             detail = e.read()[:400].decode("utf-8", "replace")
-            hint = {401: " (credentials rejected or expired)", 403: " (no permission)",
+            hint = {401: " (credentials rejected or expired)", 403: " (no permission, or a CAPTCHA after failed logins)",
                     404: " (not found: wrong base_url or deployment?)"}.get(e.code, "")
             raise JiraError(f"HTTP {e.code}{hint} for {method} {path}: {detail}", e.code) from None
         except urllib.error.URLError as e:
@@ -2205,10 +2250,10 @@ class JiraClient:
     def issue(self, key):
         return self.get(f"/rest/api/2/issue/{key}", {"fields": ",".join(SEARCH_FIELDS)})
 
-    def search(self, jql, limit):
+    def search(self, jql, limit, fields=None):
         issues, token = [], None
         while len(issues) < limit:
-            params = {"jql": jql, "fields": ",".join(SEARCH_FIELDS), "maxResults": min(100, limit - len(issues))}
+            params = {"jql": jql, "fields": fields or ",".join(SEARCH_FIELDS), "maxResults": min(100, limit - len(issues))}
             if self.cloud:  # Cloud's enhanced search pages with a token
                 if token:
                     params["nextPageToken"] = token
@@ -2254,6 +2299,17 @@ class JiraClient:
 
     def create(self, fields):
         return self.post("/rest/api/2/issue", {"fields": fields})
+
+    def latest_comment(self, key):
+        """(author, date, text) of the ticket's newest comment, or None."""
+        path = f"/rest/api/2/issue/{key}/comment"
+        page = self.get(path, {"startAt": 0, "maxResults": 100})
+        if page.get("total", 0) > 100:
+            page = self.get(path, {"startAt": page["total"] - 1, "maxResults": 1})
+        if not page.get("comments"):
+            return None
+        c = page["comments"][-1]
+        return (c.get("author") or {}).get("displayName", ""), str(c.get("created", ""))[:10], c.get("body", "")
 
     def comment(self, key, body):
         return self.post(f"/rest/api/2/issue/{key}/comment", {"body": body})
@@ -2409,23 +2465,81 @@ def shown(value):
     return ", ".join(map(str, value)) if isinstance(value, list) else str(value)
 
 
+def plan_fields(fields):
+    """(epic field id, sprint field id) on this create screen, "" where there is none."""
+    def custom(ending):
+        return next((fid for fid, f in fields.items() if str(f.get("schema", {}).get("custom", "")).endswith(ending)), "")
+    return custom("gh-epic-link") or ("parent" if "parent" in fields else ""), custom("gh-sprint")
+
+
+def trim_fields(fields):
+    """Only what the field checks need, for saving."""
+    keep = ("id", "name", "value")
+    return {fid: {**{k: f[k] for k in ("name", "required", "hasDefaultValue", "schema", "fieldId", "key") if k in f},
+                  **({"allowedValues": [{k: a[k] for k in keep if k in a} for a in f["allowedValues"]]}
+                     if f.get("allowedValues") else {})}
+            for fid, f in fields.items()}
+
+
+def is_valid(value, f):
+    try:
+        to_api(value, f)
+        return True
+    except (ValueError, KeyError):
+        return False
+
+
+def field_kind(fid, f):
+    """How the app asks for a field: long, select, multi, date, number, text or unsupported."""
+    schema = f.get("schema", {})
+    many = schema.get("type") == "array"
+    if f.get("allowedValues"):
+        return "multi" if many else "select"
+    if fid == "description" or "textarea" in str(schema.get("custom", "")):
+        return "long"
+    if schema.get("type") == "date" or schema.get("items") == "date":
+        return "date"
+    if schema.get("type") == "number":
+        return "number"
+    return "text" if schema.get("type") in ("string", None) or schema.get("items") == "string" else "unsupported"
+
+
 class TicketDraft:
-    def __init__(self, client, project, cand, meeting, llm, types, me):
+    def __init__(self, client, project, cand, meeting, llm, types, me, saved=None, space=None):
         self.client, self.project, self.cand, self.meeting, self.llm = client, project, cand, meeting, llm
-        self.types, self.me = types, me
-        self.related, self.assignee = [], ("", None)
+        self.types, self.me, self.space = types, me, space or {}
+        self.related, self.assignee, self.plan = [], ("", None), {"epic": "", "sprint": ""}
+        if saved:  # a draft made earlier, from dump()
+            self.type, self.fields, self.values = saved["type"], saved["fields"], saved["values"]
+            self.assignee, self.related = tuple(saved["assignee"]), saved["related"]
+            self.plan = saved.get("plan", self.plan)
+            return
         names = {t["name"].lower(): t for t in types}
-        self.type = names.get(cand.get("kind", "").lower()) or names.get("task") or types[0]
+        busiest = max(self.space.get("types", {}).items(), key=lambda kv: kv[1]["n"], default=("", None))[0]
+        self.type = names.get(cand.get("kind", "").lower()) or names.get(busiest.lower()) or names.get("task") or types[0]
         self.fill()
 
     def fill(self):
         self.fields = self.client.create_fields(self.project, self.type["id"])
         ask = fields_for_model(self.fields)
+        habits = self.space.get("types", {}).get(self.type["name"], {})
+        for fid in habits.get("usual", []):
+            if fid in self.fields:
+                ask.setdefault(fid, self.fields[fid])
+        epics = self.space.get("epics", []) if plan_fields(self.fields)[0] else []
+        if epics:
+            ask["epic"] = {"name": "Epic this work belongs to, if one clearly fits", "schema": {"type": "string"},
+                           "allowedValues": [{"name": f"{e['key']} {e['summary']}"} for e in epics]}
         prompt = JIRA_FILL_INSTRUCTIONS.format(
             issue_type=self.type["name"], project=self.project, title=self.meeting["title"],
             date=self.meeting["date"], candidate=describe_candidate(self.cand), fields=field_prompt_lines(ask))
-        got = llm_json(self.llm, prompt, dict, 1500)
+        if habits.get("headings"):  # the team's own sections, in place of the standard ones
+            prompt = prompt.replace(STANDARD_SECTIONS, ", ".join(f'"h3. {x}"' for x in habits["headings"]))
+        got = llm_json(self.llm, prompt + space_guidance(habits), dict, 1500)
         self.values = {fid: v for fid, v in got.items() if fid in ask and v not in ("", [], None)}
+        epic = ISSUE_KEY.match(str(self.values.pop("epic", "")).strip())
+        self.plan = {"epic": epic.group(0) if epic and epic.group(0) in {e["key"] for e in epics} else "",
+                     "sprint": self.space.get("auto_sprint", "") if plan_fields(self.fields)[1] else ""}
         self.values.setdefault("summary", self.cand["title"])
         if "labels" in self.fields:
             labels = self.values.get("labels") or []
@@ -2433,7 +2547,33 @@ class TicketDraft:
             self.values["labels"] = list(dict.fromkeys(labels + list(self.meeting["labels"])))
         if self.cand.get("due") and "duedate" in self.fields:
             self.values.setdefault("duedate", self.cand["due"])
+        self.drop_invented()
+        self.use_defaults()
         self.set_assignee(self.cand.get("owner", ""))
+
+    def drop_invented(self):
+        """A value the model made up shouldn't stop a ticket: bad optional values go, and only
+        a required field is left marked for you."""
+        for fid, v in list(self.values.items()):
+            if is_valid(v, self.fields[fid]):
+                continue
+            kept = [x for x in v if is_valid([x], self.fields[fid])] if isinstance(v, list) else []
+            if kept:
+                self.values[fid] = kept
+            elif not self.fields[fid].get("required"):
+                del self.values[fid]
+
+    def use_defaults(self):
+        """What this team usually sets. Yours always apply; learned ones only fill gaps. The
+        meeting decides the priority, and the summary, description and due date are never defaults."""
+        for fid, (value, yours) in space_defaults(self.space, self.type["name"]).items():
+            f = self.fields.get(fid)
+            if f is None or fid in NEVER_DEFAULT or not is_valid(value, f):
+                continue
+            if fid == "labels":
+                self.values["labels"] = list(dict.fromkeys(self.values.get("labels", []) + value))
+            elif fid not in self.values or yours and fid not in MEETING_DECIDES or not is_valid(self.values[fid], f):
+                self.values[fid] = value
 
     def set_assignee(self, who):
         who = (who or "").strip()
@@ -2450,6 +2590,7 @@ class TicketDraft:
 
     def problems(self):
         out = {}
+        planned = {fid for fid, on in zip(plan_fields(self.fields), (self.plan["epic"], self.plan["sprint"])) if on}
         for fid, v in self.values.items():
             try:
                 to_api(v, self.fields[fid])
@@ -2457,7 +2598,7 @@ class TicketDraft:
                 out[fid] = str(e)
         for fid, f in self.fields.items():
             if (f.get("required") and not f.get("hasDefaultValue") and fid not in self.values
-                    and fid not in FIELDS_NOT_FROM_MODEL):
+                    and fid not in FIELDS_NOT_FROM_MODEL and fid not in planned):
                 out[fid] = "required, please set it"
         return out
 
@@ -2466,20 +2607,94 @@ class TicketDraft:
         fields.update({fid: to_api(v, self.fields[fid]) for fid, v in self.values.items()})
         if self.assignee[1]:
             fields["assignee"] = self.assignee[1]
+        epic, sprint = plan_fields(self.fields)
+        if epic and self.plan["epic"]:
+            fields[epic] = {"key": self.plan["epic"]} if epic == "parent" else self.plan["epic"]
+        if sprint and self.plan["sprint"]:
+            fields[sprint] = int(self.plan["sprint"])
         return fields
 
-    def show(self):
+    def rows(self):
+        """(field id, name, value or None, problem or None), the most useful fields first."""
         bad = self.problems()
         order = ["summary", "priority", "duedate", "labels", "components"]
         fids = [f for f in order if f in self.values] + [
             f for f in self.values if f not in order and f != "description"] + [
             f for f in bad if f not in self.values]
+        sprints = {s["id"]: s["name"] for s in self.space.get("sprints", [])}
+        return [(fid, self.fields.get(fid, {}).get("name", fid), shown(self.values[fid]) if fid in self.values else None,
+                 bad.get(fid)) for fid in fids] + (
+            [("_epic", "Epic", self.plan["epic"], None)] if self.plan["epic"] else []) + (
+            [("_sprint", "Sprint", sprints.get(self.plan["sprint"], self.plan["sprint"]), None)] if self.plan["sprint"] else [])
+
+    def dump(self):
+        """The draft as plain data, for saving; only what the field checks need is kept."""
+        return {"type": self.type, "fields": trim_fields(self.fields), "values": self.values, "assignee": list(self.assignee),
+                "related": self.related, "plan": self.plan}
+
+    def form(self):
+        """Every field that can be filled in, for the app's edit view. Fields nobody usually
+        needs are marked "more"."""
+        bad, shown_first = self.problems(), [fid for fid, *_ in self.rows()]
+        if "summary" in self.fields and "summary" not in shown_first:
+            shown_first.insert(0, "summary")
+        if "description" in self.fields:
+            shown_first.insert(1 if shown_first[:1] == ["summary"] else 0, "description")
+        rest = sorted((f for f in self.fields if f not in shown_first), key=lambda f: self.fields[f].get("name", f))
+        out = []
+        for fid in shown_first + rest:
+            f = self.fields.get(fid)
+            if f is None or fid in FIELDS_NOT_FROM_MODEL:
+                continue
+            kind = field_kind(fid, f)
+            if kind == "unsupported" and not f.get("required"):
+                continue
+            value = self.values.get(fid, [] if kind == "multi" else "")
+            out.append({"id": fid, "name": f.get("name", fid), "kind": kind, "required": bool(f.get("required")),
+                        "value": value if kind == "multi" and isinstance(value, list) else
+                        ([] if kind == "multi" and not value else ([value] if kind == "multi" else shown(value))),
+                        "options": [str(a.get("name") or a.get("value")) for a in f.get("allowedValues", [])],
+                        "problem": bad.get(fid), "more": fid not in shown_first})
+        return out
+
+    def apply(self, values):
+        """Field values from the app's edit view. An empty value removes the field; the page
+        is not trusted, so anything but text or a list of text is ignored."""
+        for fid, v in values.items():
+            if fid not in self.fields or fid in FIELDS_NOT_FROM_MODEL:
+                continue
+            if isinstance(v, list) and all(isinstance(x, str) for x in v) or isinstance(v, str):
+                if v in ("", []):
+                    self.values.pop(fid, None)
+                else:
+                    self.values[fid] = v
+
+    def change_type(self, t):
+        """Another issue type, keeping every value it still has a field for."""
+        old = space_defaults(self.space, self.type["name"])
+        self.type, self.fields = t, self.client.create_fields(self.project, t["id"])
+        self.values = {k: v for k, v in self.values.items() if k in self.fields and not (k in old and v == old[k][0])}
+        self.use_defaults()
+
+    def set_plan(self, epic, sprint):
+        """Epic and sprint from the app's edit view, only ones this space really offers."""
+        if isinstance(epic, str) and (not epic or epic in {e["key"] for e in self.space.get("epics", [])}):
+            self.plan["epic"] = epic
+        if isinstance(sprint, str) and (not sprint or sprint in {s["id"] for s in self.space.get("sprints", [])}):
+            self.plan["sprint"] = sprint
+
+    def plan_options(self):
+        epic, sprint = plan_fields(self.fields)
+        return {"epic": {"value": self.plan["epic"], "options": [{"value": e["key"], "label": f"{e['key']} · {e['summary']}"}
+                                                                  for e in self.space.get("epics", [])] if epic else []},
+                "sprint": {"value": self.plan["sprint"], "options": [{"value": s["id"], "label": f"{s['name']} ({s['state']})"}
+                                                                      for s in self.space.get("sprints", [])] if sprint else []}}
+
+    def show(self):
         print(f"  {'Space':<11} {self.project}")
         print(f"  {'Type':<11} {self.type['name']}")
-        for fid in fids:
-            name = self.fields.get(fid, {}).get("name", fid)
-            val = shown(self.values[fid]) if fid in self.values else "—"
-            print(f"  {name[:11]:<11} {val}" + (f"   ⚠ {bad[fid]}" if fid in bad else ""))
+        for _, name, val, problem in self.rows():
+            print(f"  {name[:11]:<11} {'—' if val is None else val}" + (f"   ⚠ {problem}" if problem else ""))
         who, value = self.assignee
         print(f"  {'Assignee':<11} " + (f"{who}" if value else
                                         f"unassigned{f' ({who} not found in Jira)' if who else ''}"))
@@ -2633,6 +2848,282 @@ def choose_project(client, suggested):
         print(f"  {key or '(empty)'} is not a space you can see.")
 
 
+STANDARD_SECTIONS = '"h3. Context" (why, from the meeting), "h3. What needs doing" (bullets starting with *), "h3. Acceptance criteria" (bullets)'
+NEVER_DEFAULT = {"summary", "description", "duedate"}
+MEETING_DECIDES = NEVER_DEFAULT | {"priority"}
+LEARN_TICKETS, LEARN_MIN, LEARN_DAYS = 150, 5, 30  # how many recent tickets, the fewest worth learning from, how often
+
+
+def space_path(cfg, project):
+    return cfg["work_dir"] / "jira_spaces" / f"{project}.json"
+
+
+def load_space(cfg, project):
+    return read_json(space_path(cfg, project))
+
+
+def save_space(cfg, project, space):
+    space_path(cfg, project).parent.mkdir(parents=True, exist_ok=True)
+    write_json(space_path(cfg, project), space)
+
+
+def plain_values(v):
+    if v in (None, "", []):
+        return []
+    if isinstance(v, list):
+        return [x for item in v for x in plain_values(item)]
+    if isinstance(v, dict):
+        got = v.get("name") or v.get("value") or v.get("key")
+        return [str(got)] if got else []
+    return [str(v)]
+
+
+def open_sprints(value):
+    """Active and future sprints in a ticket's sprint field. Server sends them as text."""
+    found = {}
+    for v in value or []:
+        m = dict(re.findall(r"(\w+)=([^,\]]*)", v)) if isinstance(v, str) else v
+        if str(m.get("state", "")).lower() in ("active", "future") and m.get("id"):
+            found[str(m["id"])] = {"id": str(m["id"]), "name": str(m.get("name", "")), "state": str(m["state"]).lower()}
+    return found
+
+
+def description_headings(descriptions):
+    """The section headings most of these tickets share, in their usual order."""
+    places = collections.defaultdict(list)
+    for text in descriptions:
+        heads = re.findall(r"(?m)^\s*(?:h[1-6]\.\s*(.+?)|\*([^*\n]{2,40})\*:?)\s*$", text)
+        for i, head in enumerate(dict.fromkeys(a or b for a, b in heads)):
+            places[head].append(i)
+    common = [h for h, at in places.items() if len(at) >= max(2, .4 * len(descriptions))]
+    return sorted(common, key=lambda h: sum(places[h]) / len(places[h]))[:8]
+
+
+def learn_type(sample, fields):
+    """(defaults, fields usually filled) from a type's recent tickets."""
+    n, defaults, usual = len(sample), {}, []
+    for fid, f in fields.items():
+        kind = field_kind(fid, f)
+        if fid in FIELDS_NOT_FROM_MODEL or fid in NEVER_DEFAULT or kind == "unsupported":
+            continue
+        seen = [vals for vals in (plain_values(i["fields"].get(fid)) for i in sample) if vals]
+        if not seen:
+            continue
+        counts = collections.Counter(v for vals in seen for v in vals)
+        share = len(seen) / n
+        if kind in ("long", "date", "number"):
+            usual += [fid] if share >= .5 else []
+        elif kind == "multi" or fid == "labels":
+            common = [v for v, c in counts.most_common() if c >= .6 * n]
+            if common:
+                defaults[fid] = common
+            elif share >= .5:
+                usual.append(fid)
+        else:
+            top, c = counts.most_common(1)[0]
+            if share >= .6 and c >= .7 * len(seen) and len(top) <= 60:
+                defaults[fid] = top
+            elif share >= .5:
+                usual.append(fid)
+    return defaults, usual
+
+
+def learn_space(cfg, client, project, types):
+    """Work out from a space's recent tickets how its team fills them in. Only reads from
+    Jira. Tickets this program made are left out, so it never learns from itself."""
+    own = {str(x).lower() for x in cfg["jira"]["labels"]}
+    issues = [i for i in client.search(f'project = "{project}" ORDER BY created DESC', LEARN_TICKETS, "*all")
+              if not own & {str(x).lower() for x in i["fields"].get("labels") or []}]
+    old = load_space(cfg, project) or {}
+    space = {"project": project, "learned_at": dt.datetime.now().isoformat(timespec="seconds"), "tickets": len(issues),
+             "types": {}, "custom": old.get("custom", {}), "epics": [], "sprints": [], "auto_sprint": ""}
+    by_type = collections.defaultdict(list)
+    for i in issues:
+        by_type[(i["fields"].get("issuetype") or {}).get("name", "")].append(i)
+    sprints, in_sprint, seen_sprint_field = {}, 0, False
+    for t in types:
+        sample = by_type.get(t["name"], [])
+        if len(sample) < LEARN_MIN:
+            continue
+        fields = client.create_fields(project, t["id"])
+        defaults, usual = learn_type(sample, fields)
+        descriptions = [i["fields"].get("description") for i in sample if isinstance(i["fields"].get("description"), str)]
+        space["types"][t["name"]] = {"n": len(sample), "defaults": defaults, "usual": usual, "fields": trim_fields(fields),
+                                     "headings": description_headings(descriptions),
+                                     "examples": [i["fields"].get("summary", "") for i in sample[:5]]}
+        sprint_field = plan_fields(fields)[1]
+        if sprint_field:
+            seen_sprint_field = True
+            for i in sample:
+                value = i["fields"].get(sprint_field)
+                in_sprint += bool(value)
+                sprints.update(open_sprints(value))
+    space["sprints"] = sorted(sprints.values(), key=lambda s: (s["state"] != "active", s["name"]))
+    active = [s for s in space["sprints"] if s["state"] == "active"]
+    learned = sum(v["n"] for v in space["types"].values())
+    if seen_sprint_field and learned and in_sprint >= .7 * learned and len(active) == 1:
+        space["auto_sprint"] = active[0]["id"]
+    try:
+        space["epics"] = [{"key": i["key"], "summary": i["fields"].get("summary", "")} for i in client.search(
+            f'project = "{project}" AND issuetype = Epic AND statusCategory != Done ORDER BY updated DESC', 40)]
+    except JiraError as e:
+        log.info("no epics found in %s: %s", project, e)
+    save_space(cfg, project, space)
+    return space
+
+
+def fresh_space(cfg, client, project, types):
+    """What is known about a space, learning it if that's new or a month old. A failure here
+    never stops a review: it just means drafts without the team's habits."""
+    space = load_space(cfg, project)
+    if space and dt.datetime.now() - dt.datetime.fromisoformat(space["learned_at"]) < dt.timedelta(days=LEARN_DAYS):
+        return space
+    try:
+        return learn_space(cfg, client, project, types)
+    except JiraError as e:
+        log.warning("could not learn how %s writes tickets: %s", project, e)
+        return space
+
+
+def space_defaults(space, type_name):
+    """{field id: (value, set by you)} for a ticket type."""
+    learned = space.get("types", {}).get(type_name, {}).get("defaults", {})
+    yours = space.get("custom", {}).get(type_name, {})
+    out = {fid: (v, False) for fid, v in learned.items() if fid not in yours}
+    out.update({fid: (v, True) for fid, v in yours.items() if v not in ("", [])})
+    return out
+
+
+def space_guidance(habits):
+    """Extra lines for the drafting prompt, only when something has been learned."""
+    if not habits.get("examples"):
+        return ""
+    return "\n\nHow this team writes these tickets. Recent summaries, for style only:\n" + "\n".join(f"  {x}" for x in habits["examples"])
+
+
+def space_form(space):
+    """What has been learned, as the app's review and correction view."""
+    out = []
+    for name, habits in space["types"].items():
+        defaults, rows = space_defaults(space, name), []
+        for fid, f in habits["fields"].items():
+            kind = field_kind(fid, f)
+            if fid in FIELDS_NOT_FROM_MODEL or fid in NEVER_DEFAULT or kind not in ("select", "multi", "text"):
+                continue
+            value, yours = defaults.get(fid, ([] if kind == "multi" or fid == "labels" else "", False))
+            rows.append({"id": fid, "name": f.get("name", fid), "kind": kind, "required": False, "yours": yours,
+                         "value": value if kind == "multi" else shown(value),
+                         "options": [str(a.get("name") or a.get("value")) for a in f.get("allowedValues", [])],
+                         "more": fid not in defaults})
+        out.append({"name": name, "n": habits["n"], "headings": habits["headings"], "fields": rows})
+    return out
+
+
+def space_save(cfg, project, type_name, values):
+    """Your corrections to a type's defaults. Matching what was learned clears the correction."""
+    space = load_space(cfg, project)
+    habits = (space or {}).get("types", {}).get(type_name)
+    if not habits or not isinstance(values, dict):
+        return {"ok": False, "message": "Learn this space first."}
+    custom = space["custom"].setdefault(type_name, {})
+    for row in next(t for t in space_form(space) if t["name"] == type_name)["fields"]:
+        v = values.get(row["id"])
+        if not (isinstance(v, str) or isinstance(v, list) and all(isinstance(x, str) for x in v)):
+            continue
+        if row["id"] == "labels" and isinstance(v, str):
+            v = [x.strip() for x in v.split(",") if x.strip()]
+        if v not in ("", []) and not is_valid(v, habits["fields"][row["id"]]):
+            return {"ok": False, "message": f"{row['name']}: Jira doesn't allow {shown(v)}."}
+        learned = habits["defaults"].get(row["id"], [] if isinstance(v, list) else "")
+        if v == learned:
+            custom.pop(row["id"], None)
+        else:
+            custom[row["id"]] = v
+    save_space(cfg, project, space)
+    return {"ok": True, "message": "Saved. New drafts will use this."}
+
+
+def forget_jira(j):
+    base = j["base_url"].rstrip("/")
+    for k in ("bearer", "basic", "cookie", "email"):
+        keychain("delete", f"{base}#{k}")
+    return base
+
+
+def jira_meeting(cfg, d):
+    """(meta, note, started, meeting, record path, record) for a processed meeting."""
+    meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
+    started = dt.datetime.fromisoformat(meta["started_at"])
+    meeting = {"title": meta["title"], "date": f"{started:%A %Y-%m-%d}", "me": cfg["my_name"],
+               "labels": cfg["jira"]["labels"]}
+    rec_path = d / "jira.json"
+    record = json.loads(rec_path.read_text(encoding="utf-8")) if rec_path.exists() else {"items": []}
+    return meta, Path(meta.get("notes") or ""), started, meeting, rec_path, record
+
+
+def save_jira_record(rec_path, record):
+    rec_path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def last_jira_project(cfg, record):
+    path = cfg["work_dir"] / "jira_state.json"
+    state = json.loads(path.read_text()) if path.exists() else {}
+    return record.get("project") or state.get("last_project") or cfg["jira"]["project"]
+
+
+def remember_jira_project(cfg, project):
+    path = cfg["work_dir"] / "jira_state.json"
+    state = json.loads(path.read_text()) if path.exists() else {}
+    state["last_project"] = project
+    path.write_text(json.dumps(state))
+
+
+def jira_candidates(cfg, llm, d, meeting, started, note, rec_path, record, refresh):
+    """The pieces of work in this meeting that may belong in Jira, read once and remembered."""
+    if record.get("candidates") and not refresh:
+        return record["candidates"]
+    print("Reading the meeting for work that belongs in Jira…")
+    turns = json.loads((d / "transcript.json").read_text(encoding="utf-8")) if (d / "transcript.json").exists() else []
+    transcript = "\n".join(f"[{ts(t['start'])}] {t['speaker']}: {t['text']}" for t in turns)
+    if len(transcript) > cfg["llm_chunk_chars"]:
+        transcript = transcript[: cfg["llm_chunk_chars"]] + "\n(transcript cut here; the notes cover the rest)"
+    notes = note.read_text(encoding="utf-8").split("\n---\n")[0] if note.exists() else ""
+    cands = [c for c in llm_json(llm, JIRA_EXTRACT_INSTRUCTIONS.format(
+        date=meeting["date"], calendar=calendar_lines(started.date()), me=cfg["my_name"],
+        notes=notes, transcript=transcript), list, 2500)
+             if isinstance(c, dict) and c.get("title")]
+    for c in cands:
+        c["keywords"] = [str(k) for k in c.get("keywords") or []]
+        # The model tends to quote the label too: "Me: I'll do it" -> I'll do it
+        c["evidence"] = re.sub(r'^["“]?(?:[\w .]+?:\s+)?(.*?)["”]?$', r"\1", str(c.get("evidence", "")).strip())
+        try:
+            dt.date.fromisoformat(c.get("due") or "")
+        except ValueError:
+            c["due"] = ""
+    record["candidates"] = cands
+    save_jira_record(rec_path, record)
+    return cands
+
+
+def jira_suggestion(client, llm, cand, j):
+    """(related tickets, found by key, labels, action, key, tickets to link, reason): what the
+    model makes of this piece of work once it has seen what Jira already holds."""
+    related = related_tickets(client, cand, j)
+    found = {i["key"]: i for i in related}
+    if not related:
+        return related, found, {}, "create", "", [], "No existing ticket in any space matches this work."
+    got = llm_json(llm, JIRA_DECIDE_INSTRUCTIONS.format(
+        candidate=describe_candidate(cand),
+        tickets="\n".join(describe_issue(i) for i in related)), dict, 400)
+    labels = {k: str(v).lower() for k, v in (got.get("labels") or {}).items()}
+    action, key, links = decide(labels, found, bool(got.get("recurring")),
+                                got.get("worth_a_ticket", True) is not False)
+    reason = got.get("reason", "")
+    if action == "create" and any(labels.get(k) == "same" for k in found):
+        reason = "the matching ticket is Done but the meeting says the problem is back. " + reason
+    return related, found, labels, action, key, links, reason
+
+
 def cmd_jira(cfg, args):
     """Turn a meeting's work items into Jira tickets: the local model drafts, you approve."""
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -2642,57 +3133,25 @@ def cmd_jira(cfg, args):
         sys.exit("terms of use not accepted")
     j = cfg["jira"]
     if args.forget:
-        base = j["base_url"].rstrip("/")
-        for k in ("bearer", "basic", "cookie", "email"):
-            keychain("delete", f"{base}#{k}")
+        base = forget_jira(j)
         print(f"Removed every saved Jira secret for {base or '(no base_url)'} from the {plat.SECRET_STORE}.")
         return
     d = find_session(cfg, args.session)
-    meta = json.loads((d / "session.json").read_text())
-    note = Path(meta.get("notes") or "")
-    started = dt.datetime.fromisoformat(meta["started_at"])
-    meeting = {"title": meta["title"], "date": f"{started:%A %Y-%m-%d}", "me": cfg["my_name"],
-               "labels": j["labels"]}
-    rec_path = d / "jira.json"
-    record = json.loads(rec_path.read_text()) if rec_path.exists() else {"items": []}
+    meta, note, started, meeting, rec_path, record = jira_meeting(cfg, d)
     print(f"Meeting: {meta['title']} ({started:%a %d %b %Y %H:%M})")
 
     client, me = connect_jira(j)
-    state_path = cfg["work_dir"] / "jira_state.json"
-    state = json.loads(state_path.read_text()) if state_path.exists() else {}
-    project = (args.project or "").upper() or choose_project(
-        client, record.get("project") or state.get("last_project") or j["project"])
-    state["last_project"] = project
-    state_path.write_text(json.dumps(state))
+    project = (args.project or "").upper() or choose_project(client, last_jira_project(cfg, record))
+    remember_jira_project(cfg, project)
     types = client.issue_types(project)
     if not types:
         sys.exit(f"you can't create tickets in {project}")
+    print(f"Checking how {project} writes tickets…")
+    space = fresh_space(cfg, client, project, types)
 
     print("\nLoading the local model…")
     llm = LLM(cfg)
-    if record.get("candidates") and not args.refresh:
-        cands = record["candidates"]
-    else:
-        print("Reading the meeting for work that belongs in Jira…")
-        turns = json.loads((d / "transcript.json").read_text()) if (d / "transcript.json").exists() else []
-        transcript = "\n".join(f"[{ts(t['start'])}] {t['speaker']}: {t['text']}" for t in turns)
-        if len(transcript) > cfg["llm_chunk_chars"]:
-            transcript = transcript[: cfg["llm_chunk_chars"]] + "\n(transcript cut here; the notes cover the rest)"
-        notes = note.read_text(encoding="utf-8").split("\n---\n")[0] if note.exists() else ""
-        cands = [c for c in llm_json(llm, JIRA_EXTRACT_INSTRUCTIONS.format(
-            date=meeting["date"], calendar=calendar_lines(started.date()), me=cfg["my_name"],
-            notes=notes, transcript=transcript), list, 2500)
-                 if isinstance(c, dict) and c.get("title")]
-        for c in cands:
-            c["keywords"] = [str(k) for k in c.get("keywords") or []]
-            # The model tends to quote the label too: "Me: I'll do it" -> I'll do it
-            c["evidence"] = re.sub(r'^["“]?(?:[\w .]+?:\s+)?(.*?)["”]?$', r"\1", str(c.get("evidence", "")).strip())
-            try:
-                dt.date.fromisoformat(c.get("due") or "")
-            except ValueError:
-                c["due"] = ""
-        record["candidates"] = cands
-        rec_path.write_text(json.dumps(record, indent=2, ensure_ascii=False))
+    cands = jira_candidates(cfg, llm, d, meeting, started, note, rec_path, record, args.refresh)
     if not cands:
         print("Nothing in this meeting looks like it needs a Jira ticket.")
         return
@@ -2708,21 +3167,7 @@ def cmd_jira(cfg, args):
             continue
         if cand.get("evidence"):
             print(f"  From the meeting: “{cand['evidence']}”")
-        related = related_tickets(client, cand, j)
-        found = {i["key"]: i for i in related}
-        if related:
-            got = llm_json(llm, JIRA_DECIDE_INSTRUCTIONS.format(
-                candidate=describe_candidate(cand),
-                tickets="\n".join(describe_issue(i) for i in related)), dict, 400)
-            labels = {k: str(v).lower() for k, v in (got.get("labels") or {}).items()}
-            action, key, links = decide(labels, found, bool(got.get("recurring")),
-                                        got.get("worth_a_ticket", True) is not False)
-            reason = got.get("reason", "")
-            if action == "create" and any(labels.get(k) == "same" for k in found):
-                reason = "the matching ticket is Done but the meeting says the problem is back. " + reason
-        else:
-            action, key, links, labels = "create", "", [], {}
-            reason = "No existing ticket in any space matches this work."
+        related, found, labels, action, key, links, reason = jira_suggestion(client, llm, cand, j)
         print(f"  Searched all spaces: {len(related)} candidate ticket(s)" +
               "".join(f"\n    · {labels.get(i['key'], '?'):<9} {describe_issue(i)[:130]}" for i in related[:5]))
         print(f"  Model suggests: {action.upper()}{f' ({key})' if key else ''} — {reason}")
@@ -2751,13 +3196,13 @@ def cmd_jira(cfg, args):
                 record["items"].append({"title": cand["title"], "action": "commented", "key": key,
                                         "at": dt.datetime.now().isoformat(timespec="seconds")})
                 print(f"  ✓ Commented on {key}: {client.url(key)}")
-                rec_path.write_text(json.dumps(record, indent=2, ensure_ascii=False))
+                save_jira_record(rec_path, record)
                 continue
             action = "create"
 
         print("  Drafting the ticket…")
         try:
-            draft = TicketDraft(client, project, cand, meeting, llm, types, me)
+            draft = TicketDraft(client, project, cand, meeting, llm, types, me, space=space)
         except (JiraError, ValueError) as e:
             print(f"  ✗ could not draft it: {e}")
             continue
@@ -2792,7 +3237,7 @@ def cmd_jira(cfg, args):
         record["items"].append({"title": cand["title"], "action": "created", "key": new,
                                 "at": dt.datetime.now().isoformat(timespec="seconds")})
         record["project"] = project
-        rec_path.write_text(json.dumps(record, indent=2, ensure_ascii=False))
+        save_jira_record(rec_path, record)
         print(f"  ✓ Created {new}: {client.url(new)}")
 
     if not args.dry_run:
@@ -2801,6 +3246,334 @@ def cmd_jira(cfg, args):
     print("\n" + "─" * 100)
     print(f"Done. {len(made)} Jira update(s) recorded for this meeting" +
           (f"; listed in {note.name}" if made and note.exists() and not args.dry_run else "") + ".")
+
+
+# --------------------------------------------------------------------------
+# Jira review in the app
+# --------------------------------------------------------------------------
+# The same steps as `jira`, without a terminal. A background worker (jira-draft) searches and
+# drafts, and leaves one file per proposed ticket in the meeting's jira_review folder. The
+# window shows those; only the window's approve button ever writes to Jira.
+
+def write_json(path, value):
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(value, indent=1, ensure_ascii=False), encoding="utf-8")
+    for _ in range(40):
+        try:
+            return os.replace(tmp, path)
+        except PermissionError:  # Windows, while another process is reading it
+            time.sleep(.05)
+    return os.replace(tmp, path)
+
+
+def read_json(path, default=None):
+    for _ in range(40):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return default
+        except (PermissionError, ValueError):  # mid-replace on Windows
+            time.sleep(.05)
+    return default
+
+
+def stored_jira_client(j):
+    """(client, myself) from the saved secret, asking nothing. JiraError 401 if it's gone or expired."""
+    if not j["base_url"]:
+        raise JiraError("Jira isn't connected yet.", 401)
+    base = j["base_url"].rstrip("/")
+    auth = j["auth"].lower() or next((a for a, _ in AUTH_CHOICES.values() if keychain("get", f"{base}#{a}")), "")
+    secret = auth and keychain("get", f"{base}#{auth}")
+    if not secret:
+        raise JiraError("Jira isn't connected yet.", 401)
+    try:
+        client = JiraClient(j, auth, secret, j["email"] or keychain("get", f"{base}#email") or "")
+    except SystemExit as e:
+        raise JiraError(str(e)) from None
+    return client, client.myself()
+
+
+def sign_in_jira(cfg, base_url, auth, email, secret):
+    """Check a site and secret against Jira; only one that works is saved. Returns the display name."""
+    base = base_url.strip().rstrip("/")
+    if base and "://" not in base:
+        base = "https://" + base
+    parsed = urllib.parse.urlparse(base)
+    if parsed.hostname and parsed.hostname.endswith(".atlassian.net"):  # a page of the site was pasted
+        base = f"{parsed.scheme}://{parsed.netloc}"
+    secret, email = secret.strip(), email.strip()
+    if not parsed.hostname:
+        raise JiraError("Enter your Jira site's address.")
+    if auth not in ("bearer", "basic", "cookie"):
+        raise JiraError("Choose how to sign in.")
+    if not secret or any(ord(c) < 32 for c in secret):
+        raise JiraError("That doesn't look like a token or cookie. Paste it again.")
+    if auth == "basic" and "@" not in email:
+        raise JiraError("Enter the email address of your Jira account.")
+    cloud = ".atlassian.net" in base
+    j = {**cfg["jira"], "base_url": base, "auth": auth, "email": email, "deployment": "cloud" if cloud else "server"}
+    try:
+        me = JiraClient(j, auth, secret, email).myself()
+    except SystemExit as e:
+        raise JiraError(str(e)) from None
+    keychain("set", f"{base}#{auth}", secret)
+    if email:
+        keychain("set", f"{base}#email", email)
+    save_jira_settings({"base_url": base, "deployment": j["deployment"], "auth": auth})
+    return me.get("displayName") or base
+
+
+def jira_problem(e):
+    """Jira's own words from a refused request, without the HTTP wrapping."""
+    m = re.search(r"\{.*\}", str(e), re.S)
+    try:
+        body = json.loads(m.group(0))
+        said = list(body.get("errorMessages") or []) + [f"{k}: {v}" for k, v in (body.get("errors") or {}).items()]
+        if said:
+            return " ".join(said)
+    except (AttributeError, ValueError):
+        pass
+    return str(e)
+
+
+def review_dir(d):
+    return d / "jira_review"
+
+
+def card_path(d, n):
+    return review_dir(d) / f"card_{n:03d}.json"
+
+
+def review_cards(d):
+    return [c for c in (read_json(p) for p in sorted(review_dir(d).glob("card_*.json"))) if c]
+
+
+def review_state(d):
+    return read_json(review_dir(d) / "state.json", {"state": "idle"})
+
+
+def draft_ticket(cfg, card, client, llm, state, meeting):
+    try:
+        draft = TicketDraft(client, state["project"], card["cand"], meeting, llm, state["types"], state["me"],
+                            space=load_space(cfg, state["project"]))
+    except (JiraError, ValueError) as e:
+        card["draft"], card["error"] = None, f"Could not draft this one: {jira_problem(e)}"
+        return
+    draft.related = card.get("links", [])[:3]
+    card["draft"], card["error"] = draft.dump(), ""
+
+
+def prepare_card(cfg, card, client, llm, state, meeting):
+    """Search Jira for this piece of work, then draft the ticket or comment the model suggests."""
+    related, found, labels, action, key, links, reason = jira_suggestion(client, llm, card["cand"], cfg["jira"])
+    card.update(action=action, key=key, links=links, reason=reason, related=[
+        {"key": i["key"], "label": labels.get(i["key"], "?"), "summary": i["fields"].get("summary", ""),
+         "status": (i["fields"].get("status") or {}).get("name", "")} for i in related[:5]])
+    if action == "comment":
+        card["comment"] = meeting_comment(card["cand"], meeting)
+        try:  # so you can see what your comment follows on from
+            card["latest"] = client.latest_comment(key)
+        except JiraError as e:
+            log.warning("could not read the latest comment on %s: %s", key, e)
+    elif action == "create":
+        draft_ticket(cfg, card, client, llm, state, meeting)
+    card["status"] = "pending"
+
+
+def run_review(cfg, d, project, refresh):
+    """Find the work in a meeting and prepare a card for each piece. Sends nothing to Jira."""
+    review_dir(d).mkdir(exist_ok=True)
+    for old in review_dir(d).glob("card_*.json"):
+        old.unlink()
+    state = {"state": "working", "step": "Connecting to Jira…", "project": project.upper(), "done": 0, "total": 0}
+    path = review_dir(d) / "state.json"
+    write_json(path, state)
+    _, note, started, meeting, rec_path, record = jira_meeting(cfg, d)
+    client, me = stored_jira_client(cfg["jira"])
+    state["types"] = client.issue_types(state["project"])
+    if not state["types"]:
+        raise JiraError(f"You can't create tickets in {state['project']}.")
+    state["me"] = {k: me[k] for k in ("accountId", "name", "displayName") if k in me}
+    remember_jira_project(cfg, state["project"])
+    write_json(path, {**state, "step": f"Learning how {state['project']} writes tickets…"})
+    space = fresh_space(cfg, client, state["project"], state["types"])
+    state["learned_from"] = (space or {}).get("tickets", 0)
+    write_json(path, {**state, "step": "Loading the local AI…"})
+    llm = LLM(cfg)
+    write_json(path, {**state, "step": "Reading the meeting…"})
+    cands = jira_candidates(cfg, llm, d, meeting, started, note, rec_path, record, refresh)
+    state["total"] = len(cands)
+    made = {it["title"]: it for it in record["items"]}
+    for n, cand in enumerate(cands):
+        card = {"n": n, "title": cand["title"], "cand": cand, "status": "working"}
+        if cand["title"] in made:
+            card.update(status=made[cand["title"]]["action"], result=made[cand["title"]]["key"])
+        else:
+            write_json(card_path(d, n), card)
+            write_json(path, {**state, "step": f"Checking Jira and drafting {n + 1} of {len(cands)}…"})
+            prepare_card(cfg, card, client, llm, state, meeting)
+        write_json(card_path(d, n), card)
+        state["done"] = n + 1
+    write_json(path, {**state, "state": "ready", "step": ""})
+
+
+def run_card(cfg, d, n):
+    """Draft a ticket for one card the model had suggested a comment or nothing for."""
+    state, card = review_state(d), read_json(card_path(d, n))
+    _, _, _, meeting, _, _ = jira_meeting(cfg, d)
+    client, _ = stored_jira_client(cfg["jira"])
+    card["action"] = "create"
+    draft_ticket(cfg, card, client, LLM(cfg), state, meeting)
+    card["status"] = "pending"
+    write_json(card_path(d, n), card)
+
+
+def cmd_jira_draft(cfg, args):
+    setup_logging(cfg, "jira")
+    plat.background_process()
+    plat.lower_priority()
+    d = find_session(cfg, args.session)
+    if not terms_accepted(cfg):
+        sys.exit("terms of use not accepted")
+    try:
+        if args.card is not None:
+            run_card(cfg, d, args.card)
+        else:
+            run_review(cfg, d, args.project, args.refresh)
+    except (Exception, SystemExit) as e:
+        log.exception("Jira review failed")
+        problem = jira_problem(e) if isinstance(e, JiraError) else str(e) or type(e).__name__
+        if args.card is not None:
+            card = read_json(card_path(d, args.card))
+            card.update(status="pending", error=f"Could not draft this one: {problem}")
+            write_json(card_path(d, args.card), card)
+        else:
+            write_json(review_dir(d) / "state.json", {**review_state(d), "state": "failed", "error": problem,
+                                                      "needs_signin": getattr(e, "status", None) == 401})
+
+
+def restored_draft(card, state, meeting=None, client=None):
+    return TicketDraft(client, state["project"], card["cand"], meeting, None, state["types"], state["me"],
+                       saved=card["draft"])
+
+
+def card_view(cfg, card, state):
+    """A card as the page shows it."""
+    out = {k: card.get(k) for k in ("n", "title", "status", "action", "key", "reason", "related", "error", "comment", "result", "latest")}
+    out["evidence"], out["owner"] = card["cand"].get("evidence", ""), card["cand"].get("owner", "")
+    if card.get("draft"):
+        draft = restored_draft(card, state)
+        draft.space = load_space(cfg, state["project"]) or {}
+        who, value = draft.assignee
+        out["ticket"] = {"space": state["project"], "type": draft.type["name"], "links": draft.related,
+                         "rows": [{"name": n, "value": v, "problem": p} for _, n, v, p in draft.rows() if n],
+                         "description": str(draft.values.get("description", "")),
+                         "assignee": who if value else f"Unassigned{f' ({who} not found in Jira)' if who else ''}",
+                         "blocked": bool(draft.problems())}
+    return out
+
+
+def card_form(cfg, d, n):
+    state, card = review_state(d), read_json(card_path(d, n))
+    if not card.get("draft"):
+        return {"comment": card.get("comment")}
+    draft = restored_draft(card, state)
+    draft.space = load_space(cfg, state["project"]) or {}
+    return {"fields": draft.form(), "type": draft.type["id"], "types": [{"id": t["id"], "name": t["name"]} for t in draft.types],
+            "assignee": draft.assignee[0], "plan": draft.plan_options(), "project": state["project"], "type_name": draft.type["name"]}
+
+
+def card_save(cfg, d, n, edits):
+    """Your changes to a card. Nothing goes to Jira here. {"ok", "message"}."""
+    state, card = review_state(d), read_json(card_path(d, n))
+    if not card or card["status"] != "pending":
+        return {"ok": False, "message": "This one has already been handled."}
+    if isinstance(edits.get("comment"), str) and card.get("action") == "comment":
+        if not edits["comment"].strip():
+            return {"ok": False, "message": "The comment can't be empty."}
+        card["comment"] = edits["comment"]
+    if card.get("draft"):
+        meeting = jira_meeting(cfg, d)[3]
+        draft = restored_draft(card, state, meeting)
+        draft.space = load_space(cfg, state["project"]) or {}
+        before = {k: v for k, v in draft.values.items()}
+        kind = edits.get("type")
+        who = edits.get("assignee")
+        changing_type = isinstance(kind, str) and kind != draft.type["id"]
+        if changing_type or isinstance(who, str) and who.strip() != draft.assignee[0]:
+            try:
+                draft.client = stored_jira_client(cfg["jira"])[0]
+                if changing_type:
+                    draft.change_type(next(t for t in draft.types if t["id"] == kind))
+                if isinstance(who, str) and who.strip() != draft.assignee[0]:
+                    draft.set_assignee(who)
+            except StopIteration:
+                return {"ok": False, "message": "Jira doesn't have that type."}
+            except JiraError as e:
+                return {"ok": False, "message": jira_problem(e), "needs_signin": e.status == 401}
+        if isinstance(edits.get("fields"), dict):
+            draft.apply(edits["fields"])
+        draft.set_plan(edits.get("epic"), edits.get("sprint"))
+        card["draft"] = draft.dump()
+        if edits.get("remember") is True and draft.space.get("types", {}).get(draft.type["name"]):
+            changed = {f: draft.values.get(f, "") for f in set(before) | set(draft.values)
+                       if before.get(f) != draft.values.get(f) and f not in MEETING_DECIDES and f != "labels" and f in draft.fields}
+            if changed:
+                draft.space["custom"].setdefault(draft.type["name"], {}).update(changed)
+                save_space(cfg, state["project"], draft.space)
+                write_json(card_path(d, n), card)
+                return {"ok": True, "message": f"Saved, and new {draft.type['name']} drafts in {state['project']} will do the same."}
+    write_json(card_path(d, n), card)
+    return {"ok": True, "message": "Saved."}
+
+
+def card_dismiss(d, n, undo=False):
+    card = read_json(card_path(d, n))
+    if not card or card["status"] != ("dismissed" if undo else "pending"):
+        return {"ok": False, "message": "This one has already been handled."}
+    card["status"] = "pending" if undo else "dismissed"
+    write_json(card_path(d, n), card)
+    return {"ok": True, "message": "Put back." if undo else "Left out of Jira."}
+
+
+def card_approve(cfg, d, n):
+    """You said yes: the one place the app writes to Jira. A card can only go through once."""
+    state, card = review_state(d), read_json(card_path(d, n))
+    if not card or card["status"] != "pending":
+        return {"ok": False, "message": "This one has already been handled."}
+    _, note, _, meeting, rec_path, record = jira_meeting(cfg, d)
+    if card["title"] in {it["title"] for it in record["items"]}:
+        return {"ok": False, "message": "This one is already in Jira."}
+    warning = ""
+    try:
+        client, me = stored_jira_client(cfg["jira"])
+        if card.get("action") == "comment":
+            client.comment(card["key"], card["comment"])
+            key, verb = card["key"], "commented"
+        elif card.get("draft"):
+            draft = restored_draft(card, state, meeting, client)
+            if draft.problems():
+                return {"ok": False, "message": "Fix the fields marked in the draft first."}
+            key, verb = client.create(draft.payload())["key"], "created"
+            for other in draft.related:
+                try:
+                    client.link(key, other)
+                except JiraError as e:
+                    warning = f" Could not link {other}: {jira_problem(e)}"
+            record["project"] = state["project"]
+        else:
+            return {"ok": False, "message": "There is nothing to send yet."}
+    except JiraError as e:
+        if e.status is None:  # no answer: it may or may not have arrived
+            return {"ok": False, "message": f"{e}. Check Jira before trying again, in case it went through."}
+        return {"ok": False, "message": jira_problem(e), "needs_signin": e.status == 401}
+    record["items"].append({"title": card["title"], "action": verb, "key": key,
+                            "at": dt.datetime.now().isoformat(timespec="seconds")})
+    save_jira_record(rec_path, record)
+    card.update(status=verb, result=key, error="")
+    write_json(card_path(d, n), card)
+    update_note_jira(note, record, client)
+    return {"ok": True, "message": f"{'Created' if verb == 'created' else 'Commented on'} {key}.{warning}"}
 
 
 # --------------------------------------------------------------------------
@@ -3290,6 +4063,12 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="search and draft, but write nothing to Jira")
     p.add_argument("--forget", action="store_true", help=f"delete the saved Jira token / cookie from the {plat.SECRET_STORE}")
     p.set_defaults(fn=cmd_jira)
+    p = sub.add_parser("jira-draft", help=argparse.SUPPRESS)  # the app's background worker; writes nothing to Jira
+    p.add_argument("session")
+    p.add_argument("--project", default="")
+    p.add_argument("--refresh", action="store_true")
+    p.add_argument("--card", type=int)
+    p.set_defaults(fn=cmd_jira_draft)
     p = sub.add_parser("reject-name", help="take a suggested or wrong name off a voice in a meeting")
     p.add_argument("label")
     p.add_argument("--session", default="latest")

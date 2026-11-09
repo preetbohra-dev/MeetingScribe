@@ -21,7 +21,7 @@ Markdown note to `Documents/Meeting Notes/` with:
 
 You never press record. Recording, transcription and every model run on your computer, and nothing is uploaded.
 There's a desktop app for reading notes, naming voices, searching past meetings and asking them questions.
-If you use Jira, `ctl jira` can turn the meeting's action items into tickets, and you approve each one.
+If you use Jira, the app's Jira screen (or `ctl jira`) can turn the meeting's action items into tickets, and you approve each one.
 
 ## Contents
 
@@ -230,8 +230,13 @@ Saved voices stay on the computer that made them.
 
 ## Jira
 
-`./ctl.sh jira` turns the latest meeting's work into Jira tickets. It's the only part of MeetingScribe that uses
-the network, it only runs when you start it, and it only talks to your own Jira site.
+The app's **Jira** screen, or `./ctl.sh jira` in a terminal, turns a meeting's work into Jira tickets. It's the only
+part of MeetingScribe that uses the network, it only runs when you start it, and it only talks to your own Jira site.
+In the app you connect once, press **Review for Jira** on a meeting, and approve, edit or say no to each card.
+
+Every team's Jira is different, so the first time you use a space MeetingScribe reads its recent tickets (read-only)
+and learns which fields people fill in, the usual values, and how descriptions are laid out. Drafts start from that.
+You can see and correct what it learned on the Jira screen, and it keeps your corrections. It learns again each month.
 
 1. **Sign in** with a personal access token (Server / Data Center), an API token and email (Cloud), or a browser
    session cookie (SSO-only sites). The secret is kept in the macOS Keychain or Windows Credential Manager,

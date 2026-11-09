@@ -125,15 +125,24 @@
       "id": "signin",
       "min": 11,
       "lines": [
-        "Run control jira, and sign in with a personal access token, an API token, or your browser's session cookie for single sign-on sites.",
-        "It can stay in your Mac's Keychain or in Windows Credential Manager, and you are asked again when it expires."
+        "Connect it once in the app, with a personal access token, an API token, or your browser's session cookie for single sign-on sites.",
+        "It stays in your Mac's Keychain or in Windows Credential Manager, never in a file."
       ]
     },
     {
       "id": "space",
       "min": 6,
       "lines": [
-        "Then tell it which Jira space new tickets should go to."
+        "Then choose which Jira space new tickets should go to."
+      ]
+    },
+    {
+      "id": "learn",
+      "min": 17,
+      "lines": [
+        "Every team's Jira is different, so it first learns yours.",
+        "It reads that space's recent tickets, and picks up which fields people fill in, the usual values, and how descriptions are laid out.",
+        "You can see what it learned and correct any of it, and it remembers."
       ]
     },
     {
@@ -166,15 +175,15 @@
       "min": 16,
       "lines": [
         "Every field is filled in from the conversation, and checked against what your Jira space allows.",
-        "Type, priority, assignee, due date, components, even required custom fields.",
-        "Nothing is pushed until you say yes, and you can edit any field first."
+        "Type, priority, assignee, due date, components, epic, sprint, even required custom fields.",
+        "Nothing is pushed until you press Create, and you can edit any field first."
       ]
     },
     {
       "id": "board",
       "min": 8.5,
       "lines": [
-        "Say yes, and it is on the board.",
+        "Press Create, and it is on the board.",
         "The comments are posted, and the meeting note links to every ticket."
       ]
     },
@@ -220,7 +229,7 @@
         "It also asks a lot of your computer. Without a fast graphics card or an Apple chip, processing can take longer than the meeting.",
         "The installers are not signed yet, so Windows and macOS will warn you when you open them.",
         "The desktop app is new. It has been tested with recorded voices and a simulated call, not yet in real Teams or Zoom meetings, and the Mac app only on automated test machines.",
-        "Jira still runs from the terminal.",
+        "The Jira screen is new too. So far it has only created tickets on a simulated Jira.",
         "And recording people comes with rules. Tell them, and follow the law and your company's policy."
       ]
     },

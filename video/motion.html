@@ -410,9 +410,17 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
 
   <!-- 8 SIGN IN -->
   <section class="scene" id="s-signin">
-    <div class="abs term" id="si-term" style="left:90px;top:140px;width:1130px;height:740px">
-      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>Meeting Tracker — zsh</span></div>
-      <pre id="si-pre"></pre>
+    <div class="abs card" id="si-term" style="left:90px;top:140px;width:1130px;height:740px;padding:44px 54px">
+      <div class="h2" style="font-size:46px">Connect Jira</div>
+      <div class="lbl" style="margin-top:34px">Jira site</div>
+      <div style="margin-top:10px;height:66px;border:1px solid var(--line);border-radius:10px;background:#111113;display:flex;align-items:center;padding:0 22px;font-size:27px;font-family:var(--mono)"><span id="si-site"></span></div>
+      <div class="lbl" style="margin-top:26px">How to sign in</div>
+      <div style="margin-top:10px;height:66px;border:1px solid var(--line);border-radius:10px;background:#111113;display:flex;align-items:center;padding:0 22px;font-size:27px"><span id="si-how">Browser session cookie</span></div>
+      <div class="lbl" style="margin-top:26px">Session cookie</div>
+      <div style="margin-top:10px;height:66px;border:1px solid var(--line);border-radius:10px;background:#111113;display:flex;align-items:center;padding:0 22px;font-size:27px"><span id="si-dots"></span></div>
+      <div style="display:flex;align-items:center;gap:24px;margin-top:32px">
+        <div id="si-btn" style="height:66px;padding:0 36px;border-radius:10px;background:#e5483a;display:grid;place-items:center;font-size:27px;font-weight:650">Connect</div>
+        <span class="chip g" id="si-ok" style="font-size:25px">Connected as Me</span></div>
     </div>
     <div class="abs" id="si-opts" style="left:1280px;top:140px;width:550px">
       <div class="card" id="si-o1" style="padding:24px 28px;margin-bottom:18px"><div class="h3" style="font-size:28px">Personal access token</div><div class="sub" style="font-size:21px">Jira Server / Data Center</div></div>
@@ -431,6 +439,19 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
     <div id="sp-grid"></div>
     <div class="abs term" id="sp-term" style="left:460px;top:760px;width:1000px;height:120px">
       <pre id="sp-pre" style="padding:36px 30px"></pre>
+    </div>
+  </section>
+
+  <!-- 9b LEARNING THE SPACE -->
+  <section class="scene" id="s-learn">
+    <div class="abs h2" id="le-h" style="left:0;width:1920px;top:115px;text-align:center;font-size:56px">Every team's Jira is different</div>
+    <div id="le-tix"></div>
+    <div class="abs card" id="le-card" style="left:800px;top:225px;width:1000px;height:640px;padding:36px 44px">
+      <div class="h3">How EDA writes Tasks</div>
+      <div class="sub" style="font-size:23px;margin-top:4px">From 48 recent tickets · read-only · kept on this computer</div>
+      <div id="le-rows" style="margin-top:20px"></div>
+      <div class="lbl" style="margin-top:22px" id="le-sl">Description sections</div>
+      <div id="le-sec" style="margin-top:10px"><span class="chip n">Background</span>&nbsp;&nbsp;<span class="chip n">Definition of done</span>&nbsp;&nbsp;<span class="chip n">Risks</span></div>
     </div>
   </section>
 
@@ -482,11 +503,11 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
       <div style="margin-top:16px" id="dr-cl"></div>
     </div>
     <div class="abs card" id="dr-ask" style="left:1220px;top:630px;width:590px;height:290px;padding:30px 36px">
-      <div style="font-family:var(--mono);font-size:24px;color:#d6d6db">Create this in EDA?</div>
-      <div style="display:flex;gap:18px;margin-top:22px;align-items:center">
-        <span class="key" id="dr-y">y</span><span class="sub" style="font-size:22px">yes</span>
-        <span class="key" style="opacity:.5">n</span><span class="sub" style="font-size:22px">no</span>
-        <span class="key" style="opacity:.5">e</span><span class="sub" style="font-size:22px">edit</span></div>
+      <div class="lbl">Your decision</div>
+      <div style="display:flex;gap:16px;margin-top:22px;align-items:center">
+        <span class="key" id="dr-y" style="width:auto;padding:0 26px;font-family:inherit;font-size:27px;background:#e5483a">Create in EDA</span>
+        <span class="key" style="width:auto;padding:0 24px;font-family:inherit;font-size:27px;opacity:.6">Edit</span>
+        <span class="key" style="width:auto;padding:0 24px;font-family:inherit;font-size:27px;opacity:.6">No</span></div>
       <div id="dr-ok" class="chip g" style="margin-top:28px;font-size:26px">✓ Created EDA-202 · linked EDA-101</div>
     </div>
   </section>
@@ -584,7 +605,7 @@ project  = <span class="y">"EDA"</span></pre></div>
 // ---------------------------------------------------------------- timeline data
 // timeline.js (written by build_video.py from the narration) sets window.TIMELINE.
 // Without it, line lengths are estimated so the page still previews.
-const FALLBACK_IDS = ["title","problem","app","detect","apps","browser","pipeline","note","who","voices","find","guards","jira","signin","space","extract","search","decide","draft","board","usecases","privacy","windows","limits","early","outro"];
+const FALLBACK_IDS = ["title","problem","app","detect","apps","browser","pipeline","note","who","voices","find","guards","jira","signin","space","learn","extract","search","decide","draft","board","usecases","privacy","windows","limits","early","outro"];
 const TL = window.TIMELINE || (() => {
   let t = 0; const scenes = FALLBACK_IDS.map(id => { const s = {id, start: t, dur: 10, lines: [{t: .6, dur: 4, text: ""}, {t: 4.8, dur: 4, text: ""}, {t: 8, dur: 2, text: ""}, {t: 9, dur: 1, text: ""}]}; t += 10; return s; });
   return {scenes, total: t};
@@ -954,18 +975,12 @@ scene("jira", (s, L, e) => {
 scene("signin", (s, L, e) => {
   IN("#si-term", s + .1);
   const t = s + .7;
-  terminal("#si-pre", [
-    {t, text: "./ctl.sh jira", prompt: 1, cls: "c", cps: 18},
-    {t: t + 1.0, text: "Meeting: Migration sync (Thu 05 Nov 2026 14:00)"},
-    {t: t + 1.6, text: "How do you want to sign in to Jira?", cls: "c"},
-    {t: t + 1.9, text: "  1) Personal access token (Jira Server / Data Center)"},
-    {t: t + 2.1, text: "  2) API token + email (Jira Cloud)"},
-    {t: t + 2.3, text: "  3) Browser session cookie (works on SSO-only sites)"},
-    {t: t + 2.9, text: "Choose 1, 2 or 3: ", inline: 1, cls: "q"}, {t: t + 3.6, text: "3", cls: "c"},
-    {t: t + 4.2, text: "Paste your Jira session cookie (input is hidden): ", inline: 1, cls: "q"}, {t: t + 5.0, text: "••••••••••••••••••••", cls: "c", cps: 22},
-    {t: L[1] - .3, text: "Signed in to https://yourcompany.atlassian.net as Me.", cls: "y"},
-    {t: L[1] + .5, text: "Save it in your macOS Keychain for next time? [y/n] ", inline: 1, cls: "q"}, {t: L[1] + 1.6, text: "y", cls: "c"},
-  ], s, e - s);
+  typeText("#si-site", t + .1, "https://yourcompany.atlassian.net", 34);
+  A("#si-how", s, .01, {opacity: [0, 0]});
+  A("#si-how", t + 3.4, .3, {opacity: [0, 1]});
+  typeText("#si-dots", t + 4.4, "••••••••••••••••••••••••", 22);
+  A("#si-ok", s, .01, {opacity: [0, 0]});
+  POP("#si-ok", L[1] - .2);
   ["#si-o1", "#si-o2", "#si-o3"].forEach((o, i) => IN(o, t + 1.9 + i * .2, .5, 16));
   A("#si-ring", s, .01, {opacity: [0, 0]});
   A("#si-ring", t + 3.6, .4, {opacity: [0, 1]});
@@ -987,7 +1002,26 @@ scene("space", (s, L, e) => {
     } else A(c, s + 3.0, .5, {opacity: [1, .35]});
   });
   IN("#sp-term", s + 1.0, .5, 20);
-  terminal("#sp-pre", [{t: s + 1.3, text: "Which space should new tickets go to? [EDA] ", inline: 1, cls: "q"}, {t: s + 2.6, text: "EDA", cls: "c", cps: 8}], s, e - s);
+  terminal("#sp-pre", [{t: s + 1.3, text: "New tickets go to: ", inline: 1, cls: "q"}, {t: s + 2.6, text: "EDA", cls: "c", cps: 8}], s, e - s);
+});
+
+scene("learn", (s, L, e) => {
+  A("#le-h", s + .1, .8, {opacity: [0, 1], y: [24, 0]});
+  ["EDA-188", "EDA-176", "EDA-150", "EDA-142", "EDA-131"].forEach((k, i) => {
+    const c = html(`<div class="abs tk" style="left:${120 + (i % 2) * 30}px;top:${240 + i * 122}px;width:600px"><span class="st">TASK</span><span class="k">${k}</span><div class="stub" style="margin-top:12px;width:${78 - i * 7}%"></div></div>`);
+    $("#le-tix").appendChild(c);
+    A(c, L[1] - .2 + i * .3, .6, {opacity: [0, 1], x: [-120, 0]});
+  });
+  A("#le-card", L[1] + .6, .7, {opacity: [0, 1], x: [60, 0]});
+  const rows = [["Environment", "PROD"], ["Team", "Data"], ["Components", "Reports"], ["Epic and sprint", "usually set"]];
+  rows.forEach(([k, v], i) => {
+    const r = html(`<div class="field"><span>${k}</span><span id="le-v${i}" style="color:#fff">${v}</span></div>`);
+    $("#le-rows").appendChild(r);
+    IN(r, L[1] + 1.8 + i * .55, .4, 10);
+  });
+  IN("#le-sl", L[1] + 4.2, .4, 8);
+  IN("#le-sec", L[1] + 4.6, .5, 10);
+  F(L[2] + 1.6, .5, p => { const v = $("#le-v1"); v.textContent = p > 0 ? "Ops  (set by you)" : "Data"; v.style.color = p > 0 ? "var(--green)" : "#fff"; });
 });
 
 scene("extract", (s, L, e) => {
@@ -1063,7 +1097,7 @@ scene("decide", (s, L, e) => {
 
 scene("draft", (s, L, e) => {
   IN("#dr-card", s + .1);
-  const fields = [["Space", "EDA"], ["Type", "Task"], ["Summary", "Validate store_sales row counts: Informix vs Delta Lake"], ["Priority", "High"], ["Due date", "2026-11-09"], ["Assignee", "Samantha Lee"], ["Components", "Validation"], ["Environment", "PROD   (required custom field)"], ["Labels", "meetingscribe, delta-lake"], ["Links to", "EDA-101  (relates)"]];
+  const fields = [["Space", "EDA"], ["Type", "Task"], ["Summary", "Validate store_sales row counts: Informix vs Delta Lake"], ["Priority", "High"], ["Due date", "2026-11-09"], ["Assignee", "Samantha Lee"], ["Components", "Validation"], ["Environment", "PROD   (required custom field)"], ["Epic, sprint", "EDA-90 · Sprint 42"], ["Links to", "EDA-101  (relates)"]];
   const span = (L[1] + 3.2) - (s + .7);
   fields.forEach(([k, v], i) => {
     const f = html(`<div class="field"><span>${k}</span><span></span></div>`);
@@ -1080,7 +1114,6 @@ scene("draft", (s, L, e) => {
   IN("#dr-ask", L[2] - .2);
   A("#dr-y", L[2] + 2.4, .15, {y: [0, 6]}, "lin");
   A("#dr-y", L[2] + 2.6, .25, {y: [6, 0]});
-  F(L[2] + 2.4, .5, p => { $("#dr-y").style.background = p > 0 && p < 1 ? "var(--teal)" : ""; $("#dr-y").style.color = p > 0 && p < 1 ? "#05211d" : ""; });
   A("#dr-ok", s, .01, {opacity: [0, 0]});
   POP("#dr-ok", L[2] + 2.9);
 });
@@ -1165,7 +1198,7 @@ scene("early", (s, L, e) => {
   [["Needs a capable computer", "A meeting can take longer to process than to hold.", "16 GB PC, no graphics card: a 3-minute meeting took 10 to 12 minutes"],
    ["Installers are not signed", "Your computer will warn you the first time.", "Windows: More info, then Run anyway. Mac: Open Anyway in Settings"],
    ["The desktop app is new", "Not yet used in real Teams or Zoom meetings.", "Mac app tested only on automated machines, not with a real mic"],
-   ["Jira needs the terminal", "The app does not have a Jira screen yet.", "Run ./ctl.sh jira, or .\\ctl jira on Windows"],
+   ["The Jira screen is new", "It has only created tickets on a simulated Jira.", "Read each draft before you press Create"],
    ["Consent is your job", "Tell people they are being recorded.", "Follow the law and your company's policy"],
   ].forEach(([b, x, f], i) => {
     const c = html(`<div class="abs card lim" style="left:${i < 3 ? 130 + i * 565 : 412 + (i - 3) * 565}px;top:${i < 3 ? 205 : 540}px;width:530px;height:305px"><b style="font-size:34px">${b}</b><p>${x}</p><small>${f}</small></div>`);
@@ -1177,7 +1210,7 @@ scene("early", (s, L, e) => {
 scene("outro", (s, L, e) => {
   POP("#o-logo", s + .1, .8);
   IN("#o-h", s + .4);
-  const steps = [["1", "Install the app", "once"], ["2", "Join meetings", "as usual"], ["3", "./ctl.sh jira", "review & push"]];
+  const steps = [["1", "Install the app", "once"], ["2", "Join meetings", "as usual"], ["3", "Review tickets", "create, edit or no"]];
   steps.forEach(([n, c, d], i) => {
     const el = html(`<div class="abs card" style="left:${300 + i * 460}px;top:410px;width:400px;height:170px;padding:28px 30px;display:flex;gap:22px;align-items:center">
       <div style="width:64px;height:64px;border-radius:50%;background:rgba(45,212,191,.15);color:var(--teal);display:grid;place-items:center;font-size:30px;font-weight:800;flex:none">${n}</div>
@@ -1191,7 +1224,7 @@ scene("outro", (s, L, e) => {
 
 // ---------------------------------------------------------------- persistent chrome
 const SECTIONS = {title: "", problem: "Why", app: "Desktop app", detect: "Capture", apps: "Meeting apps", browser: "In the browser", pipeline: "On-device processing", note: "Notes", who: "Who gets a name", voices: "Voices", find: "Search and ask", guards: "Safety nets",
-  jira: "Jira", signin: "Jira · sign in", space: "Jira · space", extract: "Jira · extract", search: "Jira · search", decide: "Jira · decide",
+  jira: "Jira", signin: "Jira · sign in", space: "Jira · space", learn: "Jira · learning your space", extract: "Jira · extract", search: "Jira · search", decide: "Jira · decide",
   draft: "Jira · review", board: "Jira · pushed", usecases: "Use cases", privacy: "Privacy", windows: "Platforms", limits: "Shortcomings", early: "Shortcomings", outro: ""};
 F(0, TL.total, (p, t) => {
   const s = TL.scenes.find(x => t >= x.start && t < x.start + x.dur) || TL.scenes[TL.scenes.length - 1];

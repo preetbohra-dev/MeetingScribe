@@ -81,7 +81,9 @@ class Api:
 
     def __init__(self):
         self.download = None
-        self.window = None
+        self._window = None  # underscore: pywebview walks every public attribute for methods to expose
+        self._jira_jobs = {}
+        self._jira_lock = threading.Lock()  # a card can't be approved twice by a double click
 
     @property
     def cfg(self):
@@ -292,6 +294,165 @@ class Api:
     def forget_person(self, name):
         return ms.VoiceLibrary(self.cfg).forget(name)
 
+    # -- Jira
+
+    def jira_status(self):
+        j = self.cfg["jira"]
+        out = {"base_url": j["base_url"], "auth": j["auth"], "name": None, "error": None}
+        if j["base_url"]:
+            try:
+                out["name"] = ms.stored_jira_client(j)[1].get("displayName") or j["base_url"]
+            except ms.JiraError as e:
+                out["error"] = "Sign in again: Jira didn't accept what is saved." if e.status == 401 else str(e)
+        return out
+
+    def jira_sign_in(self, base_url, auth, email, secret):
+        try:
+            name = ms.sign_in_jira(self.cfg, str(base_url), str(auth), str(email or ""), str(secret))
+        except ms.JiraError as e:
+            hint = {401: "Jira didn't accept that. Check it and paste it again."}.get(e.status)
+            return {"ok": False, "message": hint or ms.jira_problem(e)}
+        return {"ok": True, "message": f"Connected as {name}."}
+
+    def jira_forget(self):
+        ms.forget_jira(self.cfg["jira"])
+        return {"ok": True, "message": "Disconnected. Your saved sign-in is gone from this computer."}
+
+    def jira_spaces(self, sid):
+        d = self._session(sid)
+        cfg = self.cfg
+        try:
+            client, _ = ms.stored_jira_client(cfg["jira"])
+            spaces = sorted(client.projects(), key=lambda p: p["key"])
+        except ms.JiraError as e:
+            return {"spaces": [], "error": ms.jira_problem(e), "needs_signin": e.status == 401}
+        return {"spaces": [{"key": p["key"], "name": p.get("name", "")} for p in spaces],
+                "suggested": ms.last_jira_project(cfg, ms.jira_meeting(cfg, d)[5])}
+
+    def _job_running(self, key):
+        job = self._jira_jobs.get(key)
+        return job is not None and job.poll() is None
+
+    def _spawn_jira(self, key, *args):
+        self._jira_jobs[key] = subprocess.Popen(ms.self_command("jira-draft", *args), stdout=subprocess.DEVNULL,
+                                               stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+
+    def jira_start(self, sid, project, refresh=False):
+        self._session(sid)
+        if not isinstance(project, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", project):
+            return {"ok": False, "message": "Choose a space."}
+        if self._job_running(sid):
+            return {"ok": False, "message": "Already working on this meeting."}
+        self._spawn_jira(sid, sid, "--project", project, *(["--refresh"] if refresh else []))
+        return {"ok": True}
+
+    def jira_cancel(self, sid):
+        d = self._session(sid)
+        if self._job_running(sid):
+            self._jira_jobs[sid].terminate()
+            self._jira_jobs[sid].wait(10)
+        ms.write_json(ms.review_dir(d) / "state.json", {**ms.review_state(d), "state": "stopped", "error": ""})
+        return True
+
+    def jira_review(self, sid):
+        d = self._session(sid)
+        state = ms.review_state(d)
+        if state["state"] == "working" and not self._job_running(sid):
+            state = {**state, "state": "stopped", "error": "That was interrupted before it finished."}
+        cards = []
+        for card in ms.review_cards(d):
+            if card["status"] == "drafting" and not self._job_running((sid, card["n"])):
+                card.update(status="pending", error="That was interrupted before it finished.")
+            if card["status"] == "working" and state["state"] != "working":
+                continue
+            cards.append(ms.card_view(self.cfg, card, state))
+        return {"title": ms.jira_meeting(self.cfg, d)[0]["title"], "state": state["state"], "step": state.get("step", ""),
+                "error": state.get("error", ""), "needs_signin": state.get("needs_signin", False),
+                "project": state.get("project", ""), "done": state.get("done", 0), "total": state.get("total", 0),
+                "learned_from": state.get("learned_from", 0), "cards": cards}
+
+    def jira_card_form(self, sid, n):
+        return ms.card_form(self.cfg, self._session(sid), int(n))
+
+    def jira_save_card(self, sid, n, edits):
+        d = self._session(sid)
+        with self._jira_lock:
+            return ms.card_save(self.cfg, d, int(n), edits if isinstance(edits, dict) else {})
+
+    def jira_approve(self, sid, n):
+        d = self._session(sid)
+        with self._jira_lock:
+            return ms.card_approve(self.cfg, d, int(n))
+
+    def jira_dismiss(self, sid, n, undo=False):
+        d = self._session(sid)
+        with self._jira_lock:
+            return ms.card_dismiss(d, int(n), bool(undo))
+
+    def jira_make_ticket(self, sid, n):
+        """The model suggested a comment or nothing, and you want a ticket: draft one."""
+        d = self._session(sid)
+        n = int(n)
+        with self._jira_lock:
+            card = ms.read_json(ms.card_path(d, n))
+            if not card or card["status"] != "pending":
+                return {"ok": False, "message": "This one has already been handled."}
+            ms.write_json(ms.card_path(d, n), {**card, "status": "drafting", "error": ""})
+            self._spawn_jira((sid, n), sid, "--card", str(n))
+        return {"ok": True}
+
+    def jira_meetings(self):
+        out = []
+        for m in self.meetings():
+            if m["status"] != "done":
+                continue
+            d = self._session(m["id"])
+            cards = ms.review_cards(d)
+            items = (ms.read_json(d / "jira.json") or {}).get("items", [])
+            out.append({"id": m["id"], "title": m["title"], "started_at": m["started_at"], "in_jira": len(items),
+                        "to_review": sum(c["status"] == "pending" for c in cards)})
+        return out
+
+    @staticmethod
+    def _space(project):
+        if not isinstance(project, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", project):
+            raise ValueError("bad space")
+        return project.upper()
+
+    def jira_habits(self):
+        cfg = self.cfg
+        out = []
+        for p in sorted((cfg["work_dir"] / "jira_spaces").glob("*.json")):
+            space = ms.read_json(p)
+            if space:
+                out.append({"project": space["project"], "learned_at": space["learned_at"], "tickets": space["tickets"],
+                            "types": ms.space_form(space), "epics": len(space["epics"]), "sprints": len(space["sprints"])})
+        return out
+
+    def jira_habit_save(self, project, type_name, values):
+        with self._jira_lock:
+            return ms.space_save(self.cfg, self._space(project), str(type_name), values)
+
+    def jira_habit_learn(self, project):
+        project, cfg = self._space(project), self.cfg
+        try:
+            client, _ = ms.stored_jira_client(cfg["jira"])
+            ms.learn_space(cfg, client, project, client.issue_types(project))
+        except ms.JiraError as e:
+            return {"ok": False, "message": ms.jira_problem(e)}
+        return {"ok": True, "message": f"Learned {project} again. Your corrections were kept."}
+
+    def jira_habit_forget(self, project):
+        ms.space_path(self.cfg, self._space(project)).unlink(missing_ok=True)
+        return {"ok": True, "message": "Forgotten. It will learn this space again next time."}
+
+    def jira_open(self, key):
+        """A ticket in the browser. Only a real issue key, on the connected site."""
+        if isinstance(key, str) and ms.ISSUE_KEY.fullmatch(key) and self.cfg["jira"]["base_url"]:
+            import webbrowser
+            webbrowser.open(f"{self.cfg['jira']['base_url'].rstrip('/')}/browse/{key}")
+        return True
+
     # -- settings
 
     SETTINGS = {"my_name": str, "language": str, "output_dir": str, "keep_audio": bool, "work_only": bool,
@@ -324,7 +485,7 @@ class Api:
 
     def choose_folder(self):
         import webview
-        picked = self.window.create_file_dialog(webview.FOLDER_DIALOG)
+        picked = self._window.create_file_dialog(webview.FOLDER_DIALOG)
         return picked[0] if picked else None
 
 
@@ -334,7 +495,7 @@ def open_window():
     cfg = ms.load_config()
     cfg["work_dir"].mkdir(parents=True, exist_ok=True)
     window = webview.create_window(APP_NAME, str(UI), js_api=api, width=1100, height=760, min_size=(760, 560))
-    api.window = window
+    api._window = window
     threading.Thread(target=lambda: ms.terms_accepted(cfg) and ms.models_ready(cfg) and api.ensure_recorder(), daemon=True).start()
     webview.start()
 

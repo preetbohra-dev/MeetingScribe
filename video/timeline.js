@@ -259,35 +259,57 @@ window.TIMELINE = {
   {
    "id": "signin",
    "start": 166.108,
-   "dur": 17.631,
+   "dur": 15.113,
    "lines": [
     {
      "t": 0.6,
-     "dur": 9.301,
-     "text": "Run control jira, and sign in with a personal access token, an API token, or your browser's session cookie for single sign-on sites."
+     "dur": 8.448,
+     "text": "Connect it once in the app, with a personal access token, an API token, or your browser's session cookie for single sign-on sites."
     },
     {
-     "t": 10.181,
-     "dur": 6.549,
-     "text": "It can stay in your Mac's Keychain or in Windows Credential Manager, and you are asked again when it expires."
+     "t": 9.328,
+     "dur": 4.885,
+     "text": "It stays in your Mac's Keychain or in Windows Credential Manager, never in a file."
     }
    ]
   },
   {
    "id": "space",
-   "start": 183.739,
+   "start": 181.221,
    "dur": 6,
    "lines": [
     {
      "t": 0.6,
-     "dur": 2.88,
-     "text": "Then tell it which Jira space new tickets should go to."
+     "dur": 2.837,
+     "text": "Then choose which Jira space new tickets should go to."
+    }
+   ]
+  },
+  {
+   "id": "learn",
+   "start": 187.221,
+   "dur": 17,
+   "lines": [
+    {
+     "t": 0.6,
+     "dur": 3.221,
+     "text": "Every team's Jira is different, so it first learns yours."
+    },
+    {
+     "t": 4.101,
+     "dur": 7.531,
+     "text": "It reads that space's recent tickets, and picks up which fields people fill in, the usual values, and how descriptions are laid out."
+    },
+    {
+     "t": 11.912,
+     "dur": 3.349,
+     "text": "You can see what it learned and correct any of it, and it remembers."
     }
    ]
   },
   {
    "id": "extract",
-   "start": 189.739,
+   "start": 204.221,
    "dur": 9.417,
    "lines": [
     {
@@ -304,7 +326,7 @@ window.TIMELINE = {
   },
   {
    "id": "search",
-   "start": 199.156,
+   "start": 213.639,
    "dur": 12,
    "lines": [
     {
@@ -321,7 +343,7 @@ window.TIMELINE = {
   },
   {
    "id": "decide",
-   "start": 211.156,
+   "start": 225.639,
    "dur": 15,
    "lines": [
     {
@@ -343,8 +365,8 @@ window.TIMELINE = {
   },
   {
    "id": "draft",
-   "start": 226.156,
-   "dur": 16.375,
+   "start": 240.639,
+   "dur": 17.441,
    "lines": [
     {
      "t": 0.6,
@@ -353,28 +375,28 @@ window.TIMELINE = {
     },
     {
      "t": 6.277,
-     "dur": 4.907,
-     "text": "Type, priority, assignee, due date, components, even required custom fields."
+     "dur": 5.781,
+     "text": "Type, priority, assignee, due date, components, epic, sprint, even required custom fields."
     },
     {
-     "t": 11.464,
-     "dur": 4.011,
-     "text": "Nothing is pushed until you say yes, and you can edit any field first."
+     "t": 12.339,
+     "dur": 4.203,
+     "text": "Nothing is pushed until you press Create, and you can edit any field first."
     }
    ]
   },
   {
    "id": "board",
-   "start": 242.531,
+   "start": 258.08,
    "dur": 8.5,
    "lines": [
     {
      "t": 0.6,
-     "dur": 1.941,
-     "text": "Say yes, and it is on the board."
+     "dur": 2.005,
+     "text": "Press Create, and it is on the board."
     },
     {
-     "t": 2.821,
+     "t": 2.885,
      "dur": 3.605,
      "text": "The comments are posted, and the meeting note links to every ticket."
     }
@@ -382,7 +404,7 @@ window.TIMELINE = {
   },
   {
    "id": "usecases",
-   "start": 251.031,
+   "start": 266.58,
    "dur": 13,
    "lines": [
     {
@@ -399,7 +421,7 @@ window.TIMELINE = {
   },
   {
    "id": "privacy",
-   "start": 264.031,
+   "start": 279.58,
    "dur": 10.825,
    "lines": [
     {
@@ -416,7 +438,7 @@ window.TIMELINE = {
   },
   {
    "id": "windows",
-   "start": 274.856,
+   "start": 290.405,
    "dur": 14.729,
    "lines": [
     {
@@ -433,7 +455,7 @@ window.TIMELINE = {
   },
   {
    "id": "limits",
-   "start": 289.585,
+   "start": 305.135,
    "dur": 27.537,
    "lines": [
     {
@@ -465,8 +487,8 @@ window.TIMELINE = {
   },
   {
    "id": "early",
-   "start": 317.123,
-   "dur": 34.449,
+   "start": 332.672,
+   "dur": 37.905,
    "lines": [
     {
      "t": 0.6,
@@ -485,11 +507,11 @@ window.TIMELINE = {
     },
     {
      "t": 25.76,
-     "dur": 1.899,
-     "text": "Jira still runs from the terminal."
+     "dur": 5.355,
+     "text": "The Jira screen is new too. So far it has only created tickets on a simulated Jira."
     },
     {
-     "t": 27.939,
+     "t": 31.395,
      "dur": 5.611,
      "text": "And recording people comes with rules. Tell them, and follow the law and your company's policy."
     }
@@ -497,7 +519,7 @@ window.TIMELINE = {
   },
   {
    "id": "outro",
-   "start": 351.572,
+   "start": 370.577,
    "dur": 9.716,
    "lines": [
     {
@@ -513,5 +535,5 @@ window.TIMELINE = {
    ]
   }
  ],
- "total": 361.288
+ "total": 380.293
 };
