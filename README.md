@@ -34,6 +34,7 @@ that takes on an action item. Use the ones you have and ignore the rest. Nothing
 - [Connectors](#connectors)
 - [Jira](#jira)
 - [What a note looks like](#what-a-note-looks-like)
+- [Models and memory](#models-and-memory)
 - [Settings](#settings)
 - [Using your company's AI](#using-your-companys-ai)
 - [Handing tasks to the AI](#handing-tasks-to-the-ai)
@@ -326,6 +327,26 @@ remote side, or that Whisper wasn't sure about, are kept and tagged (`drop_suspe
 then re-check each one with the lines around it. Meeting logistics and short replies to work points are kept;
 when unsure, it keeps the line. Removed lines can't be recovered. `./ctl.sh refilter` applies it to older
 meetings.
+
+## Models and memory
+
+MeetingScribe checks your computer's memory and downloads only the note-writing model it can run.
+
+| Memory | Note writer | Download, with speech models |
+|---|---|---|
+| 24 GB or more | Qwen 2.5 14B | About 9 to 10 GB |
+| 16 GB | Qwen 2.5 7B | About 6 GB |
+| Less than 16 GB | None | About 2 GB |
+
+With less than 16 GB, notes keep the transcript without a summary, unless you choose your company's AI. A model you
+named yourself, or one already installed, is left alone. To go past the limit anyway, set
+`ignore_memory_limit = true` in `config.toml`.
+
+Models come from this project's `models-v1` GitHub release, so networks that block Hugging Face can still install
+them. Each file is checked against a SHA-256 list inside the app, and Hugging Face is the fallback. On a work network,
+IT may need to allow `github.com` and `release-assets.githubusercontent.com`. Model downloads trust the certificates
+installed on your computer. The models are copied unchanged under their own licences (MIT, Apache 2.0 and CC BY 4.0),
+credited in the [release notes](https://github.com/preetbohra-dev/MeetingScribe/releases/tag/models-v1).
 
 ## Settings
 

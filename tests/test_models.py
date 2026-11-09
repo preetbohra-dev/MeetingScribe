@@ -100,6 +100,20 @@ def test_publishing_covers_every_model_the_app_can_pick():
     assert (ms.HERE / "packaging" / "publish_models.py").exists()
 
 
+def test_the_shipped_list_covers_every_model_and_fits_github():
+    manifest = store.load_manifest(ms.HERE / "models.json")
+    for _, mlx, gguf in ms.LLM_TIERS:
+        repo, name = gguf.rsplit("/", 1)
+        assert store.wanted_files(manifest, mlx, None) and store.wanted_files(manifest, repo, name)
+    for repo in ("mlx-community/whisper-large-v3-turbo", "dropbox-dash/faster-whisper-large-v3-turbo", ms.DEFAULTS["voice_model"]):
+        assert store.wanted_files(manifest, repo, None)
+    for entry in manifest.values():
+        assert len(entry["revision"]) == 40
+        for f in entry["files"]:
+            assert len(f["sha256"]) == 64 and sum(p["size"] for p in f["parts"]) == f["size"]
+            assert all(p["size"] < 2**31 for p in f["parts"])
+
+
 # -- the release
 
 
