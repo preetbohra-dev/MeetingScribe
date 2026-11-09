@@ -41,9 +41,11 @@ case "${1:-status}" in
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" terms ;;
   jira)   # ./ctl.sh jira [--session ID] [--project KEY] [--refresh] [--dry-run] [--forget]
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" jira "${@:2}" ;;
+  ai)     # ./ctl.sh ai [--set PROVIDER] [--local] [--forget]: who writes the notes
+    "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" ai "${@:2}" ;;
   process|download-models)  # ./ctl.sh process <session folder> | ./ctl.sh download-models
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" "$@" ;;
   logs)
     tail -n 50 -F "$LOG/daemon.log" "$LOG/process.log" "$LOG/stderr.log" ;;
-  *) echo "usage: $0 app|start|stop|restart|status|logs|name|reject|listen|voices|search|ask|refilter|jira|terms|process|download-models"; exit 1 ;;
+  *) echo "usage: $0 app|start|stop|restart|status|logs|name|reject|listen|voices|search|ask|refilter|jira|ai|terms|process|download-models"; exit 1 ;;
 esac

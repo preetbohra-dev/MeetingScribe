@@ -15,9 +15,12 @@ and meetings in a web browser (Google Meet, Teams or Zoom on the web, Webex, ...
   jira             Review a meeting's action items and push the ones you approve
                    to Jira (opt-in; you approve every ticket and comment).
 
-Recording and processing never talk to a remote host. Model loading runs with
-HF_HUB_OFFLINE=1, and the Ollama backend refuses any non-loopback URL. The only
-network traffic is the `jira` command, and only to the [jira].base_url you set.
+Unless you choose company AI (llm_backend = "cloud"), recording and processing never
+talk to a remote host. Model loading runs with HF_HUB_OFFLINE=1, and the Ollama backend
+refuses any non-loopback URL. The other network traffic is the `jira` command, and only
+to the [jira].base_url you set. With company AI, transcript text goes to the provider
+you agreed to; audio, voiceprints and screen pictures never leave the computer. A task
+you hand to the AI (task_agent.py) also sends code to that provider and pushes draft PRs.
 """
 
 import os
@@ -32,6 +35,7 @@ os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"  # every model is public; neve
 import argparse
 import base64
 import collections
+import concurrent.futures
 import datetime as dt
 import difflib
 import getpass
@@ -55,8 +59,10 @@ from pathlib import Path
 
 import numpy as np
 
+import cloud_llm
 import platforms
 import screen_names
+import task_agent
 from screen_names import looks_like_name
 
 plat = platforms.load()
@@ -126,7 +132,7 @@ DEFAULTS = {
     "mic_silence_warn_s": 45,  # warn during a call when the mic has delivered nothing this long
     "meeting_window_exclude_regex": r"^(Chat|Activity|Calendar|Teams|Calls|Files|Apps|OneDrive|Copilot|Settings|Assignments|Approvals|People|Notifications|Window)\b",
     # Last, so they win: per-OS asr_backend ("mlx" / "faster-whisper"), whisper_model,
-    # llm_backend ("mlx" / "llamacpp" / "ollama"), and on Windows gguf_model (sized to
+    # llm_backend ("mlx" / "llamacpp" / "ollama" / "cloud"), and on Windows gguf_model (sized to
     # RAM) and voice_model. See platforms/macos.py and platforms/windows.py.
     **plat.MODEL_DEFAULTS,
 }
@@ -147,6 +153,21 @@ JIRA_DEFAULTS = {
     "ca_bundle": "",
     "timeout_seconds": 60,
 }
+
+# [cloud_llm] table in config.toml, for llm_backend = "cloud". API keys are kept in the keychain.
+CLOUD_DEFAULTS = {
+    "provider": "",  # see PROVIDERS in cloud_llm.py
+    "model": "",  # "" = the provider's default, where it has one
+    "base_url": "",  # "openai": the gateway; "anthropic": optional
+    "region": "",  # "bedrock", "vertex", "gemini-vertex"
+    "project": "",  # Google Cloud project: "vertex", "gemini-vertex", "gemini-cli"
+    "resource": "",  # "foundry"
+    "ssl_strict": False,  # False = accept Zscaler-style proxy CAs (chain and hostname still checked)
+    "ca_bundle": "",
+}
+CLOUD_FIELDS = ("provider", "model", "base_url", "region", "project", "resource")
+AI_NOTICE = ("Meeting transcripts, including what other people said, will be sent as text to {}. Audio, voiceprints and "
+             "screen pictures stay on this computer. You are responsible for your company's approval of this.")
 
 log = logging.getLogger("meetingscribe")
 
@@ -254,12 +275,16 @@ def save_settings(values, vocabulary=None):
 
 
 def save_jira_settings(values):
-    """Change keys in config.toml's [jira] table, keeping everything else as it is."""
+    save_table("jira", values)
+
+
+def save_table(name, values):
+    """Change keys in one of config.toml's tables, keeping everything else as it is."""
     path = config_path()
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    start = next((i for i, ln in enumerate(lines) if ln.strip() == "[jira]"), None)
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == f"[{name}]"), None)
     if start is None:
-        lines += ["", "[jira]"]
+        lines += ["", f"[{name}]"]
         start = len(lines) - 1
     end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
     for key, value in values.items():
@@ -285,6 +310,7 @@ def load_config():
             with open(p, "rb") as f:
                 cfg.update(tomllib.load(f))
     cfg["jira"] = {**JIRA_DEFAULTS, **cfg.get("jira", {})}
+    cfg["cloud_llm"] = {**CLOUD_DEFAULTS, **cfg.get("cloud_llm", {})}
     for k in ("output_dir", "work_dir", "log_dir"):
         cfg[k] = Path(cfg[k]).expanduser()
     return cfg
@@ -1614,7 +1640,10 @@ class LLM:
     def __init__(self, cfg, mlx_model=None):
         self.cfg = cfg
         self.backend = cfg["llm_backend"]
-        if self.backend == "mlx":
+        self.parallel = self.backend == "cloud"
+        if self.backend == "cloud":
+            self.cloud = cloud_client(cfg)
+        elif self.backend == "mlx":
             from mlx_lm import load
             mlx_model = mlx_model or cfg["mlx_llm_model"]
             log.info("loading %s", mlx_model)
@@ -1636,6 +1665,8 @@ class LLM:
             raise ValueError(f"unknown llm_backend {self.backend!r}")
 
     def chat(self, user, max_tokens=1500):
+        if self.backend == "cloud":
+            return self.cloud.chat(SYSTEM_PROMPT, user, max_tokens)
         msgs = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
         if self.backend == "mlx":
             from mlx_lm import generate
@@ -1653,6 +1684,56 @@ class LLM:
                                      {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=1800) as r:
             return json.loads(r.read())["message"]["content"].strip()
+
+
+def ai_choice(cfg):
+    """What the user chose in setup: {"provider": "local"}, or the provider they agreed to send transcripts to."""
+    try:
+        return json.loads((cfg["work_dir"] / "ai_choice.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def record_ai_choice(cfg, provider):
+    cfg["work_dir"].mkdir(parents=True, exist_ok=True)
+    (cfg["work_dir"] / "ai_choice.json").write_text(json.dumps(
+        {"provider": provider, "agreed_at": dt.datetime.now().isoformat(timespec="seconds"), "user": getpass.getuser()}))
+
+
+def use_local_ai(cfg):
+    if cfg["llm_backend"] == "cloud":
+        save_settings({"llm_backend": plat.MODEL_DEFAULTS["llm_backend"]})
+    record_ai_choice(cfg, "local")
+
+
+def ai_key(provider):
+    return keychain("get", provider, service=cloud_llm.KEY_SERVICE) if cloud_llm.PROVIDERS[provider]["key"] else None
+
+
+def try_cloud_settings(settings, key=None):
+    """Send one short prompt with these settings. Raises with a reason the user can read."""
+    s = {**CLOUD_DEFAULTS, **settings}
+    cloud_llm.check_settings(s)
+    client = cloud_llm.make_client(s, key or ai_key(s["provider"]), tls_context(s))
+    client.chat("You check that a connection works.", "Reply with the single word OK.", 16)
+
+
+def save_cloud_choice(cfg, settings, key=None):
+    """Make these settings the note writer. The caller has shown AI_NOTICE and got agreement."""
+    if key:
+        keychain("set", settings["provider"], key, service=cloud_llm.KEY_SERVICE)
+    save_table("cloud_llm", {k: settings.get(k, "") for k in CLOUD_FIELDS})
+    save_settings({"llm_backend": "cloud"})
+    record_ai_choice(cfg, settings["provider"])
+
+
+def cloud_client(cfg):
+    """No transcript leaves unless the user agreed to this provider, even if config.toml was edited by hand."""
+    s = cfg["cloud_llm"]
+    if not s["provider"] or ai_choice(cfg).get("provider") != s["provider"]:
+        raise cloud_llm.CloudError(f"Company AI has not been agreed to for {s['provider'] or 'this computer'}. "
+                                   f"Choose it in Settings, or run: {plat.CTL} ai --set {s['provider'] or '<provider>'}")
+    return cloud_llm.make_client(s, ai_key(s["provider"]), tls_context(s))
 
 
 def ollama_running(cfg):
@@ -1702,13 +1783,19 @@ def work_only(cfg, llm, segments):
             for a, b in re.findall(r"(\d+)(?:\s*[-–]\s*(\d+))?", m.group(1)):
                 candidates.update(n - 1 for n in range(int(a), int(b or a) + 1) if start < n <= end)
         start = end
-    drop = set()
-    for i in sorted(candidates):
+
+    def confirm(i):
         excerpt = "".join((">>> " if j == i else "    ") + lines[j][lines[j].index("]") + 2:]
                           for j in range(max(0, i - 3), min(len(lines), i + 3)))
-        answer = llm.chat(WORK_CONFIRM_INSTRUCTIONS.format(excerpt=excerpt.rstrip()), 5)
-        if answer.strip()[:1].upper() in ("C", "D"):
-            drop.add(i)
+        return llm.chat(WORK_CONFIRM_INSTRUCTIONS.format(excerpt=excerpt.rstrip()), 5)
+
+    order = sorted(candidates)
+    if getattr(llm, "parallel", False):  # a network call per line is slow one at a time
+        with concurrent.futures.ThreadPoolExecutor(4) as pool:
+            answers = list(pool.map(confirm, order))
+    else:
+        answers = [confirm(i) for i in order]
+    drop = {i for i, answer in zip(order, answers) if answer.strip()[:1].upper() in ("C", "D")}
     log.info("work filter: dropped %d of %d lines as not work related", len(drop), len(segs))
     return [s for i, s in enumerate(segs) if i not in drop], len(drop)
 
@@ -1973,9 +2060,10 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None):
     if transcript.strip():
         try:
             notes = summarize(cfg, transcript, llm or LLM(cfg))
-        except Exception:
+        except Exception as e:
             log.exception("the AI model failed; writing a basic note")
-            notify(cfg, "The AI model failed on this meeting, so its note is a basic one with the full transcript.")
+            why = f" {e}" if isinstance(e, cloud_llm.CloudError) else ""
+            notify(cfg, "The AI model failed on this meeting, so its note is a basic one with the full transcript." + why)
             notes = basic_notes(cfg, turns)
     else:
         what = "work discussion" if dropped else "speech"
@@ -1985,7 +2073,9 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None):
     title = meta["title"]
     md = [f"# {title}", "",
           f"**Date:** {started:%A %d %B %Y, %H:%M}–{end:%H:%M} ({round(duration / 60)} min)  ",
-          f"**Source:** {meta.get('source', 'Microsoft Teams')} · recorded, transcribed and summarized on this {plat.DEVICE}  "]
+          f"**Source:** {meta.get('source', 'Microsoft Teams')} · " + (
+              f"recorded and transcribed on this {plat.DEVICE}, summarized by company AI  " if cfg["llm_backend"] == "cloud"
+              else f"recorded, transcribed and summarized on this {plat.DEVICE}  ")]
     if speakers:
         md.append("**Participants:** " + ", ".join(
             [cfg["my_name"]] + [participant_label(n, s) for n, s in speakers.items()]) + "  ")
@@ -2110,7 +2200,7 @@ SECRET_PIECE = 1200  # Windows Credential Manager refuses anything over 1280 cha
 PIECES_MARK = "meetingscribe-pieces:"
 
 
-def keychain(action, account, secret=None):
+def keychain(action, account, secret=None, service=KEYCHAIN_SERVICE):
     """macOS login Keychain via the Security framework (keyring), so a secret is never put on a
     command line where other processes could read it. "get" returns the secret or None. A long
     secret is kept in pieces, with the count under the account's own name."""
@@ -2119,23 +2209,23 @@ def keychain(action, account, secret=None):
 
     def remove(name):
         try:
-            keyring.delete_password(KEYCHAIN_SERVICE, name)
+            keyring.delete_password(service, name)
         except keyring.errors.PasswordDeleteError:
             pass
 
-    held = keyring.get_password(KEYCHAIN_SERVICE, account)
+    held = keyring.get_password(service, account)
     pieces = int(held[len(PIECES_MARK):]) if held and held.startswith(PIECES_MARK) else 0
     if action == "get":
         if not pieces:
             return held
-        return "".join(keyring.get_password(KEYCHAIN_SERVICE, f"{account}#{i}") or "" for i in range(pieces))
+        return "".join(keyring.get_password(service, f"{account}#{i}") or "" for i in range(pieces))
     for i in range(pieces):
         remove(f"{account}#{i}")
     if action == "set":
         parts = [secret[i:i + SECRET_PIECE] for i in range(0, len(secret), SECRET_PIECE)]
         for i, part in enumerate(parts if len(parts) > 1 else []):
-            keyring.set_password(KEYCHAIN_SERVICE, f"{account}#{i}", part)
-        keyring.set_password(KEYCHAIN_SERVICE, account, secret if len(parts) < 2 else f"{PIECES_MARK}{len(parts)}")
+            keyring.set_password(service, f"{account}#{i}", part)
+        keyring.set_password(service, account, secret if len(parts) < 2 else f"{PIECES_MARK}{len(parts)}")
         return None
     remove(account)
     return None
@@ -2143,12 +2233,16 @@ def keychain(action, account, secret=None):
 
 def require_https(url):
     """Tokens and cookies only travel over HTTPS. Plain http is allowed for this computer alone (tests)."""
-    u = urllib.parse.urlparse(url)
-    if u.scheme == "https" and u.hostname:
-        return
-    if u.scheme == "http" and u.hostname in ("127.0.0.1", "localhost", "::1"):
-        return
-    sys.exit(f"refusing Jira URL {url!r}: it must start with https:// so your token or cookie is encrypted")
+    if not cloud_llm.https_only(url):
+        sys.exit(f"refusing Jira URL {url!r}: it must start with https:// so your token or cookie is encrypted")
+
+
+def tls_context(settings):
+    ctx = ssl.create_default_context(cafile=str(Path(settings["ca_bundle"]).expanduser())
+                                     if settings["ca_bundle"] else None)
+    if not settings["ssl_strict"]:  # corporate TLS-inspection CAs often lack keyUsage
+        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    return ctx
 
 
 AUTH_CHOICES = {
@@ -2204,10 +2298,7 @@ class JiraClient:
                   "could be intercepted. Use ca_bundle instead if your network inspects HTTPS.")
             self.ctx = ssl._create_unverified_context()
         else:
-            self.ctx = ssl.create_default_context(cafile=str(Path(j["ca_bundle"]).expanduser())
-                                                  if j["ca_bundle"] else None)
-            if not j["ssl_strict"]:  # corporate TLS-inspection CAs often lack keyUsage
-                self.ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+            self.ctx = tls_context(j)
 
     def request(self, method, path, params=None, body=None):
         url = self.base + path + ("?" + urllib.parse.urlencode(params) if params else "")
@@ -3980,12 +4071,13 @@ def model_plan(cfg):
 
 
 def models_ready(cfg):
-    """Whether a download of exactly these models has run to the end."""
+    """Whether a download of these models has run to the end. It may have fetched more: switching
+    from a local note writer to company AI needs nothing new."""
     try:
         done = json.loads((cfg["work_dir"] / "models_ready.json").read_text())
     except (OSError, ValueError):
         return False
-    return done == [list(x) for x in model_plan(cfg)]
+    return all(list(x) in done for x in model_plan(cfg))
 
 
 def download_size(cfg):
@@ -4020,10 +4112,54 @@ def cmd_download(cfg, args):
         if cfg["work_only"] and not filter_is_summary_model(cfg):
             print("Downloading", cfg["work_filter_model"])
             snapshot_download(cfg["work_filter_model"])
-    else:
+    elif cfg["llm_backend"] == "ollama":
         print("Ollama backend: pull the model you want with `ollama pull`.")
     (cfg["work_dir"] / "models_ready.json").write_text(json.dumps(model_plan(cfg)))
-    print("Done. All later runs are offline (HF_HUB_OFFLINE=1).")
+    print("Done. Model loading is offline from now on (HF_HUB_OFFLINE=1).")
+
+
+def cmd_ai(cfg, args):
+    """Choose who writes the notes, from the command line. Keys are read hidden, never as arguments."""
+    if args.local or args.forget:
+        if args.forget and cloud_llm.PROVIDERS.get(cfg["cloud_llm"]["provider"], {}).get("key"):
+            keychain("delete", cfg["cloud_llm"]["provider"], service=cloud_llm.KEY_SERVICE)
+        use_local_ai(cfg)
+        print(f"Notes are written on this computer. Run {plat.CTL} download-models if the local model is missing.")
+    elif args.set:
+        settings = {"provider": args.set, "model": args.model, "base_url": args.base_url, "region": args.region,
+                    "project": args.project, "resource": args.resource}
+        info = cloud_llm.PROVIDERS.get(args.set)
+        if not info:
+            sys.exit(f"unknown provider {args.set!r}; choose from: {', '.join(cloud_llm.PROVIDERS)}")
+        print(AI_NOTICE.format(info["label"]) + "\n" + (info.get("note", "") + "\n" if info.get("note") else ""))
+        if not sys.stdin.isatty() or input('Type "I agree" to continue, anything else to cancel: ').strip().lower() != "i agree":
+            sys.exit("cancelled; nothing was changed")
+        key = getpass.getpass("API key (hidden): ").strip() if info["key"] else None
+        try:
+            try_cloud_settings(settings, key)
+        except (ValueError, cloud_llm.CloudError) as e:
+            sys.exit(f"That did not work, so nothing was changed. {e}")
+        save_cloud_choice(cfg, settings, key)
+        print(f"Connected. Notes are now written by {info['label']}.")
+    else:
+        if cfg["llm_backend"] != "cloud":
+            print(f"Notes are written on this computer ({cfg['llm_backend']}).")
+            return
+        try:
+            cloud_client(cfg).chat("You check that a connection works.", "Reply with the single word OK.", 16)
+        except (ValueError, cloud_llm.CloudError) as e:
+            sys.exit(f"{cfg['cloud_llm']['provider']}: {e}")
+        print(f"{cfg['cloud_llm']['provider']}: connected.")
+
+
+def cmd_task_run(cfg, args):
+    """The app's background worker for one task."""
+    setup_logging(cfg, "tasks")
+    plat.background_process()
+    plat.lower_priority()
+    if not terms_accepted(cfg):
+        sys.exit("terms of use not accepted")
+    task_agent.Tasks(sys.modules[__name__], cfg).run(args.id)
 
 
 def main():
@@ -4077,12 +4213,22 @@ def main():
     p.add_argument("query")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_search)
-    p = sub.add_parser("ask", help="ask the local model about your meetings")
+    p = sub.add_parser("ask", help="ask the AI about your meetings")
     p.add_argument("question")
     p.add_argument("--session", help="only this meeting (id or part of it); default all meetings")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_ask)
     sub.add_parser("terms", help="show and accept the terms of use").set_defaults(fn=cmd_terms)
+    p = sub.add_parser("task-run", help=argparse.SUPPRESS)  # the app's background worker
+    p.add_argument("id")
+    p.set_defaults(fn=cmd_task_run)
+    p = sub.add_parser("ai", help="choose who writes the notes; with no options, test the connection")
+    p.add_argument("--set", metavar="PROVIDER", choices=list(cloud_llm.PROVIDERS), help="use company AI")
+    p.add_argument("--local", action="store_true", help="write notes on this computer again")
+    p.add_argument("--forget", action="store_true", help="delete the saved key and write notes on this computer")
+    for option in ("--model", "--base-url", "--region", "--project", "--resource"):
+        p.add_argument(option, default="")
+    p.set_defaults(fn=cmd_ai)
     args = ap.parse_args()
     if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # the app reads this as UTF-8

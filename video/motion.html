@@ -525,6 +525,44 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
     </div>
   </section>
 
+  <section class="scene" id="s-handoff">
+    <div class="abs h2" id="ho-h" style="left:0;width:1920px;top:110px;text-align:center;font-size:56px">Hand an action item to the AI</div>
+    <div class="abs card" id="ho-item" style="left:150px;top:260px;width:760px;height:560px;padding:40px">
+      <div class="sub" style="font-size:24px">Action items</div>
+      <div style="font-size:30px;font-weight:700;margin-top:22px">Sam: round totals to two decimals</div>
+      <div id="ho-btn" style="margin-top:24px"><span class="chip b" style="font-size:26px">Hand to AI</span></div>
+      <div class="sub" id="ho-read" style="font-size:24px;margin-top:44px">You read the task first. It came from what people said.</div>
+    </div>
+    <div class="abs card" id="ho-q" style="left:990px;top:260px;width:780px;height:270px;padding:36px">
+      <div class="sub" style="font-size:24px">Before it starts</div>
+      <div style="font-size:30px;font-weight:700;margin-top:18px">Should negative totals round the same way?</div>
+    </div>
+    <div class="abs card" id="ho-where" style="left:990px;top:560px;width:780px;height:260px;padding:36px">
+      <div class="sub" style="font-size:24px">Where should it work?</div>
+      <div id="ho-places" style="margin-top:20px;display:flex;gap:14px;flex-wrap:wrap"></div>
+    </div>
+  </section>
+
+  <section class="scene" id="s-handwork">
+    <div class="abs h2" id="hw-h" style="left:0;width:1920px;top:110px;text-align:center;font-size:56px">From task to draft pull request</div>
+    <div id="hw-steps"></div>
+    <div class="abs card" id="hw-folder" style="left:420px;top:720px;width:1080px;height:170px;padding:32px;text-align:center">
+      <div style="font-size:32px;font-weight:700">Just a plain folder?</div>
+      <div class="sub" style="font-size:25px;margin-top:10px">Its files are updated, with a backup and an Undo button.</div>
+    </div>
+  </section>
+
+  <section class="scene" id="s-company">
+    <div class="abs h2" id="co-h" style="left:0;width:1920px;top:110px;text-align:center;font-size:56px">Or use your company's AI</div>
+    <div id="co-routes"></div>
+    <div class="abs" id="co-stay" style="left:0;width:1920px;top:800px;text-align:center"><span class="chip g" style="font-size:28px">Audio and voices stay here</span> <span class="chip b" style="font-size:28px">Only text is sent, after you agree</span></div>
+  </section>
+
+  <section class="scene" id="s-newer">
+    <div class="abs h2" id="n-h" style="left:0;width:1920px;top:100px;text-align:center;font-size:56px">The newest features</div>
+    <div id="n-grid"></div>
+  </section>
+
   <!-- 15 USE CASES -->
   <section class="scene" id="s-usecases">
     <div class="abs h2" id="u-h" style="left:0;width:1920px;top:110px;text-align:center;font-size:56px">Anywhere talk turns into work</div>
@@ -605,7 +643,7 @@ project  = <span class="y">"EDA"</span></pre></div>
 // ---------------------------------------------------------------- timeline data
 // timeline.js (written by build_video.py from the narration) sets window.TIMELINE.
 // Without it, line lengths are estimated so the page still previews.
-const FALLBACK_IDS = ["title","problem","app","detect","apps","browser","pipeline","note","who","voices","find","guards","jira","signin","space","learn","extract","search","decide","draft","board","usecases","privacy","windows","limits","early","outro"];
+const FALLBACK_IDS = ["title","problem","app","detect","apps","browser","pipeline","note","who","voices","find","guards","jira","signin","space","learn","extract","search","decide","draft","board","handoff","handwork","usecases","privacy","company","windows","limits","early","newer","outro"];
 const TL = window.TIMELINE || (() => {
   let t = 0; const scenes = FALLBACK_IDS.map(id => { const s = {id, start: t, dur: 10, lines: [{t: .6, dur: 4, text: ""}, {t: 4.8, dur: 4, text: ""}, {t: 8, dur: 2, text: ""}, {t: 9, dur: 1, text: ""}]}; t += 10; return s; });
   return {scenes, total: t};
@@ -1139,6 +1177,53 @@ scene("board", (s, L, e) => {
   links.forEach(([v, k, t], i) => { const li = html(`<li>${v} <span style="color:var(--blue);text-decoration:underline">${k}</span>: ${t}</li>`); $("#b-links").appendChild(li); IN(li, L[1] + .4 + i * .35, .4, 10); });
 });
 
+scene("handoff", (s, L, e) => {
+  IN("#ho-h", s + .1);
+  A("#ho-item", s + .5, .6, {opacity: [0, 1], x: [-40, 0]});
+  POP("#ho-btn", L[1] + .2);
+  IN("#ho-read", L[1] + 1.4, .5, 10);
+  A("#ho-q", L[1] + 3.6, .6, {opacity: [0, 1], x: [40, 0]});
+  A("#ho-where", L[2] - .1, .6, {opacity: [0, 1], x: [40, 0]});
+  [["api-service", "b"], ["web-app", "b"], ["A plain folder", "g"]].forEach(([t, c], i) => {
+    const el = html(`<span class="chip ${c}" style="font-size:26px">${t}</span>`);
+    $("#ho-places").appendChild(el);
+    POP(el, L[2] + 1 + i * .6, .5);
+  });
+});
+
+scene("handwork", (s, L, e) => {
+  IN("#hw-h", s + .1);
+  [["A separate copy", "Your own checkout is not touched", "#60a5fa", 0], ["The AI edits files", "It is given no shell", "#2dd4bf", 1], ["Your checks run", "Failures go back to the AI", "#f5b543", 1], ["Draft PRs", "One per repository, linked", "#34d399", 2]].forEach(([b, p, col, line], i) => {
+    const c = html(`<div class="abs card" style="left:${120 + i * 425}px;top:300px;width:400px;height:340px;padding:36px"><div style="width:58px;height:58px;border-radius:50%;background:${col}22;color:${col};display:grid;place-items:center;font-size:28px;font-weight:800">${i + 1}</div><div style="font-size:36px;font-weight:700;margin-top:26px">${b}</div><div class="sub" style="font-size:25px;margin-top:14px">${p}</div></div>`);
+    $("#hw-steps").appendChild(c);
+    A(c, L[line] + .2 + (i === 2 ? 3.5 : 0), .6, {opacity: [0, 1], y: [34, 0]}, "back");
+  });
+  IN("#hw-folder", L[3] - .1, .6, 24);
+});
+
+scene("company", (s, L, e) => {
+  IN("#co-h", s + .1);
+  [["API key", "Anthropic, Gemini"], ["Your cloud", "Amazon, Google, Azure"], ["Company gateway", "LiteLLM, Azure OpenAI"], ["Signed-in command", "Claude, Gemini, Copilot"]].forEach(([b, p], i) => {
+    const c = html(`<div class="abs card uc" style="left:${150 + (i % 2) * 840}px;top:${250 + Math.floor(i / 2) * 260}px;width:780px;height:230px"><b>${b}</b><p>${p}</p></div>`);
+    $("#co-routes").appendChild(c);
+    A(c, L[1] + .2 + i * 1.5, .6, {opacity: [0, 1], y: [30, 0]}, "back");
+  });
+  IN("#co-stay", L[2], .6, 20);
+});
+
+scene("newer", (s, L, e) => {
+  A("#n-h", s + .1, .8, {opacity: [0, 1], y: [24, 0]});
+  [["Approved commands run the AI's code", "They have your account's access to this computer.", "Secrets are removed from them, but read a task before you start it"],
+   ["Small local models struggle with code", "In our test, llama 3.1 repeated one step and never finished.", "Expect only small, clearly described changes"],
+   ["Most company routes are unproven", "Only the signed-in Claude command has run for real.", "Keys, cloud accounts, Gemini and Copilot are untested on real accounts"],
+   ["Pull requests are unproven", "Tested with real git, and a stand-in for GitHub.", "PRs are always drafts, for a person to review"],
+  ].forEach(([b, x, f], i) => {
+    const c = html(`<div class="abs card lim" style="left:${150 + (i % 2) * 840}px;top:${215 + Math.floor(i / 2) * 330}px;width:780px;height:300px"><b style="font-size:38px">${b}</b><p>${x}</p><small>${f}</small></div>`);
+    $("#n-grid").appendChild(c);
+    A(c, L[Math.min(i + 1, 3)] + (i === 3 ? 5 : -.1), .6, {opacity: [0, 1], y: [30, 0]});
+  });
+});
+
 scene("usecases", (s, L, e) => {
   IN("#u-h", s + .1);
   const uc = [
@@ -1225,7 +1310,7 @@ scene("outro", (s, L, e) => {
 // ---------------------------------------------------------------- persistent chrome
 const SECTIONS = {title: "", problem: "Why", app: "Desktop app", detect: "Capture", apps: "Meeting apps", browser: "In the browser", pipeline: "On-device processing", note: "Notes", who: "Who gets a name", voices: "Voices", find: "Search and ask", guards: "Safety nets",
   jira: "Jira", signin: "Jira · sign in", space: "Jira · space", learn: "Jira · learning your space", extract: "Jira · extract", search: "Jira · search", decide: "Jira · decide",
-  draft: "Jira · review", board: "Jira · pushed", usecases: "Use cases", privacy: "Privacy", windows: "Platforms", limits: "Shortcomings", early: "Shortcomings", outro: ""};
+  draft: "Jira · review", board: "Jira · pushed", handoff: "Hand to AI", handwork: "Hand to AI", usecases: "Use cases", privacy: "Privacy", company: "Company AI", windows: "Platforms", limits: "Shortcomings", early: "Shortcomings", newer: "Shortcomings", outro: ""};
 F(0, TL.total, (p, t) => {
   const s = TL.scenes.find(x => t >= x.start && t < x.start + x.dur) || TL.scenes[TL.scenes.length - 1];
   const label = SECTIONS[s.id];

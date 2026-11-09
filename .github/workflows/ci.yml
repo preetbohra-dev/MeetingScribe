@@ -18,7 +18,7 @@ jobs:
         run: |
           python -m pip install -r requirements.txt pytest pyflakes pillow scipy torchaudio
       - name: Lint
-        run: python -m pyflakes meeting_scribe.py meetingscribe_app.py screen_names.py platforms tests
+        run: python -m pyflakes meeting_scribe.py meetingscribe_app.py screen_names.py cloud_llm.py task_agent.py platforms tests
       - name: Shell scripts parse
         run: bash -n install.sh uninstall.sh ctl.sh
       - name: Imports and CLI
@@ -45,7 +45,7 @@ jobs:
           for m in ("scipy", "torch", "speechbrain"):
               assert importlib.util.find_spec(m) is None, f"{m} must not be a Windows dependency"
       - name: Lint
-        run: python -m pyflakes meeting_scribe.py meetingscribe_app.py screen_names.py platforms tests
+        run: python -m pyflakes meeting_scribe.py meetingscribe_app.py screen_names.py cloud_llm.py task_agent.py platforms tests
       - name: PowerShell scripts parse
         shell: pwsh
         run: |

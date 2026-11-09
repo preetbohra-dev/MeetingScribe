@@ -32,7 +32,7 @@ button:disabled { opacity: .55; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(.94); }
 button.link { background: none; border: 0; padding: 0; color: var(--soft); text-decoration: underline; }
-input[type=text], input[type=search], select, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; width: 100%; }
+input[type=text], input[type=search], input[type=password], select, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; width: 100%; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .row { display: flex; gap: 8px; align-items: center; }
 .row.wrap { flex-wrap: wrap; }
@@ -134,25 +134,71 @@ function gb(n) { return (n / 1073741824).toFixed(1) + " GB"; }
 async function boot() {
   const s = await call("setup_state");
   if (!s.terms_ok) return showTerms(s);
+  if (!s.ai_chosen) return showAiChoice();
   if (!s.models_ok) return showDownload(s);
   showMain();
+}
+const FIELD_NAMES = {base_url: "Address (https://…)", region: "Region", project: "Google Cloud project", resource: "Resource name"};
+async function showAiChoice(back) {
+  clearInterval(polling);
+  const st = await call("cloud_state");
+  const radio = (on, text) => { const r = h("input", {type: "radio", name: "ai", checked: on, onchange: paint}); return [r, h("label", {class: "check"}, r, h("span", null, text))]; };
+  const [local, localL] = radio(!st.cloud, "On this computer. Nothing leaves it, but it needs a large download and a capable computer.");
+  const [company, companyL] = radio(st.cloud, "With my company's AI. Transcripts are sent to the provider you pick.");
+  const provider = h("select", {onchange: () => { inputs = {}; agree.checked = false; paint(); }}, st.providers.map(p => h("option", {value: p.id}, p.label)));
+  provider.value = st.settings.provider || st.providers[0].id;
+  const agree = h("input", {type: "checkbox", onchange: () => paint()});
+  const notice = h("span"), note = h("p", {class: "soft small"}), fields = h("div"), panel = h("div"), problem = h("p", {class: "problem"});
+  let inputs = {};
+  const field = (label, ...kids) => h("div", {class: "field"}, h("label", null, label), ...kids);
+  function paint() {
+    const p = st.providers.find(x => x.id === provider.value);
+    panel.style.display = company.checked ? "" : "none";
+    const same = p.id === st.settings.provider;
+    if (!Object.keys(inputs).length) {
+      inputs = {model: h("input", {type: "text", value: same ? st.settings.model : "", placeholder: p.model || (p.id.endsWith("-cli") ? "The command's default" : "Model name from your company")})};
+      for (const f of [...p.fields, ...p.optional]) inputs[f] = h("input", {type: "text", value: same ? st.settings[f] : ""});
+      if (p.key) inputs.key = h("input", {type: "password", autocomplete: "off", placeholder: p.saved ? "Saved. Leave empty to keep it." : ""});
+      fields.replaceChildren(field("Model", inputs.model), ...[...p.fields, ...p.optional].map(f => field(FIELD_NAMES[f], inputs[f])), p.key ? field("API key", inputs.key) : null);
+    }
+    note.textContent = p.note; notice.textContent = p.notice + " I agree.";
+    go.textContent = company.checked ? "Test and continue" : "Continue";
+    go.disabled = company.checked && !agree.checked;
+  }
+  const go = h("button", {class: "primary", onclick: async () => {
+    problem.textContent = "";
+    if (!company.checked) { await call("use_local"); return boot(); }
+    const values = {provider: provider.value};
+    for (const [k, e] of Object.entries(inputs)) if (k !== "key") values[k] = e.value;
+    go.disabled = true; go.textContent = "Testing…";
+    const r = await call("cloud_save", values, inputs.key ? inputs.key.value : "", agree.checked);
+    if (r.ok) return boot();
+    problem.textContent = r.message; paint();
+  }}, "Continue");
+  panel.append(field("Provider", provider), note, fields, h("label", {class: "check"}, agree, notice));
+  $app.replaceChildren(h("div", {class: "setup grow"},
+    h("h1", null, "Who should write your notes?"),
+    h("p", {class: "soft"}, "Recording, transcription and voices always stay on this computer. Only the note writing can use your company's AI."),
+    localL, companyL, panel, problem,
+    h("div", {class: "row"}, go, back ? h("button", {onclick: showMain}, "Cancel") : null)));
+  paint();
 }
 function showTerms(s) {
   const agree = h("input", {type: "checkbox", onchange: () => go.disabled = !agree.checked});
   const screen = h("input", {type: "checkbox", checked: true});
   const go = h("button", {class: "primary", disabled: true, onclick: async () => {
     await call("accept_terms", screen.checked);
-    showDownload(s);
+    boot();
   }}, "Continue");
   $app.replaceChildren(h("div", {class: "setup grow"},
     h("h1", null, "Welcome to MeetingScribe"),
-    h("p", {class: "soft"}, "It notices your Teams, Zoom and browser meetings, records them, and writes the notes on this computer. Nothing is uploaded."),
+    h("p", {class: "soft"}, "It notices your Teams, Zoom and browser meetings, records them, and writes the notes. Nothing is uploaded unless you choose your company's AI on the next page."),
     h("pre", {class: "terms"}, s.terms.replace(/\n +/g, " ")),
     h("label", {class: "check"}, agree, h("span", null, "I have read these terms and I accept them.")),
     h("label", {class: "check"}, screen, h("span", null, "Read people's names from the meeting window, to help work out who said what. Pictures are read for names and thrown away, never saved.")),
     go));
 }
-function showDownload() {
+function showDownload(s) {
   const bar = h("div"), line = h("p", {class: "soft small"}, "Getting ready…");
   const retry = h("button", {style: "display:none", onclick: start}, "Try again");
   const finish = async () => { await call("finish_setup"); showMain(); };
@@ -170,14 +216,16 @@ function showDownload() {
   }
   $app.replaceChildren(h("div", {class: "setup grow"},
     h("h1", null, "Downloading the AI models"),
-    h("p", {class: "soft"}, "This happens once and can take a while, so leave this window open. After this, MeetingScribe works without the internet."),
+    h("p", {class: "soft"}, s && s.cloud
+      ? "These models turn speech into text on this computer. This happens once, so leave this window open."
+      : "This happens once and can take a while, so leave this window open. After this, MeetingScribe works without the internet."),
     h("div", {class: "bar"}, bar), line, retry));
   start();
 }
 
 // -- main frame --------------------------------------------------------------
 function showMain() {
-  const items = [["meetings", "Meetings"], ["search", "Search and ask"], ["people", "People"], ["jira", "Jira"], ["settings", "Settings"]];
+  const items = [["meetings", "Meetings"], ["search", "Search and ask"], ["people", "People"], ["jira", "Jira"], ["tasks", "Tasks"], ["settings", "Settings"]];
   const navEl = h("nav", null);
   const brand = h("div", {class: "brand"}); brand.innerHTML = LOGO; brand.append("MeetingScribe");
   navEl.append(brand);
@@ -206,6 +254,7 @@ async function tick() {
   if (statusNow.processing) st.append(h("div", {class: "soft small"}, "Writing notes…"));
   if (view === "meetings" && !openId) refreshList();
   if (view === "jira" && openId) refreshReview();
+  if (view === "tasks") refreshTasks();
 }
 
 // -- views -------------------------------------------------------------------
@@ -213,8 +262,8 @@ function render() {
   const main = document.getElementById("main"); if (!main) return;
   main.scrollTop = 0;
   if (openId && view === "jira") return renderReview(main);
-  if (openId) return renderMeeting(main);
-  ({meetings: renderList, search: renderSearch, people: renderPeople, jira: renderJira, settings: renderSettings})[view](main);
+  if (openId && view !== "tasks") return renderMeeting(main);
+  ({meetings: renderList, search: renderSearch, people: renderPeople, jira: renderJira, tasks: renderTasks, settings: renderSettings})[view](main);
 }
 async function renderList(main) {
   lastList = "";
@@ -253,7 +302,7 @@ async function renderMeeting(main) {
     unknown.forEach(v => col.append(voiceCard(m, v)));
   }
   col.append(h("h2", null, "Summary"), h("div", {class: "panel"}, m.summary.length ? h("ul", {class: "plain"}, m.summary.map(s => h("li", null, rich(s)))) : h("p", {class: "soft"}, "No summary.")));
-  col.append(h("h2", null, "Action items"), h("div", {class: "panel"}, m.actions.length ? h("ul", {class: "plain"}, m.actions.map(s => h("li", null, rich(s.replace(/^\[[ x]\]\s*/, ""))))) : h("p", {class: "soft"}, "None."),
+  col.append(h("h2", null, "Action items"), h("div", {class: "panel"}, m.actions.length ? h("ul", {class: "plain"}, m.actions.map(s => { const item = s.replace(/^\[[ x]\]\s*/, ""); return h("li", null, rich(item), " ", h("button", {class: "link small", onclick: () => handToAi(m.id, item.replace(/\*\*/g, ""))}, "Hand to AI")); })) : h("p", {class: "soft"}, "None."),
     h("button", {style: "margin-top:10px", onclick: () => go("jira", m.id)}, "Review for Jira")));
   if (known.length || m.talk.length) {
     const people = h("div", {class: "panel"});
@@ -344,7 +393,8 @@ async function renderPeople(main) {
     : h("div", {class: "panel"}, h("p", {class: "soft"}, "Nobody yet. When a meeting has voices to name, name them there."))));
 }
 async function renderSettings(main) {
-  const s = await call("settings");
+  const s = await call("settings"), ai = await call("cloud_state");
+  const aiNow = ai.cloud ? ai.providers.find(p => p.id === ai.settings.provider) : null;
   const name = h("input", {type: "text", value: s.my_name});
   const lang = h("select", null, [["", "Detect automatically"], ["en", "English"], ["hi", "Hindi"], ["de", "German"], ["fr", "French"], ["es", "Spanish"], ["ja", "Japanese"]].map(([v, t]) => h("option", {value: v}, t)));
   lang.value = s.language;
@@ -369,12 +419,132 @@ async function renderSettings(main) {
   }}, "Save");
   const field = (label, ...kids) => h("div", {class: "field"}, h("label", null, label), ...kids);
   main.replaceChildren(h("div", {class: "column"}, h("h1", {style: "margin-bottom:16px"}, "Settings"),
+    field("Who writes the notes", h("div", {class: "row"}, h("span", {class: "grow"}, aiNow ? aiNow.label : "This computer"),
+      h("button", {onclick: () => showAiChoice(true)}, "Change…"),
+      aiNow && aiNow.key ? h("button", {onclick: async () => { await call("use_local", true); boot(); }}, "Forget key") : null)),
     field("Your name in notes", name), field("Language of your meetings", lang),
     field("Notes folder", h("div", {class: "row"}, folder, h("button", {onclick: async () => { const p = await call("choose_folder"); if (p) folder.value = p; }}, "Choose…"), h("button", {onclick: () => call("open_notes_folder")}, "Open"))),
     field("Record these", teamsL, zoomL, webL),
     field("Notes and privacy", workL, audioL, notifyL, screenL),
     s.packaged ? field("Starting up", loginL) : null,
     field("Words to fix", h("p", {class: "soft small"}, "One per line, as heard = how to spell it."), vocab), saveBtn));
+}
+// -- tasks handed to the AI ----------------------------------------------------
+const TASK_WORDS = {working: "Working", questions: "Needs your answers", attention: "Needs you", review: "Ready for you", done: "Finished", stopped: "Stopped"};
+let taskHead = "";
+
+async function handToAi(sid, item) {
+  const s = await call("task_setup");
+  const main = document.getElementById("main");
+  const text = h("textarea", {rows: 4}); text.value = item;
+  const agree = h("input", {type: "checkbox"});
+  const problem = h("p", {class: "problem"});
+  const go = h("button", {class: "primary", onclick: async () => {
+    go.disabled = true; problem.textContent = "";
+    const r = await call("task_start", sid, text.value, s.local ? true : agree.checked);
+    if (r.ok) return go2Task(r.value);
+    problem.textContent = r.message; go.disabled = false;
+  }}, "Start");
+  main.replaceChildren(h("div", {class: "column"}, h("button", {class: "link", onclick: () => go2Meeting(sid)}, "‹ Back"),
+    h("h1", {style: "margin-top:8px"}, "Hand this to the AI"),
+    h("p", {class: "soft"}, "This came from what people said, so read it first. The AI will ask what it needs and change a separate copy. Then your approved checks run, and it opens draft PRs for repositories or updates local folders."),
+    h("div", {class: "field"}, h("label", null, "The task"), text),
+    s.gh ? null : h("p", {class: "soft small"}, "The GitHub command (gh) wasn't found, so only local folders will work. To open PRs, install it and run gh auth login."),
+    s.local ? h("p", {class: "soft small"}, "A model on this computer does the work, so only small, clearly described changes are likely to finish.") : h("div", null, s.note ? h("p", {class: "soft small"}, s.note) : null,
+      h("label", {class: "check"}, agree, h("span", null, "Code from the repositories it reads, and this meeting's transcript, will be sent to " + s.provider + ". I agree."))),
+    problem, go));
+}
+function go2Task(id) { go("tasks", id); }
+function go2Meeting(id) { go("meetings", id); }
+
+async function renderTasks(main) {
+  taskHead = "";
+  if (openId) { main.replaceChildren(h("div", {class: "column", id: "task"}, h("p", {class: "soft"}, "Loading…"))); return refreshTasks(); }
+  const [list, s] = [await call("tasks"), await call("task_setup")];
+  main.replaceChildren(h("div", {class: "column", id: "tasks"}, h("h1", null, "Tasks"),
+    h("p", {class: "soft"}, "Open a meeting and choose Hand to AI on an action item."),
+    h("h2", null, "Tasks"), list.length ? list.map(t => h("button", {class: "panel meeting", onclick: () => go2Task(t.id)},
+      h("div", {class: "grow"}, h("div", null, t.task.slice(0, 90)), h("div", {class: "soft small"}, t.meeting)), h("span", {class: "tag"}, TASK_WORDS[t.status]))) : h("p", {class: "soft"}, "None yet."),
+    h("h2", null, "Where work can happen"), h("p", {class: "soft small"}, "A git repository gets a draft PR. A local folder has no PR: the changes are copied back into it, with a backup. A task can use several. The commands are the only ones ever run, and they run the AI's code on this computer, so list only your own test and build steps."),
+    s.repos.map(repoCard), repoForm()));
+}
+function repoCard(r) {
+  return h("div", {class: "panel"}, h("div", {class: "row"}, h("b", {class: "grow"}, r.name), h("span", {class: "tag"}, r.kind === "folder" ? "Local folder" : "Git repository"),
+    h("button", {class: "link small", onclick: async () => { await call("task_repo_forget", r.name); render(); }}, "Remove")),
+    h("div", {class: "soft small"}, r.path), r.commands.length ? h("pre", {class: "desc"}, r.commands.join("\n")) : h("p", {class: "soft small"}, "No checks: you review the result before it is applied."));
+}
+function repoForm(start) {
+  const path = h("input", {type: "text", value: start || "", placeholder: "Project folder"});
+  const commands = h("textarea", {rows: 3, placeholder: "One command per line, in order, such as:\nnpm ci\nnpm test"});
+  const problem = h("p", {class: "problem"});
+  const kind = h("select", null, h("option", {value: "repo"}, "Git repository: open a draft PR"), h("option", {value: "folder"}, "Local folder: no PR, update the folder"));
+  const suggest = async () => { const c = await call("task_repo_suggest", path.value); if (c.length && !commands.value) commands.value = c.join("\n"); };
+  path.onchange = suggest;
+  return h("div", {class: "panel"}, h("div", {class: "field"}, h("label", null, "Add a place to work"), h("div", {class: "row"}, path,
+    h("button", {onclick: async () => { const p = await call("choose_folder"); if (p) { path.value = p; suggest(); } }}, "Choose…"))),
+    h("div", {class: "field"}, h("label", null, "What it is"), kind),
+    h("div", {class: "field"}, h("label", null, "Commands that test it (optional for a local folder)"), commands), problem,
+    h("button", {onclick: async () => {
+      const r = await call("task_repo_save", path.value, commands.value.split("\n"), kind.value);
+      if (r.ok) render(); else problem.textContent = r.message;
+    }}, "Add"));
+}
+async function refreshTasks() {
+  if (!openId) return;
+  const box = document.getElementById("task");
+  if (!box) return;
+  const [t, s] = [await call("task", openId), await call("task_setup")];
+  const stamp = JSON.stringify([t.status, t.stage, t.error, t.prs, t.results, t.round]);
+  const log = document.getElementById("task-log");
+  if (log) log.replaceChildren(...logLines(t));
+  if (stamp === taskHead) return;
+  taskHead = stamp;
+  box.replaceChildren(h("button", {class: "link", onclick: () => go("tasks")}, "‹ Tasks"), h("h1", {style: "margin-top:8px"}, t.title || "Task"),
+    h("p", null, h("span", {class: "tag"}, TASK_WORDS[t.status]), " ", t.task), t.error ? h("p", {class: "problem"}, t.error) : null,
+    ...taskBody(t, s), h("h2", null, "What it's doing"), h("div", {class: "panel small", id: "task-log"}, logLines(t)));
+}
+function logLines(t) { return t.log.slice(-25).map(l => h("div", null, h("span", {class: "soft"}, l.at + "  "), l.text)); }
+function taskBody(t, s) {
+  const out = [];
+  if (t.status === "questions") out.push(taskQuestions(t, s));
+  const names = Object.keys(t.results);
+  if (names.length) out.push(h("h2", null, "Where it worked"), ...names.map(n => h("div", {class: "panel"}, h("div", {class: "row"}, h("b", {class: "grow"}, n), h("span", {class: "tag"}, t.results[n].state)),
+    t.prs[n] ? h("button", {class: "link", onclick: () => call("task_open", t.prs[n])}, t.prs[n]) : null,
+    (t.results[n].files || []).length ? h("details", null, h("summary", null, "Files changed"), h("pre", {class: "desc"}, t.results[n].files.join("\n"))) : null,
+    t.results[n].output ? h("details", null, h("summary", null, "Check output"), h("pre", {class: "desc"}, t.results[n].output)) : null)));
+  const buttons = [];
+  if (t.status === "working") buttons.push(h("button", {onclick: async () => { await call("task_stop", t.id); taskHead = ""; refreshTasks(); }}, "Stop"));
+  if (t.status === "attention" || t.status === "stopped") {
+    const note = h("textarea", {rows: 2, placeholder: "Anything to tell it before trying again (optional)"});
+    out.push(note);
+    buttons.push(h("button", {class: "primary", onclick: async () => { const r = await call("task_retry", t.id, note.value); if (!r.ok) toast(r.message); taskHead = ""; refreshTasks(); }}, "Try again"));
+    const passing = names.filter(n => t.results[n].state === "passed" && !t.prs[n]), failing = names.some(n => t.results[n].state === "failed");
+    if (passing.length && failing) buttons.push(h("button", {onclick: async () => { await call("task_publish_passing", t.id); taskHead = ""; refreshTasks(); }}, "Open PRs for those that passed"));
+  }
+  const act = (name, label, primary) => h("button", {class: primary ? "primary" : null, onclick: async () => { const r = await call(name, t.id); if (!r.ok) toast(r.message); taskHead = ""; refreshTasks(); }}, label);
+  if (t.status === "review") buttons.push(act("task_apply", "Apply to the folder", true));
+  if (Object.keys(t.applied || {}).length) buttons.push(act("task_undo", "Undo changes to the folder"));
+  if (t.status !== "working") buttons.push(h("button", {onclick: async () => { await call("task_discard", t.id); go("tasks"); }}, t.status === "done" ? "Remove from list" : "Discard"));
+  out.push(h("div", {class: "row", style: "margin-top:12px"}, buttons));
+  return out;
+}
+function taskQuestions(t, s) {
+  const boxes = s.repos.map(r => { const c = h("input", {type: "checkbox", checked: t.order.includes(r.name)}); return [r.name, c, h("label", {class: "check"}, c, h("span", null, r.name + (r.kind === "folder" ? " (local folder, no PR)" : " (git repository, draft PR)")))]; });
+  const addFolder = h("button", {onclick: async () => {
+    const p = await call("choose_folder"); if (!p) return;
+    const r = await call("task_repo_save", p, [], "folder");
+    if (!r.ok) { problem.textContent = r.message; return; }
+    taskHead = ""; refreshTasks();
+  }}, "Use a local folder instead…");
+  const answers = t.questions.map(() => h("textarea", {rows: 2}));
+  const problem = h("p", {class: "problem"});
+  return h("div", null, t.understanding ? h("p", null, t.understanding) : null, t.plan.length ? h("ul", {class: "plain"}, t.plan.map(p => h("li", null, p))) : null,
+    h("h2", null, "Where should it work?"), boxes.map(b => b[2]), h("div", {style: "margin-bottom:10px"}, addFolder),
+    t.questions.length ? h("h2", null, "Before it starts") : null, t.questions.map((q, i) => h("div", {class: "field"}, h("label", null, q), answers[i])), problem,
+    h("button", {class: "primary", onclick: async () => {
+      const r = await call("task_answer", t.id, boxes.filter(b => b[1].checked).map(b => b[0]), answers.map(a => a.value));
+      if (r.ok) { taskHead = ""; refreshTasks(); } else problem.textContent = r.message;
+    }}, "Start the work"));
 }
 // -- Jira --------------------------------------------------------------------
 const SIGN_IN_HELP = {
@@ -387,7 +557,7 @@ let reviewStamps = {}, reviewHead = "";
 async function renderJira(main) {
   const conn = h("div", null, h("div", {class: "panel soft"}, "Checking your connection…")), list = h("div", null, h("p", {class: "soft"}, "Loading…"));
   main.replaceChildren(h("div", {class: "column"}, h("h1", null, "Jira"),
-    h("p", {class: "soft"}, "Turn what was agreed in a meeting into tickets. The AI drafts them on this computer, and nothing reaches Jira until you approve it."),
+    h("p", {class: "soft"}, "Turn what was agreed in a meeting into tickets. The AI drafts them, and nothing reaches Jira until you approve it."),
     h("h2", null, "Connection"), conn, h("h2", null, "Meetings"), list, h("div", {id: "habits"})));
   renderConnection(conn);
   renderHabits();
