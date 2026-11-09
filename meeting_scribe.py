@@ -62,6 +62,7 @@ import numpy as np
 import cloud_llm
 import platforms
 import screen_names
+import model_store
 import task_agent
 from screen_names import looks_like_name
 
@@ -136,6 +137,14 @@ DEFAULTS = {
     # RAM) and voice_model. See platforms/macos.py and platforms/windows.py.
     **plat.MODEL_DEFAULTS,
 }
+
+# The local note writers, largest first: memory needed (GB as the system reports it, so a 16 GB
+# PC showing 15.7 still counts), then the name for each backend. Each needs room next to the
+# meeting app and the browser, so less memory than the smallest means no local note writer.
+LLM_TIERS = [
+    (23, "mlx-community/Qwen2.5-14B-Instruct-4bit", "bartowski/Qwen2.5-14B-Instruct-GGUF/Qwen2.5-14B-Instruct-Q4_K_M.gguf"),
+    (15, "mlx-community/Qwen2.5-7B-Instruct-4bit", "bartowski/Qwen2.5-7B-Instruct-GGUF/Qwen2.5-7B-Instruct-Q4_K_M.gguf"),
+]
 
 # [jira] table in config.toml. Secrets never live here, only in the macOS Keychain or
 # Windows Credential Manager (keyring).
@@ -313,6 +322,26 @@ def load_config():
     cfg["cloud_llm"] = {**CLOUD_DEFAULTS, **cfg.get("cloud_llm", {})}
     for k in ("output_dir", "work_dir", "log_dir"):
         cfg[k] = Path(cfg[k]).expanduser()
+    return fit_llm(cfg)
+
+
+def fit_llm(cfg):
+    """Step a listed note writer down to what this computer's memory can run, so that is all it
+    downloads. A model of the user's own, or one already installed, is left as it is."""
+    cfg["llm_fits"] = True
+    key, column = {"mlx": ("mlx_llm_model", 1), "llamacpp": ("gguf_model", 2)}.get(cfg["llm_backend"], (None, 0))
+    tier = next((t for t in LLM_TIERS if key and t[column] == cfg.get(key)), None)
+    if not tier or cfg.get("ignore_memory_limit"):
+        return cfg
+    ram = plat.ram_gb()
+    entry = [tier[1], None] if key == "mlx_llm_model" else tier[2].rsplit("/", 1)
+    if ram >= tier[0] or entry in (read_json(cfg["work_dir"] / "models_ready.json", []) or []):
+        return cfg
+    smaller = next((t for t in LLM_TIERS if ram >= t[0]), None)
+    if smaller:
+        cfg[key] = smaller[column]
+    else:
+        cfg["llm_fits"] = False
     return cfg
 
 
@@ -4060,6 +4089,8 @@ def cmd_terms(cfg, args):
 def model_plan(cfg):
     """[(Hugging Face repo, one file or None for the whole repo)] this machine needs."""
     plan = [(cfg["whisper_model"], None), (cfg["voice_model"], None)]
+    if not cfg.get("llm_fits", True):
+        return plan
     if cfg["llm_backend"] == "llamacpp":
         owner, repo, filename = cfg["gguf_model"].split("/", 2)
         plan.append((f"{owner}/{repo}", filename))
@@ -4083,6 +4114,9 @@ def models_ready(cfg):
 def download_size(cfg):
     """Total bytes to fetch, or None if the sizes can't be found out; the app's progress bar."""
     from huggingface_hub import HfApi
+    total = model_store.plan_size(model_manifest(), model_plan(cfg))
+    if total is not None:
+        return total
     total = 0
     try:
         for repo, filename in model_plan(cfg):
@@ -4094,27 +4128,51 @@ def download_size(cfg):
     return total
 
 
-def cmd_download(cfg, args):
+def model_manifest():
+    return model_store.load_manifest(HERE / "models.json")
+
+
+def fetch_model(manifest, hub, ctx, repo, filename):
+    """This project's release first, because some networks block Hugging Face, then Hugging Face
+    for anything the release doesn't have or couldn't deliver."""
     from huggingface_hub import snapshot_download
+    first = None
+    if model_store.wanted_files(manifest, repo, filename):
+        try:
+            return model_store.install(manifest, repo, filename, hub, ctx)
+        except model_store.StoreError as e:
+            log.warning("%s: %s; trying Hugging Face", repo, e)
+            first = e
+    try:
+        snapshot_download(repo, allow_patterns=[filename] if filename else None)
+    except Exception as e:
+        raise model_store.StoreError(str(first or f"Couldn't download {repo}: {type(e).__name__}. {model_store.BLOCKED_HELP}")) from e
+
+
+def cmd_download(cfg, args):
+    from huggingface_hub import constants
     cfg["work_dir"].mkdir(parents=True, exist_ok=True)
     (cfg["work_dir"] / "models_ready.json").unlink(missing_ok=True)
-    (cfg["work_dir"] / "download_size.json").write_text(json.dumps(download_size(cfg)))
-    print("Downloading", cfg["whisper_model"])
-    snapshot_download(cfg["whisper_model"])
-    print("Downloading", cfg["voice_model"])
-    snapshot_download(cfg["voice_model"])
-    if cfg["llm_backend"] == "llamacpp":
-        print("Downloading", cfg["gguf_model"])
-        gguf_path(cfg, download=True)
-    elif cfg["llm_backend"] == "mlx":
-        print("Downloading", cfg["mlx_llm_model"])
-        snapshot_download(cfg["mlx_llm_model"])
-        if cfg["work_only"] and not filter_is_summary_model(cfg):
-            print("Downloading", cfg["work_filter_model"])
-            snapshot_download(cfg["work_filter_model"])
-    elif cfg["llm_backend"] == "ollama":
+    failure = cfg["work_dir"] / "download_error.txt"
+    failure.unlink(missing_ok=True)
+    plan, manifest = model_plan(cfg), model_manifest()
+    size = download_size(cfg)
+    (cfg["work_dir"] / "download_size.json").write_text(json.dumps(size))
+    if not cfg.get("llm_fits", True):
+        print(f"This computer has {plat.ram_gb():.0f} GB of memory, too little for a local note writer, so only the speech models are downloaded.")
+    try:
+        if size:
+            model_store.check_space(constants.HF_HUB_CACHE, size)
+        ctx = model_store.context(cfg["jira"]["ca_bundle"])
+        for repo, filename in plan:
+            print("Downloading", repo, filename or "")
+            fetch_model(manifest, constants.HF_HUB_CACHE, ctx, repo, filename)
+    except model_store.StoreError as e:
+        failure.write_text(str(e), encoding="utf-8")
+        sys.exit(str(e))
+    if cfg["llm_backend"] == "ollama":
         print("Ollama backend: pull the model you want with `ollama pull`.")
-    (cfg["work_dir"] / "models_ready.json").write_text(json.dumps(model_plan(cfg)))
+    (cfg["work_dir"] / "models_ready.json").write_text(json.dumps(plan))
     print("Done. Model loading is offline from now on (HF_HUB_OFFLINE=1).")
 
 

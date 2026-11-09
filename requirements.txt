@@ -5,6 +5,7 @@ numpy
 sounddevice
 keyring
 huggingface_hub
+truststore
 onnxruntime
 pywebview  # the desktop app's window
 anthropic[vertex,bedrock]  # company AI: Claude directly, on Google Cloud, AWS or Foundry

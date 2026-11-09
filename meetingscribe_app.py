@@ -107,6 +107,8 @@ class Api:
         cfg = self.cfg
         return {"terms_ok": ms.terms_accepted(cfg), "models_ok": ms.models_ready(cfg), "terms": ms.DISCLAIMER,
                 "ai_chosen": bool(ms.ai_choice(cfg)) or ms.models_ready(cfg), "cloud": cfg["llm_backend"] == "cloud",
+                "ram_gb": round(ms.plat.ram_gb()), "llm_fits": cfg["llm_fits"],
+                "local_ok": cfg["llm_backend"] == "ollama" or ms.plat.ram_gb() >= ms.LLM_TIERS[-1][0],
                 "platform": sys.platform, "downloading": self._downloading()}
 
     def accept_terms(self, screen_names):
@@ -175,7 +177,11 @@ class Api:
                 except OSError:
                     pass
         failed = self.download is not None and self.download.poll() not in (None, 0)
-        return {"done": ms.models_ready(cfg), "failed": failed, "got": got, "total": total}
+        try:
+            error = (cfg["work_dir"] / "download_error.txt").read_text(encoding="utf-8") if failed else ""
+        except OSError:
+            error = ""
+        return {"done": ms.models_ready(cfg), "failed": failed, "error": error, "got": got, "total": total}
 
     def finish_setup(self):
         cfg = self.cfg

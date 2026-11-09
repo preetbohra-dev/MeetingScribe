@@ -52,7 +52,7 @@ DIRS = {
 }
 
 
-def _ram_gb():
+def ram_gb():
     class MEMORYSTATUSEX(Structure):
         _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
                     ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
@@ -65,13 +65,13 @@ def _ram_gb():
     return m.ullTotalPhys / 2**30
 
 
-# Qwen 2.5 14B (about 9 GB) needs room next to the meeting app and the browser; smaller PCs get 7B.
+# meeting_scribe.fit_llm steps this down on PCs without the memory for it.
 _QWEN = "bartowski/Qwen2.5-{0}-Instruct-GGUF/Qwen2.5-{0}-Instruct-Q4_K_M.gguf"
 MODEL_DEFAULTS = {
     "asr_backend": "faster-whisper",
     "whisper_model": "dropbox-dash/faster-whisper-large-v3-turbo",
     "llm_backend": "llamacpp",
-    "gguf_model": _QWEN.format("14B" if _ram_gb() >= 24 else "7B"),
+    "gguf_model": _QWEN.format("14B"),
     # Smart App Control blocks torch, so voices come from an ONNX model instead of SpeechBrain.
     "voice_model": "Wespeaker/wespeaker-voxceleb-resnet34-LM",
 }

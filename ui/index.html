@@ -141,9 +141,9 @@ async function boot() {
 const FIELD_NAMES = {base_url: "Address (https://…)", region: "Region", project: "Google Cloud project", resource: "Resource name"};
 async function showAiChoice(back) {
   clearInterval(polling);
-  const st = await call("cloud_state");
+  const st = await call("cloud_state"), hw = await call("setup_state");
   const radio = (on, text) => { const r = h("input", {type: "radio", name: "ai", checked: on, onchange: paint}); return [r, h("label", {class: "check"}, r, h("span", null, text))]; };
-  const [local, localL] = radio(!st.cloud, "On this computer. Nothing leaves it, but it needs a large download and a capable computer.");
+  const [local, localL] = radio(!st.cloud, hw.local_ok ? "On this computer. Nothing leaves it, but it needs a large download and a capable computer." : "Transcript only. This computer has " + hw.ram_gb + " GB of memory and a local AI needs 16 GB, so notes get the transcript without a summary.");
   const [company, companyL] = radio(st.cloud, "With my company's AI. Transcripts are sent to the provider you pick.");
   const provider = h("select", {onchange: () => { inputs = {}; agree.checked = false; paint(); }}, st.providers.map(p => h("option", {value: p.id}, p.label)));
   provider.value = st.settings.provider || st.providers[0].id;
@@ -209,7 +209,7 @@ function showDownload(s) {
     polling = setInterval(async () => {
       const p = await call("download_progress");
       if (p.done) { clearInterval(polling); return finish(); }
-      if (p.failed) { clearInterval(polling); line.textContent = "The download stopped. Check your internet connection and try again; it picks up where it left off."; retry.style.display = ""; return; }
+      if (p.failed) { clearInterval(polling); line.textContent = (p.error || "The download stopped. Check your internet connection and try again.") + " It picks up where it left off."; retry.style.display = ""; return; }
       if (p.total) { bar.style.width = Math.min(100, 100 * p.got / p.total) + "%"; line.textContent = gb(p.got) + " of " + gb(p.total); }
       else line.textContent = gb(p.got) + " downloaded";
     }, 1500);
@@ -218,6 +218,7 @@ function showDownload(s) {
     h("h1", null, "Downloading the AI models"),
     h("p", {class: "soft"}, s && s.cloud
       ? "These models turn speech into text on this computer. This happens once, so leave this window open."
+      : s && !s.llm_fits ? "This computer has " + s.ram_gb + " GB of memory, too little for a local note-writing AI, so only the speech models are downloaded. Notes will have the transcript without a summary. You can choose your company's AI in Settings."
       : "This happens once and can take a while, so leave this window open. After this, MeetingScribe works without the internet."),
     h("div", {class: "bar"}, bar), line, retry));
   start();

@@ -1,0 +1,32 @@
+name: Models
+
+# Copies the models into the models-v1 release, and writes models.json for the app.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["models-*"]
+    paths: ["packaging/publish_models.py", ".github/workflows/models.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Make room for the largest model
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: Copy the models
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -m pip install huggingface_hub truststore
+          python packaging/publish_models.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: models-json
+          path: models.json
