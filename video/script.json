@@ -15,7 +15,7 @@
       "min": 7.5,
       "lines": [
         "Meet MeetingScribe.",
-        "It turns your Teams, Zoom and Google Meet calls into clean notes and Jira tickets.",
+        "It turns your Teams, Zoom and Google Meet calls into clean notes, and sends them where your team works.",
         "Without anything leaving your computer, unless you say so."
       ]
     },
@@ -114,10 +114,27 @@
       ]
     },
     {
+      "id": "connectors",
+      "min": 11,
+      "lines": [
+        "Then, connectors put the meeting to work in whatever your team already uses.",
+        "Slack, Teams, Gmail and Outlook. Jira. Or an AI that takes on the work. Use the ones you have, and ignore the rest."
+      ]
+    },
+    {
+      "id": "sendout",
+      "min": 17,
+      "lines": [
+        "Send the recap to a Slack or Teams channel, or open it as a draft in Gmail or Outlook.",
+        "Everyone who took something on can get a follow-up with only their work.",
+        "You can edit every message, and each one goes only when you press its button."
+      ]
+    },
+    {
       "id": "jira",
       "min": 6,
       "lines": [
-        "Then, if your team uses Jira.",
+        "If your team uses Jira, there is a connector for that too.",
         "MeetingScribe can turn those action items into Jira tickets, with you approving every one."
       ]
     },
@@ -198,10 +215,10 @@
     },
     {
       "id": "handwork",
-      "min": 22,
+      "min": 25,
       "lines": [
         "It changes a separate copy, never your own checkout.",
-        "It can only edit files. MeetingScribe runs the test commands you approved, and shows the AI any failure, until they pass.",
+        "It can create, edit and delete files, but it cannot run anything. MeetingScribe runs the test commands you approved, and shows the AI any failure, until they pass.",
         "Then it opens draft pull requests, one per repository, linked to each other.",
         "A plain folder has no pull request, so its files are updated, with a backup and an undo button."
       ]
@@ -219,7 +236,7 @@
       "min": 10,
       "lines": [
         "By default, recording, transcription, and every model stay on your computer.",
-        "The only thing that leaves is the Jira update you approved, sent straight to your own Jira site."
+        "The only things that leave are the messages and Jira updates you approve, sent where you chose."
       ]
     },
     {
@@ -268,7 +285,7 @@
         "The newest features have limits of their own.",
         "The commands you approve run the code the AI just wrote, on your computer, so read a task before you start it.",
         "Small local models struggle with code. In our test, one went in circles and never finished.",
-        "Of the company routes, only the signed-in Claude command has been run for real. And pull requests have only been tested against a stand-in for GitHub."
+        "Of the company routes, only the signed-in Claude command has been run for real. And pull requests, Slack, Teams and email drafts have only been tested against stand-ins."
       ]
     },
     {

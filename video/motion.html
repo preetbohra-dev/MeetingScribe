@@ -398,6 +398,33 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
   </section>
 
   <!-- 7 JIRA TITLE -->
+  <section class="scene" id="s-connectors">
+    <div class="abs h2" id="cn-h" style="left:0;width:1920px;top:110px;text-align:center;font-size:56px">Connectors</div>
+    <div class="abs sub" id="cn-s" style="left:0;width:1920px;top:192px;text-align:center;font-size:28px">Whatever your team already uses</div>
+    <div id="cn-grid"></div>
+  </section>
+
+  <section class="scene" id="s-sendout">
+    <div class="abs h2" id="so-h" style="left:0;width:1920px;top:110px;text-align:center;font-size:56px">The recap, and a follow-up for each owner</div>
+    <div class="abs card" id="so-recap" style="left:150px;top:260px;width:760px;height:560px;padding:40px">
+      <div class="sub" style="font-size:24px">Recap · #migration-team</div>
+      <div style="font-size:32px;font-weight:700;margin-top:18px">Migration sync</div>
+      <div style="font-size:26px;line-height:1.5;margin-top:18px">- Migration finished last night<br>- Nightly reports still fail<br>- Firewall change not requested</div>
+      <div id="so-send" style="margin-top:34px"><span class="chip b" style="font-size:26px">Send</span></div>
+    </div>
+    <div class="abs card" id="so-a" style="left:990px;top:260px;width:780px;height:270px;padding:36px">
+      <div class="sub" style="font-size:24px">Follow-up · Priya Shah · Gmail draft</div>
+      <div style="font-size:30px;font-weight:700;margin-top:18px">Update the reporting jobs by Thursday</div>
+      <div style="margin-top:22px"><span class="chip g" style="font-size:24px">Open draft</span></div>
+    </div>
+    <div class="abs card" id="so-b" style="left:990px;top:560px;width:780px;height:260px;padding:36px">
+      <div class="sub" style="font-size:24px">Follow-up · Daniel Ortiz · Teams</div>
+      <div style="font-size:30px;font-weight:700;margin-top:18px">Re-run the row-count check</div>
+      <div style="margin-top:22px"><span class="chip g" style="font-size:24px">Send</span></div>
+    </div>
+    <div class="abs sub" id="so-note" style="left:0;width:1920px;top:880px;text-align:center;font-size:30px">Nothing leaves until you press the button</div>
+  </section>
+
   <section class="scene" id="s-jira">
     <div class="abs" id="j-glow" style="left:560px;top:140px;width:800px;height:800px;border-radius:50%;background:none"></div>
     <div class="abs" style="left:0;width:1920px;top:290px;text-align:center"><span class="chip v" id="j-new" style="font-size:30px;padding:12px 30px">OPTIONAL</span></div>
@@ -643,7 +670,7 @@ project  = <span class="y">"EDA"</span></pre></div>
 // ---------------------------------------------------------------- timeline data
 // timeline.js (written by build_video.py from the narration) sets window.TIMELINE.
 // Without it, line lengths are estimated so the page still previews.
-const FALLBACK_IDS = ["title","problem","app","detect","apps","browser","pipeline","note","who","voices","find","guards","jira","signin","space","learn","extract","search","decide","draft","board","handoff","handwork","usecases","privacy","company","windows","limits","early","newer","outro"];
+const FALLBACK_IDS = ["title","problem","app","detect","apps","browser","pipeline","note","who","voices","find","guards","connectors","sendout","jira","signin","space","learn","extract","search","decide","draft","board","handoff","handwork","usecases","privacy","company","windows","limits","early","newer","outro"];
 const TL = window.TIMELINE || (() => {
   let t = 0; const scenes = FALLBACK_IDS.map(id => { const s = {id, start: t, dur: 10, lines: [{t: .6, dur: 4, text: ""}, {t: 4.8, dur: 4, text: ""}, {t: 8, dur: 2, text: ""}, {t: 9, dur: 1, text: ""}]}; t += 10; return s; });
   return {scenes, total: t};
@@ -1002,6 +1029,25 @@ scene("guards", (s, L, e) => {
   A("#g-note", L[1] - .1, .7, {opacity: [0, 1], x: [50, 0]});
 });
 
+scene("connectors", (s, L, e) => {
+  IN("#cn-h", s + .1);
+  IN("#cn-s", s + .6, .6, 12);
+  [["Slack", "Recap and follow-ups in a channel"], ["Microsoft Teams", "Recap and follow-ups in a channel"], ["Gmail", "Drafts in your own mailbox"], ["Outlook", "Drafts in your own mailbox"], ["Jira", "Tickets, checked for duplicates"], ["Hand to AI", "Action item to draft pull request"]].forEach(([b, p], i) => {
+    const c = html(`<div class="abs card uc" style="left:${130 + (i % 3) * 570}px;top:${310 + Math.floor(i / 3) * 290}px;width:520px;height:250px"><b>${b}</b><p>${p}</p></div>`);
+    $("#cn-grid").appendChild(c);
+    A(c, L[1] + .1 + i * .8, .6, {opacity: [0, 1], y: [30, 0]}, "back");
+  });
+});
+
+scene("sendout", (s, L, e) => {
+  IN("#so-h", s + .1);
+  A("#so-recap", s + .6, .6, {opacity: [0, 1], x: [-40, 0]});
+  A("#so-a", L[1] + .1, .6, {opacity: [0, 1], x: [40, 0]});
+  A("#so-b", L[1] + 1.5, .6, {opacity: [0, 1], x: [40, 0]});
+  POP("#so-send", L[2] + .2);
+  IN("#so-note", L[2] + .8, .6, 16);
+});
+
 scene("jira", (s, L, e) => {
   A("#j-glow", s, e - s, {scale: [.6, 1.15], opacity: [0, 1]}, "out");
   POP("#j-new", s + .3);
@@ -1193,7 +1239,7 @@ scene("handoff", (s, L, e) => {
 
 scene("handwork", (s, L, e) => {
   IN("#hw-h", s + .1);
-  [["A separate copy", "Your own checkout is not touched", "#60a5fa", 0], ["The AI edits files", "It is given no shell", "#2dd4bf", 1], ["Your checks run", "Failures go back to the AI", "#f5b543", 1], ["Draft PRs", "One per repository, linked", "#34d399", 2]].forEach(([b, p, col, line], i) => {
+  [["A separate copy", "Your own checkout is not touched", "#60a5fa", 0], ["The AI changes files", "Create, edit, delete. No shell", "#2dd4bf", 1], ["Your checks run", "Failures go back to the AI", "#f5b543", 1], ["Draft PRs", "One per repository, linked", "#34d399", 2]].forEach(([b, p, col, line], i) => {
     const c = html(`<div class="abs card" style="left:${120 + i * 425}px;top:300px;width:400px;height:340px;padding:36px"><div style="width:58px;height:58px;border-radius:50%;background:${col}22;color:${col};display:grid;place-items:center;font-size:28px;font-weight:800">${i + 1}</div><div style="font-size:36px;font-weight:700;margin-top:26px">${b}</div><div class="sub" style="font-size:25px;margin-top:14px">${p}</div></div>`);
     $("#hw-steps").appendChild(c);
     A(c, L[line] + .2 + (i === 2 ? 3.5 : 0), .6, {opacity: [0, 1], y: [34, 0]}, "back");
@@ -1216,7 +1262,7 @@ scene("newer", (s, L, e) => {
   [["Approved commands run the AI's code", "They have your account's access to this computer.", "Secrets are removed from them, but read a task before you start it"],
    ["Small local models struggle with code", "In our test, llama 3.1 repeated one step and never finished.", "Expect only small, clearly described changes"],
    ["Most company routes are unproven", "Only the signed-in Claude command has run for real.", "Keys, cloud accounts, Gemini and Copilot are untested on real accounts"],
-   ["Pull requests are unproven", "Tested with real git, and a stand-in for GitHub.", "PRs are always drafts, for a person to review"],
+   ["PRs and new connectors are unproven", "Tested against stand-ins for GitHub, Slack and Teams.", "PRs are always drafts, and every message waits for you"],
   ].forEach(([b, x, f], i) => {
     const c = html(`<div class="abs card lim" style="left:${150 + (i % 2) * 840}px;top:${215 + Math.floor(i / 2) * 330}px;width:780px;height:300px"><b style="font-size:38px">${b}</b><p>${x}</p><small>${f}</small></div>`);
     $("#n-grid").appendChild(c);
@@ -1309,7 +1355,7 @@ scene("outro", (s, L, e) => {
 
 // ---------------------------------------------------------------- persistent chrome
 const SECTIONS = {title: "", problem: "Why", app: "Desktop app", detect: "Capture", apps: "Meeting apps", browser: "In the browser", pipeline: "On-device processing", note: "Notes", who: "Who gets a name", voices: "Voices", find: "Search and ask", guards: "Safety nets",
-  jira: "Jira", signin: "Jira · sign in", space: "Jira · space", learn: "Jira · learning your space", extract: "Jira · extract", search: "Jira · search", decide: "Jira · decide",
+  connectors: "Connectors", sendout: "Connectors · send", jira: "Jira", signin: "Jira · sign in", space: "Jira · space", learn: "Jira · learning your space", extract: "Jira · extract", search: "Jira · search", decide: "Jira · decide",
   draft: "Jira · review", board: "Jira · pushed", handoff: "Hand to AI", handwork: "Hand to AI", usecases: "Use cases", privacy: "Privacy", company: "Company AI", windows: "Platforms", limits: "Shortcomings", early: "Shortcomings", newer: "Shortcomings", outro: ""};
 F(0, TL.total, (p, t) => {
   const s = TL.scenes.find(x => t >= x.start && t < x.start + x.dur) || TL.scenes[TL.scenes.length - 1];

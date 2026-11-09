@@ -330,7 +330,7 @@ def test_a_folder_without_checks_waits_for_you(world, monkeypatch, folder):
     t, _ = start(world, monkeypatch, folder_edit, repos=("plain project",))
     t = go_on(world, t, ["plain project"])
     assert t["status"] == "review" and (folder / "code.txt").read_text() == "broken\n"
-    assert sorted(t["results"]["plain project"]["files"]) == ["code.txt", "new.txt", "old.txt"]
+    assert sorted(t["results"]["plain project"]["files"]) == ["code.txt", "new.txt", "old.txt (deleted)"]
     world.tasks.apply_reviewed(t["id"])
     t = world.tasks.get(t["id"])
     assert t["status"] == "done" and (folder / "code.txt").read_text() == "fixed\n"
@@ -471,6 +471,45 @@ def test_links_out_of_the_worktree_are_refused(tmp_path):
         ta.FileTools({"r": str(tmp_path / "r")}).run({"tool": "read", "repo": "r", "path": "link"})
 
 
+def tools(tmp_path):
+    return ta.FileTools({"r": str(tmp_path)})
+
+
+def test_ai_can_create_edit_and_delete(tmp_path):
+    t = tools(tmp_path)
+    t.run({"tool": "write", "repo": "r", "path": "new/a.txt", "content": "one"})
+    t.run({"tool": "replace", "repo": "r", "path": "new/a.txt", "old": "one", "new": "two"})
+    assert (tmp_path / "new/a.txt").read_text() == "two"
+    t.run({"tool": "delete", "repo": "r", "path": "new/a.txt"})
+    assert not (tmp_path / "new/a.txt").exists()
+    (tmp_path / "old/deep").mkdir(parents=True)
+    (tmp_path / "old/deep/x.txt").write_text("x")
+    t.run({"tool": "delete", "repo": "r", "path": "old"})
+    assert not (tmp_path / "old").exists()
+
+
+@pytest.mark.parametrize("path", ["", ".", "../outside.txt", ".github/workflows/a.yml", ".git/config", "tests/test_a.py", "src/a.test.js", "missing.txt", "mixed"])
+def test_some_things_cannot_be_deleted(tmp_path, path):
+    root = tmp_path / "repo"
+    for f in (".github/workflows/a.yml", ".git/config", "tests/test_a.py", "src/a.test.js", "mixed/tests/test_b.py", "mixed/c.txt"):
+        (root / f).parent.mkdir(parents=True, exist_ok=True)
+        (root / f).write_text("x")
+    (tmp_path / "outside.txt").write_text("x")
+    with pytest.raises(ta.TaskError):
+        tools(root).run({"tool": "delete", "repo": "r", "path": path})
+    assert (tmp_path / "outside.txt").exists() and (root / "mixed/c.txt").exists() and (root / "tests/test_a.py").exists()
+
+
+def test_a_listed_deletion_follows_the_same_rules(tmp_path):
+    for f in ("old.txt", "keep.txt", "tests/test_a.py"):
+        (tmp_path / f).parent.mkdir(exist_ok=True)
+        (tmp_path / f).write_text("x")
+    (tmp_path / ta.DELETE_LIST).write_text("old.txt\n../escape\ntests/test_a.py\n\n")
+    refused = ta.CliWorker.deletions({"r": str(tmp_path)})
+    assert not (tmp_path / "old.txt").exists() and (tmp_path / "keep.txt").exists() and (tmp_path / "tests/test_a.py").exists()
+    assert not (tmp_path / ta.DELETE_LIST).exists() and len(refused) == 2 and "tests/test_a.py" in refused[1]
+
+
 def test_replace_needs_a_unique_match(tmp_path):
     (tmp_path / "a").write_text("x x")
     with pytest.raises(ta.TaskError, match="2 times"):
@@ -546,7 +585,7 @@ def test_claude_agent_has_file_tools_only(agent):
     a = s["args"]
     assert "--restricted" in a and "--strict-mcp-config" in a and a[a.index("--permission-mode") + 1] == "dontAsk"
     assert "Bash" not in a[a.index("--tools") + 1] and "Bash" not in a[a.index("--allowedTools") + 1]
-    assert a[a.index("--add-dir") + 1].replace("\\", "/").endswith("/w/b") and s["cwd"].replace("\\", "/").endswith("/w/a") and s["text"] == "THE PROMPT"
+    assert a[a.index("--add-dir") + 1].replace("\\", "/").endswith("/w/b") and s["cwd"].replace("\\", "/").endswith("/w/a") and s["text"].startswith("THE PROMPT")
 
 
 def test_gemini_agent_denies_everything_but_files(agent):

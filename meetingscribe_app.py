@@ -16,9 +16,10 @@ import threading
 import time
 from pathlib import Path
 
+import connectors
 import meeting_scribe as ms
 
-UI = ms.HERE / "ui" / "index.html"
+UI =ms.HERE / "ui" / "index.html"
 APP_NAME = "MeetingScribe"
 ALIVE_S = 15  # a recorder that hasn't reported for this long is not running
 CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
@@ -85,6 +86,7 @@ class Api:
         self._jira_jobs = {}
         self._task_jobs = {}
         self._jira_lock = threading.Lock()  # a card can't be approved twice by a double click
+        self._send_lock = threading.Lock()
 
     @property
     def cfg(self):
@@ -240,7 +242,8 @@ class Api:
         return {"id": sid, "meta": {k: meta.get(k) for k in ("title", "started_at", "duration_s", "source", "status")},
                 "summary": ms.note_section(text, "Summary"), "actions": ms.note_section(text, "Action Items"),
                 "talk": ms.talk_shares(turns), "turns": [{"start": t["start"], "speaker": t["speaker"], "text": t["text"], "flag": t.get("flag")} for t in turns],
-                "voices": voices, "note_exists": note.exists(), "me": self.cfg["my_name"]}
+                "voices": voices, "note_exists": note.exists(), "me": self.cfg["my_name"],
+                "jira": bool(self.cfg["jira"]["base_url"]), "destinations": self._connectors().destinations()}
 
     def voice_clip(self, sid, label):
         d = self._session(sid)
@@ -330,6 +333,42 @@ class Api:
 
     def forget_person(self, name):
         return ms.VoiceLibrary(self.cfg).forget(name)
+
+    # -- Slack, Teams, Gmail and Outlook. A webhook link goes to the keychain and never comes back.
+
+    def _connectors(self):
+        return connectors.Connectors(ms, self.cfg)
+
+    @staticmethod
+    def _connector_result(fn):
+        try:
+            return {"ok": True, "message": fn() or ""}
+        except connectors.ConnectorError as e:
+            return {"ok": False, "message": str(e)}
+
+    def connector_state(self):
+        c = self.cfg
+        return {"destinations": self._connectors().destinations(), "jira": bool(c["jira"]["base_url"]), "task_places": len(ms.task_agent.Tasks(ms, c).repos())}
+
+    def connector_add_channel(self, service, name, url):
+        return self._connector_result(lambda: self._connectors().add_channel(service, name, url) and "Connected. A test message was posted to the channel.")
+
+    def connector_set_email(self, service, account="work"):
+        return self._connector_result(lambda: self._connectors().set_email(service, account))
+
+    def connector_remove(self, did):
+        return self._connector_result(lambda: self._connectors().remove(did))
+
+    def connector_compose(self, sid):
+        d = self._session(sid)
+        speakers, meta = ms.session_speakers(d)
+        note = Path(meta.get("notes") or "/missing")
+        return {"title": meta.get("title"), **self._connectors().compose(d, meta, note.read_text(encoding="utf-8") if note.exists() else "", list(speakers))}
+
+    def connector_send(self, sid, did, kind, owner, subject, text, to="", slack="", again=False):
+        d = self._session(sid)
+        with self._send_lock:  # a double click can't message a channel twice
+            return self._connector_result(lambda: self._connectors().send(d, did, kind, owner, subject, text, to, slack, again is True))
 
     # -- Jira
 
