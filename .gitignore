@@ -19,3 +19,4 @@ config.local.toml
 # Packaged app build output
 build/
 dist/
+video/shots/

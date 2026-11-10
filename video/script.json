@@ -6,48 +6,167 @@
   "fps": 30,
   "width": 1920,
   "height": 1080,
-  "lead_in": 0.4,
-  "tail": 0.5,
-  "gap": 0.22,
+  "lead_in": 0.7,
+  "tail": 1.2,
+  "gap": 0.42,
   "scenes": [
-    {"id": "title", "min": 3, "lines": [
-      "MeetingScribe turns your calls into notes and follow-ups.",
-      "No bot joins the meeting, and nothing leaves your computer unless you say so."
-    ]},
-    {"id": "note", "min": 3, "lines": [
-      "Join Teams, Zoom or Google Meet as usual. It records by itself, and a few minutes after you hang up, the note is ready."
-    ]},
-    {"id": "templates", "min": 3, "lines": [
-      "A stand-up, a one-on-one and an incident review each get the note they need. You can add your own."
-    ]},
-    {"id": "actions", "min": 3, "lines": [
-      "Every action item lands on one list, and work that keeps coming back shows as carried over."
-    ]},
-    {"id": "upcoming", "min": 3, "lines": [
-      "Before your next call, a brief shows what was said last time and what is still open. It comes straight from your notes, so nothing is made up."
-    ]},
-    {"id": "send", "min": 3, "lines": [
-      "Send the recap and each person's follow-up to Slack, Teams, Gmail or Outlook. Nothing goes until you press the button."
-    ]},
-    {"id": "connectors", "min": 3, "lines": [
-      "Turn action items into Jira tickets, or hand one to an AI that opens a draft pull request."
-    ]},
-    {"id": "assistants", "min": 3, "lines": [
-      "Turn on MCP, and Claude or Cursor on your computer can read your meetings. It can only read."
-    ]},
-    {"id": "meetings", "min": 3, "lines": [
-      "Nobody on the call can see it, so telling them is up to you. It gives you a notice to paste into the chat."
-    ]},
-    {"id": "consent", "min": 3, "lines": [
-      "List the meetings it must never record, and have old ones deleted automatically."
-    ]},
-    {"id": "limits", "min": 3, "lines": [
-      "It is early software. The installers are unsigned, and a small local model can get details wrong, so read the note before you act on it.",
-      "It has only been tested on simulated calls, and the calendar, Slack and Teams only against stand-ins.",
-      "And recording people comes with legal rules, so ask first."
-    ]},
-    {"id": "outro", "min": 4, "lines": [
-      "MeetingScribe. Meetings, written down and followed up."
-    ]}
+    {
+      "id": "title",
+      "min": 7.5,
+      "lines": [
+        "Meet MeetingScribe.",
+        "It turns your Teams, Zoom and Google Meet calls into clean notes, and sends them where your team works.",
+        "Without anything leaving your computer, unless you say so."
+      ]
+    },
+    {
+      "id": "problem",
+      "min": 8,
+      "lines": [
+        "Meetings create work.",
+        "But notes go unwritten, action items get lost, and the tickets never get raised."
+      ]
+    },
+    {
+      "id": "detect",
+      "min": 11,
+      "lines": [
+        "MeetingScribe runs quietly in the background.",
+        "When you join a call, it starts recording two tracks: your microphone, and the meeting's own audio.",
+        "No buttons to press, and no bot joining the meeting."
+      ]
+    },
+    {
+      "id": "pipeline",
+      "min": 14,
+      "lines": [
+        "When the call ends, everything runs right on your computer.",
+        "Whisper transcribes both tracks.",
+        "A voice model tells the speakers apart, and names only the people it is sure about.",
+        "A local language model drops the small talk, then writes the summary and the action items."
+      ]
+    },
+    {
+      "id": "note",
+      "min": 11,
+      "lines": [
+        "When it finishes, a Markdown note lands in your Meeting Notes folder, and in the app.",
+        "Who was there, who did the talking, what was decided, and who owes what."
+      ]
+    },
+    {
+      "id": "languages",
+      "min": 9,
+      "lines": [
+        "And real meetings do not always stay in one language.",
+        "If the conversation moves from English to Hindi and back again, it keeps up, and writes each part down in its own script."
+      ]
+    },
+    {
+      "id": "voices",
+      "min": 10.5,
+      "lines": [
+        "An unknown voice? Hear a clip, and name it once.",
+        "From then on, it is recognised, as long as there is evidence that person attended."
+      ]
+    },
+    {
+      "id": "templates",
+      "min": 11,
+      "lines": [
+        "A stand-up is not a one-on-one, and an incident review is not a customer call.",
+        "So each kind of meeting gets the sections it needs, picked from the words in its title.",
+        "And if your team has its own way of doing things, you can add your own."
+      ]
+    },
+    {
+      "id": "actions",
+      "min": 13,
+      "lines": [
+        "Then there is the part that usually gets lost: who said they would do what.",
+        "Every action item from every meeting lands on one list, and work that keeps coming back shows up as carried over.",
+        "Tick one off here, and it is ticked in the note too."
+      ]
+    },
+    {
+      "id": "upcoming",
+      "min": 13,
+      "lines": [
+        "Before your next call, it reminds you where you left off.",
+        "What was said last time, and what is still open.",
+        "It comes straight from your own notes, with no AI involved, so nothing is made up."
+      ]
+    },
+    {
+      "id": "connectors",
+      "min": 11,
+      "lines": [
+        "Then, connectors put the meeting to work in whatever your team already uses.",
+        "Slack, Teams, Gmail and Outlook. Jira. Or an AI that takes on the work. Use the ones you have, and ignore the rest."
+      ]
+    },
+    {
+      "id": "sendout",
+      "min": 17,
+      "lines": [
+        "Send the recap to a Slack or Teams channel, or open it as a draft in Gmail or Outlook.",
+        "Everyone who took something on can get a follow-up with only their work.",
+        "You can edit every message, and each one goes only when you press its button."
+      ]
+    },
+    {
+      "id": "handoff",
+      "min": 15,
+      "lines": [
+        "And action items do not have to wait for you.",
+        "Choose Hand to AI on any one. Your local or company AI reads the task, works out where it belongs, and asks what it needs to know.",
+        "You answer, and choose where it works: one repository, several, or a plain folder."
+      ]
+    },
+    {
+      "id": "assistants",
+      "min": 13,
+      "lines": [
+        "And if you already work with an AI assistant, it can read your meetings too.",
+        "Turn it on, and Claude or Cursor on your computer can look up what was decided, and what is still open.",
+        "It can only read, and it stays off until you say otherwise."
+      ]
+    },
+    {
+      "id": "consent",
+      "min": 15,
+      "lines": [
+        "One thing matters more than all of this. There is no bot in the call, so nobody can see that MeetingScribe is there.",
+        "Telling people is up to you, so it gives you a notice to paste into the chat.",
+        "You can also list the meetings it must never record, and have old ones deleted automatically."
+      ]
+    },
+    {
+      "id": "privacy",
+      "min": 10,
+      "lines": [
+        "By default, recording, transcription, and every model stay on your computer.",
+        "The only things that leave are the messages and Jira updates you approve, sent where you chose."
+      ]
+    },
+    {
+      "id": "early",
+      "min": 26,
+      "lines": [
+        "Before you rely on it, here is the honest part. Read every note before you act on it, because the AI can get details wrong.",
+        "It also asks a lot of your computer. Without a fast graphics card or an Apple chip, processing can take longer than the meeting.",
+        "The installers are not signed yet, so your computer will warn you when you open them.",
+        "It is still early. It has been tested mostly on simulated calls, and the calendar, Slack and Teams only against stand-ins.",
+        "And recording people comes with rules. Tell them, and follow the law and your company's policy."
+      ]
+    },
+    {
+      "id": "outro",
+      "min": 9,
+      "lines": [
+        "Install it once, join your meetings as usual, and read the notes when you are ready.",
+        "MeetingScribe. Meetings, written down, and followed up."
+      ]
+    }
   ]
 }

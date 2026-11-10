@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Drives the real app page against the real backend, on made-up meetings, and saves what it shows
-to video/shots/ for the demo. It fails if the page logs an error or a control doesn't work.
+to video/shots/. It fails if the page logs an error or a control doesn't work.
 
   video/.venv/Scripts/python video/capture_screens.py          (video/.venv/bin/python on a Mac)
 
