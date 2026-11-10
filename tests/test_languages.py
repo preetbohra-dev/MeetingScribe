@@ -145,7 +145,13 @@ def test_notes_are_asked_for_in_english_with_fixed_headings():
 def test_a_translated_answer_becomes_a_basic_note_rather_than_an_empty_one():
     cfg = {"my_name": "Me", "others_name": "Others", "llm_chunk_chars": 32000}
     with pytest.raises(ValueError):
-        ms.summarize(cfg, "x", Answers("## सारांश\n- कुछ"))
+        ms.summarize(cfg, "x", Answers("## सारांश\n- कुछ", "## सारांश\n- कुछ"))
+
+
+def test_a_model_that_forgets_the_headings_is_asked_once_more():
+    cfg = {"my_name": "Me", "others_name": "Others", "llm_chunk_chars": 32000}
+    llm = Answers("Here are the notes.", "## Summary\n- a\n\n## Action Items\n- None identified.")
+    assert ms.summarize(cfg, "x", llm).startswith("## Summary") and len(llm.asked) == 2
 
 
 MODULES = [*ROOT.glob("*.py"), *(ROOT / "platforms").glob("*.py")]

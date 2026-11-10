@@ -2066,7 +2066,10 @@ def summarize(cfg, transcript, llm, template=note_templates.GENERAL):
                 CHUNK_INSTRUCTIONS.format(i=i, n=len(chunks), **names) + "\n\n" + c, 1000))
         material = "NOTES FROM EACH PART OF THE MEETING:\n" + "\n\n".join(notes)
     focus, extra = note_templates.prompt_parts(template)
-    out = llm.chat(FINAL_INSTRUCTIONS.format(**names, focus=focus, extra=extra) + "\n" + material, 1500 + 200 * len(template["sections"]))
+    prompt, room = FINAL_INSTRUCTIONS.format(**names, focus=focus, extra=extra) + "\n" + material, 1500 + 200 * len(template["sections"])
+    out = llm.chat(prompt, room)
+    if "## Summary" not in out:  # small models sometimes leave the headings out
+        out = llm.chat(prompt + '\n\nBegin your answer with the line "## Summary".', room)
     i = out.find("## Summary")
     if i < 0:  # e.g. the headings came back translated: nothing could read such a note
         raise ValueError("the model's answer has no Summary section")
