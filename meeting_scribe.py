@@ -1097,7 +1097,7 @@ LANG_WINDOW_S = 15  # speech per language check across the meeting
 LANG_FINE_S = 3  # ...and around a change of language, to find where it happened
 LANG_MIN_SPEECH_S = 3  # too little to tell the language from
 LANG_MIN_BLOCK_S = 4  # a shorter stretch is a stray word or a wrong guess, not a change of language
-LANG_SURE = 0.5
+LANG_SURE = 0.35  # probability is spread over 99 languages, and short stretches rarely pass 0.5
 
 
 def detect_language(cfg, audio):
@@ -1156,7 +1156,9 @@ def language_of(cfg, audio, clips):
     if spoken_seconds(clips) < LANG_MIN_SPEECH_S:
         return None
     speech = np.concatenate([audio[int(s * TARGET_SR):int(e * TARGET_SR)] for s, e in zip(clips[::2], clips[1::2])])
-    language, sure = pick_language(detect_language(cfg, speech))
+    probs = detect_language(cfg, speech)
+    language, sure = pick_language(probs)
+    log.info("language at %s: %s", ts(clips[0]), sorted(((round(float(v), 2), k) for k, v in probs.items()), reverse=True)[:3])
     return language if sure >= LANG_SURE else None
 
 
