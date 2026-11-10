@@ -5,7 +5,7 @@
 <p align="center">
 Meeting notes that write themselves, for Teams, Zoom and Google Meet, on your Mac or Windows PC.<br>
 <a href="https://meetingscribe.preetbohra.com"><b>Website</b></a> ·
-<a href="https://meetingscribe.preetbohra.com/#film">90-second demo</a> ·
+<a href="https://meetingscribe.preetbohra.com/#film">4-minute demo</a> ·
 <a href="#install">Install</a>
 </p>
 
@@ -550,22 +550,20 @@ it, and only start tasks you trust. With company AI, the code it reads is sent t
 | `install.cmd`, `uninstall.cmd`, `ctl.cmd`, `windows/` | Windows: the same, as PowerShell scripts |
 | `tests/` | Who gets named, notes, search, the app's backend, OCR, meeting-tab recognition, and the numpy stand-ins (`python -m pytest tests`) |
 | `site/` | The website at meetingscribe.preetbohra.com, with the demo video |
-| `video/` | Source for the demo video: narration script, real app screens, animation and build script |
+| `video/` | Source for the demo video: narration script, animation and build script |
 
 <details>
 <summary>Rebuilding the demo video</summary>
 
-`video/capture_screens.py` drives the real app page on made-up meetings, and fails if a control doesn't work.
 `video/build_video.py` speaks `video/script.json` with Kokoro-82M (an open, offline voice), renders
-`video/motion.html` over those screens frame by frame and encodes `site/demo.mp4`. It runs on macOS (WebKit) or Windows (Chromium).
+`video/motion.html` frame by frame and encodes `site/demo.mp4`. It runs on macOS (WebKit) or Windows (Chromium).
 
 ```bash
 python3 -m venv video/.venv
 video/.venv/bin/pip install imageio-ffmpeg kokoro-onnx pyobjc-framework-WebKit pyobjc-framework-Quartz  # macOS
 video/.venv/Scripts/pip install imageio-ffmpeg kokoro-onnx playwright && video/.venv/Scripts/python -m playwright install chromium  # Windows
 # once: kokoro-v1.0.onnx and voices-v1.0.bin from github.com/thewh1teagle/kokoro-onnx/releases into video/models/
-video/.venv/bin/python video/capture_screens.py               # needs playwright in video/.venv, and the app's .venv
-video/.venv/bin/python video/build_video.py                   # about 3 minutes
+video/.venv/bin/python video/build_video.py                   # about 10 minutes
 video/.venv/bin/python video/build_video.py --stills 30,120   # a few PNG frames to check a change
 ```
 On Windows, use `video/.venv/Scripts/python` in place of `video/.venv/bin/python`.
