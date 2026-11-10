@@ -1,9 +1,10 @@
-"""The desktop app's backend and the settings file it edits, without opening a window.
+﻿"""The desktop app's backend and the settings file it edits, without opening a window.
 
     python -m pytest tests
 """
 
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -57,7 +58,7 @@ def test_new_key_goes_above_the_tables(api):
     assert ms.load_config()["jira"].get("keep_audio") is None
 
 
-@pytest.mark.parametrize("value", ['C:\\Users\\me\\Notes', 'with "quotes"', "प्रिया", "semi#colon"])
+@pytest.mark.parametrize("value", ['C:\\Users\\me\\Notes', 'with "quotes"', "à¤ªà¥à¤°à¤¿à¤¯à¤¾", "semi#colon"])
 def test_strings_survive(api, value):
     ms.save_settings({"my_name": value})
     assert ms.load_config()["my_name"] == value
@@ -221,6 +222,12 @@ def test_download_progress_counts_cached_files(api, tmp_path, monkeypatch):
 
 
 # -- the recorder obeying the app
+
+
+def test_no_key_handler_can_swallow_typing():
+    """An onkeydown that returns false makes the browser drop the key: this is why no box took typing."""
+    page = (Path(__file__).resolve().parents[1] / "ui" / "index.html").read_text(encoding="utf-8")
+    assert not re.search(r"onkey\w+:\s*\w+\s*=>\s*[^{]", page)
 
 
 class Probe:

@@ -21,6 +21,13 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 SHOTS = HERE / "shots"
 PORT = 8931
+BACKEND_START_S = 25  # the app's imports are slow, more so on a fresh test machine
+
+
+def backend_python():
+    """The app's own environment when there is one; on a build machine, this one."""
+    venv = ROOT / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    return str(venv if venv.exists() else sys.executable)
 
 
 def note(title, summary, sections, actions):
@@ -117,15 +124,15 @@ SHIM = """window.pywebview = {api: new Proxy({}, {get: (_, name) => async (...ar
   return r.value;
 }})};
 window.addEventListener('load', () => setTimeout(() => window.dispatchEvent(new Event('pywebviewready')), 50));
-navigator.clipboard.writeText = async text => { window.copied = text; };"""
+Object.defineProperty(navigator, 'clipboard', {value: {writeText: async text => { window.copied = text; }}});"""
 
 
-def capture(work, url):
+def capture(work, url, engine="chromium", out=SHOTS):
     from playwright.sync_api import sync_playwright
-    SHOTS.mkdir(exist_ok=True)
+    out.mkdir(exist_ok=True)
     problems = []
     with sync_playwright() as pw:
-        browser = pw.chromium.launch()
+        browser = getattr(pw, engine).launch()
         page = browser.new_page(viewport={"width": 1440, "height": 810}, device_scale_factor=1.5, color_scheme="light")
         page.on("pageerror", lambda e: problems.append(str(e)))
         page.on("console", lambda m: problems.append(m.text) if m.type == "error" else None)
@@ -135,7 +142,7 @@ def capture(work, url):
 
         def shot(name):
             page.evaluate("document.getElementById('toast').style.display = 'none'; document.activeElement.blur()")
-            page.screenshot(path=str(SHOTS / f"{name}.png"))
+            page.screenshot(path=str(out / f"{name}.png"))
         page.wait_for_selector("#nav-meetings")
 
         (work / "state").write_text("recording")
@@ -223,7 +230,7 @@ def capture(work, url):
         browser.close()
     if problems:
         sys.exit("the page reported problems:\n" + "\n".join(problems))
-    print("every control worked; screens are in", SHOTS)
+    print("every control worked; screens are in", out)
 
 
 def main():
@@ -231,10 +238,9 @@ def main():
         return serve(sys.argv[2], PORT)
     with tempfile.TemporaryDirectory() as t:
         work = build_world(Path(t))
-        python = ROOT / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
-        server = subprocess.Popen([str(python), str(Path(__file__).resolve()), "--serve", t])
+        server = subprocess.Popen([backend_python(), str(Path(__file__).resolve()), "--serve", t])
         try:
-            time.sleep(12)  # the app's imports are slow
+            time.sleep(BACKEND_START_S)
             capture(work, f"http://127.0.0.1:{PORT}/")
         finally:
             server.terminate()

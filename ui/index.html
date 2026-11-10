@@ -106,6 +106,8 @@ function h(tag, props, ...kids) {
   for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) e.append(c);
   return e;
 }
+// Returns nothing on purpose: a key handler that returns false makes the browser drop the key.
+const onEnter = fn => e => { if (e.key === "Enter") fn(); };
 function toast(text) {
   const t = document.getElementById("toast");
   t.textContent = text; t.style.display = "block";
@@ -345,7 +347,7 @@ async function renderMeeting(main) {
       }}, v.confirmed ? "Undo this name" : "Not this person"))));
     col.append(h("h2", null, "People"), people);
   }
-  const ask = h("input", {type: "text", placeholder: "Ask about this meeting", onkeydown: e => e.key === "Enter" && doAsk()});
+  const ask = h("input", {type: "text", placeholder: "Ask about this meeting", onkeydown: onEnter(() => doAsk())});
   const askBtn = h("button", {onclick: doAsk}, "Ask"), answer = h("div");
   async function doAsk() { await askInto(ask, askBtn, answer, m.id); }
   col.append(h("h2", null, "Ask"), h("div", {class: "row"}, ask, askBtn),
@@ -384,7 +386,7 @@ function styleBox(m) {
   return box;
 }
 function voiceCard(m, v) {
-  const input = h("input", {type: "text", placeholder: "Their name", "aria-label": "Name for " + v.label, onkeydown: e => e.key === "Enter" && save(input.value)});
+  const input = h("input", {type: "text", placeholder: "Their name", "aria-label": "Name for " + v.label, onkeydown: onEnter(() => save(input.value))});
   async function save(name) {
     if (!name.trim()) return input.focus();
     card.querySelectorAll("button").forEach(b => b.disabled = true);
@@ -424,7 +426,7 @@ async function askInto(input, btn, out, sid) {
   } finally { btn.disabled = false; }
 }
 function renderSearch(main) {
-  const input = h("input", {type: "search", placeholder: "Words, a person, a topic", onkeydown: e => e.key === "Enter" && find()});
+  const input = h("input", {type: "search", placeholder: "Words, a person, a topic", onkeydown: onEnter(() => find())});
   const out = h("div", {style: "margin-top:12px"}), ansBox = h("div");
   const askBtn = h("button", {onclick: () => askInto(input, askBtn, ansBox, null)}, "Ask the AI");
   async function find() {
@@ -480,7 +482,7 @@ function briefPanel(b) {
 }
 async function renderUpcoming(main) {
   const up = await call("upcoming");
-  const about = h("input", {type: "text", placeholder: "A meeting's name, or a person", "aria-label": "Prepare for", onkeydown: e => e.key === "Enter" && find()}), found = h("div", {style: "margin-top:10px"});
+  const about = h("input", {type: "text", placeholder: "A meeting's name, or a person", "aria-label": "Prepare for", onkeydown: onEnter(() => find())}), found = h("div", {style: "margin-top:10px"});
   async function find() { if (about.value.trim()) found.replaceChildren(briefPanel(await call("brief_search", about.value))); }
   const col = h("div", {class: "column"}, h("h1", null, "Upcoming"), h("p", {class: "soft"}, "Before a call, see what was said last time and what is still open. This comes straight from your notes, with no AI, so nothing is made up."),
     h("div", {class: "row"}, about, h("button", {class: "primary", onclick: find}, "Prepare")), found);
@@ -513,7 +515,7 @@ async function renderSettings(main) {
   const s = await call("settings"), ai = await call("cloud_state");
   const aiNow = ai.cloud ? ai.providers.find(p => p.id === ai.settings.provider) : null;
   const name = h("input", {type: "text", value: s.my_name});
-  const lang = h("select", null, [["", "Detect automatically"], ["en", "English"], ["hi", "Hindi"], ["de", "German"], ["fr", "French"], ["es", "Spanish"], ["ja", "Japanese"]].map(([v, t]) => h("option", {value: v}, t)));
+  const lang = h("select", null, [["", "Detect automatically, even if it changes during a meeting"], ["en", "Only English"], ["hi", "Only Hindi"], ["de", "Only German"], ["fr", "Only French"], ["es", "Only Spanish"], ["ja", "Only Japanese"]].map(([v, t]) => h("option", {value: v}, t)));
   lang.value = s.language;
   const folder = h("input", {type: "text", value: s.output_dir});
   const box = (on, text) => { const c = h("input", {type: "checkbox", checked: on}); return [c, h("label", {class: "check"}, c, h("span", null, text))]; };
@@ -551,7 +553,7 @@ async function renderSettings(main) {
     field("Who writes the notes", h("div", {class: "row"}, h("span", {class: "grow"}, aiNow ? aiNow.label : "This computer"),
       h("button", {onclick: () => showAiChoice(true)}, "Change…"),
       aiNow && aiNow.key ? h("button", {onclick: async () => { await call("use_local", true); boot(); }}, "Forget key") : null)),
-    field("Your name in notes", name), field("Language of your meetings", lang),
+    field("Your name in notes", name), field("Language of your meetings", h("p", {class: "soft small"}, "Choose one language only if everything is said in it. Speech in any other language is lost."), lang),
     field("Notes folder", h("div", {class: "row"}, folder, h("button", {onclick: async () => { const p = await call("choose_folder"); if (p) folder.value = p; }}, "Choose…"), h("button", {onclick: () => call("open_notes_folder")}, "Open"))),
     field("Record these", teamsL, zoomL, webL),
     field("Notes and privacy", workL, audioL, notifyL, screenL),
