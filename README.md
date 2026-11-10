@@ -5,7 +5,7 @@
 <p align="center">
 Meeting notes that write themselves, for Teams, Zoom and Google Meet, on your Mac or Windows PC.<br>
 <a href="https://meetingscribe.preetbohra.com"><b>Website</b></a> ·
-<a href="https://meetingscribe.preetbohra.com/#film">6-minute demo</a> ·
+<a href="https://meetingscribe.preetbohra.com/#film">90-second demo</a> ·
 <a href="#install">Install</a>
 </p>
 
@@ -21,6 +21,8 @@ Markdown note to `Documents/Meeting Notes/` with:
 
 You never press record. Recording, transcription and every model run on your computer, and nothing is uploaded.
 There's a desktop app for reading notes, naming voices, searching past meetings and asking them questions.
+It keeps **one list of open action items** across meetings, gives you a **brief before your next call**, shapes notes with
+**templates**, and lets an AI assistant on your computer read your meetings over **MCP**.
 **Connectors** then put the meeting to work in whatever your team uses: Slack, Teams, Gmail, Outlook, Jira, or an AI
 that takes on an action item. Use the ones you have and ignore the rest. Nothing is sent until you approve it.
 
@@ -30,6 +32,7 @@ that takes on an action item. Use the ones you have and ignore the rest. Nothing
 - [Supported meetings](#supported-meetings)
 - [Install](#install)
 - [Everyday use](#everyday-use)
+- [Before and after the meeting](#before-and-after-the-meeting)
 - [Speakers](#speakers)
 - [Connectors](#connectors)
 - [Jira](#jira)
@@ -195,6 +198,42 @@ How long processing takes depends on the machine. An Apple silicon Mac needs a f
 meeting. A Windows laptop without an NVIDIA GPU is slower: on a Core i5-1135G7, transcription took about one and a
 half times as long as the speech, so notes for a busy one-hour meeting take an hour or more. They still appear
 on their own; the PC stays usable because processing runs at low priority.
+
+## Before and after the meeting
+
+**Note templates.** A stand-up, 1:1, planning meeting, incident review or customer call gets its own sections, picked by
+words in the meeting's title. Add your own under **Settings**, or choose another one on any meeting and rewrite its note.
+If the AI fails during a rewrite, the old note stays. Saved questions appear as buttons when you ask about a meeting.
+
+**Action items.** The **Action items** page lists what people took on across all your meetings. The same work raised
+again by the same owner is one item, marked *Carried over*. Ticking one here ticks it in the note, and a box ticked in
+the note counts here. Matching compares the wording, so differently worded work stays separate.
+
+**Upcoming.** Before a call, a brief shows what was said last time and what is still open. It is built from your notes
+with no AI, so it can't invent anything. Type a meeting or a person, or connect a calendar under **Connectors** with its
+private iCal link. That needs no sign-in or admin, though a company can turn calendar publishing off. You then get
+your next two weeks and a notification 10 minutes before a meeting that has a brief (`brief_minutes`).
+
+**AI assistants.** Turn on **AI assistants (MCP)** under **Connectors** and copy the setup into Claude, Cursor or another
+assistant. It can list, search and read meetings and open action items, and it cannot change anything. There is no port:
+the assistant starts MeetingScribe itself. What it reads goes wherever that assistant sends it, usually its AI provider.
+
+```bash
+./ctl.sh actions                 # open action items; --all includes finished ones
+./ctl.sh brief "migration sync"  # what to know before a meeting, or about a person
+```
+
+**Consent and keeping meetings**, under **Settings**:
+
+- While recording, the Meetings page offers a notice to paste into the meeting chat. There is no bot, so nobody on the
+  call can see MeetingScribe, and telling them is up to you.
+- **Never record** lists words in meeting titles. A matching meeting isn't recorded, and a recording that already
+  started is deleted as soon as the title appears.
+- **Delete whole meetings after** and **Delete only the audio after** take a number of days. Off by default. Deletion is
+  permanent, and the page tells you how many meetings a new limit would delete before you save it.
+
+Tested with made-up meetings: the real app page in a browser, Claude Code as a real MCP client, and a real AI rewriting a
+note. Not yet tried on a real Google or Outlook calendar, which has only been tested with sample calendar files.
 
 ## Speakers
 
@@ -376,6 +415,11 @@ Edit `config.toml`, then `./ctl.sh restart`. Every key is optional. The ones you
 | `speaker_require_attendance` | `false` lets a strong voice match name someone with no other evidence |
 | `screen_names` | `true` reads name tiles from the meeting window (the app asks at setup) |
 | `[vocabulary]` | Spelling fixes, e.g. `"app sumo" = "AppSumo"` |
+| `never_record` | Words in meeting titles that must not be recorded, e.g. `["HR", "doctor"]` |
+| `retain_days`, `retain_audio_days` | Delete whole meetings, or only their audio, after this many days (0 keeps them) |
+| `consent_notice` | The notice offered for the meeting chat while recording |
+| `brief_minutes` | How long before a calendar meeting its brief is announced |
+| `mcp_enabled` | `true` lets AI assistants on this computer read your meetings |
 
 Model defaults depend on the system and are picked in `platforms/macos.py` and `platforms/windows.py`. Run
 `./ctl.sh download-models` after changing a model.
@@ -453,6 +497,8 @@ it, and only start tasks you trust. With company AI, the code it reads is sent t
   agreement with the provider decides how the text is kept.
 - A connector sends only the text you approved, to the channel or mailbox you chose. Once delivered, that service's
   own retention rules apply.
+- A calendar link is kept in the keychain and only used to read that calendar. An assistant you connect over MCP can
+  read your notes and transcripts, and what happens to them then is up to that assistant and its provider.
 - Offline flags are set before any ML library loads, and no saved Hugging Face token is ever sent. With a local LLM,
   you can check on a Mac by running `nettop -p $(pgrep -f "meeting_scribe.py process")` while a meeting is processed;
   on Windows, watch the python process in Resource Monitor's Network tab. There are no connections.
@@ -491,6 +537,8 @@ it, and only start tasks you trust. With company AI, the code it reads is sent t
 | `screen_names.py` | Reading names from the meeting window |
 | `cloud_llm.py` | Writing notes with your company's AI |
 | `task_agent.py` | Handing an action item to the AI, through to draft PRs |
+| `note_templates.py`, `tracker.py`, `briefs.py` | Note templates, the action item list, and pre-meeting briefs with the calendar |
+| `notes_mcp.py` | What AI assistants can read, over MCP |
 | `packaging/` | Building the Windows installer and the Mac disk image (run by `.github/workflows/release.yml`) |
 | `platforms/` | What differs per system: call detection, the app's audio capture, notifications, default models (`macos.py`, `windows.py`) |
 | `config.toml` | Your settings |
@@ -498,25 +546,27 @@ it, and only start tasks you trust. With company AI, the code it reads is sent t
 | `install.cmd`, `uninstall.cmd`, `ctl.cmd`, `windows/` | Windows: the same, as PowerShell scripts |
 | `tests/` | Who gets named, notes, search, the app's backend, OCR, meeting-tab recognition, and the numpy stand-ins (`python -m pytest tests`) |
 | `site/` | The website at meetingscribe.preetbohra.com, with the demo video |
-| `video/` | Source for the demo video: narration script, animation and build script |
+| `video/` | Source for the demo video: narration script, real app screens, animation and build script |
 
 <details>
 <summary>Rebuilding the demo video</summary>
 
+`video/capture_screens.py` drives the real app page on made-up meetings, and fails if a control doesn't work.
 `video/build_video.py` speaks `video/script.json` with Kokoro-82M (an open, offline voice), renders
-`video/motion.html` frame by frame and encodes `site/demo.mp4`. It runs on macOS (WebKit) or Windows (Chromium).
+`video/motion.html` over those screens frame by frame and encodes `site/demo.mp4`. It runs on macOS (WebKit) or Windows (Chromium).
 
 ```bash
 python3 -m venv video/.venv
 video/.venv/bin/pip install imageio-ffmpeg kokoro-onnx pyobjc-framework-WebKit pyobjc-framework-Quartz  # macOS
 video/.venv/Scripts/pip install imageio-ffmpeg kokoro-onnx playwright && video/.venv/Scripts/python -m playwright install chromium  # Windows
 # once: kokoro-v1.0.onnx and voices-v1.0.bin from github.com/thewh1teagle/kokoro-onnx/releases into video/models/
-video/.venv/bin/python video/build_video.py                   # about 10 minutes
+video/.venv/bin/python video/capture_screens.py               # needs playwright in video/.venv, and the app's .venv
+video/.venv/bin/python video/build_video.py                   # about 3 minutes
 video/.venv/bin/python video/build_video.py --stills 30,120   # a few PNG frames to check a change
 ```
 On Windows, use `video/.venv/Scripts/python` in place of `video/.venv/bin/python`.
 
-People, meetings and ticket numbers in the video are made up.
+People and meetings in the video are made up.
 </details>
 
 ## License

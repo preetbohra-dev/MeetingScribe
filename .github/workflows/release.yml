@@ -29,6 +29,8 @@ jobs:
           $o = & dist\MeetingScribe\MeetingScribe.exe voices | Out-String
           if ($LASTEXITCODE) { throw "exit $LASTEXITCODE" }
           if ($o -notmatch 'No saved voices') { throw "unexpected output: $o" }
+      - name: The packaged program answers an AI assistant
+        run: python packaging/check_mcp.py dist/MeetingScribe/MeetingScribe.exe
       - name: Installer and zip
         shell: pwsh
         run: |
@@ -57,6 +59,8 @@ jobs:
           pyinstaller --noconfirm packaging/MeetingScribe.spec
       - name: The packaged program runs
         run: dist/MeetingScribe.app/Contents/MacOS/MeetingScribe voices | grep "No saved voices"
+      - name: The packaged program answers an AI assistant
+        run: python packaging/check_mcp.py dist/MeetingScribe.app/Contents/MacOS/MeetingScribe
       - name: The packaged app writes a note from a spoken meeting
         run: python packaging/smoke_mac.py dist/MeetingScribe.app/Contents/MacOS/MeetingScribe
       - name: Downloads explain their failures, and the hand download works

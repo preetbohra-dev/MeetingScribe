@@ -6,295 +6,48 @@
   "fps": 30,
   "width": 1920,
   "height": 1080,
-  "lead_in": 0.6,
-  "tail": 0.9,
-  "gap": 0.28,
+  "lead_in": 0.4,
+  "tail": 0.5,
+  "gap": 0.22,
   "scenes": [
-    {
-      "id": "title",
-      "min": 7.5,
-      "lines": [
-        "Meet MeetingScribe.",
-        "It turns your Teams, Zoom and Google Meet calls into clean notes, and sends them where your team works.",
-        "Without anything leaving your computer, unless you say so."
-      ]
-    },
-    {
-      "id": "problem",
-      "min": 8,
-      "lines": [
-        "Meetings create work.",
-        "But notes go unwritten, action items get lost, and the tickets never get raised."
-      ]
-    },
-    {
-      "id": "app",
-      "min": 15,
-      "lines": [
-        "MeetingScribe is now a desktop app, so you do not need a terminal.",
-        "Download the installer for your Mac or Windows PC, open it, and answer a few questions.",
-        "The first run downloads the AI models once, six gigabytes or more, with a progress bar."
-      ]
-    },
-    {
-      "id": "detect",
-      "min": 11,
-      "lines": [
-        "MeetingScribe runs quietly in the background.",
-        "When you join a call, it starts recording two tracks: your microphone, and the meeting's own audio.",
-        "No buttons to press, and no bot joining the meeting."
-      ]
-    },
-    {
-      "id": "apps",
-      "min": 10,
-      "lines": [
-        "It works with the meetings you already have: the Teams and Zoom apps, and Google Meet in your browser.",
-        "Teams and Zoom on the web, Webex, Jitsi and Whereby work in the browser too."
-      ]
-    },
-    {
-      "id": "browser",
-      "min": 13,
-      "lines": [
-        "In a browser, it waits for two signals: the browser is using the microphone, and a meeting tab is open.",
-        "Then it records only the browser's sound, and names the note after the meeting.",
-        "Dictating a document, or recording a voice message, is never mistaken for a call."
-      ]
-    },
-    {
-      "id": "pipeline",
-      "min": 14,
-      "lines": [
-        "When the call ends, everything runs right on your computer.",
-        "Whisper transcribes both tracks.",
-        "A voice model tells the speakers apart, and names only the people it is sure about.",
-        "A local language model drops the small talk, then writes the summary and the action items."
-      ]
-    },
-    {
-      "id": "note",
-      "min": 11,
-      "lines": [
-        "When it finishes, a Markdown note lands in your Meeting Notes folder, and in the app.",
-        "Who was there, who did the talking, what was decided, and who owes what."
-      ]
-    },
-    {
-      "id": "who",
-      "min": 19,
-      "lines": [
-        "Earlier versions could add someone to the notes who was never in the meeting.",
-        "Now a name needs two things: a very strong voice match, and evidence the person was there, their name on screen or said aloud.",
-        "Anything less stays Speaker 2, with a maybe beside it for you to confirm."
-      ]
-    },
-    {
-      "id": "voices",
-      "min": 10.5,
-      "lines": [
-        "An unknown voice? Hear a clip, and name it once.",
-        "From then on, it is recognised, as long as there is evidence that person attended."
-      ]
-    },
-    {
-      "id": "find",
-      "min": 11,
-      "lines": [
-        "Every meeting is searchable, and you can ask questions across all of them.",
-        "Each note also saves a data file your other AI tools can read."
-      ]
-    },
-    {
-      "id": "guards",
-      "min": 9,
-      "lines": [
-        "If your microphone goes silent during a call, it warns you.",
-        "And if the AI model fails, you still get a basic note with the full transcript."
-      ]
-    },
-    {
-      "id": "connectors",
-      "min": 11,
-      "lines": [
-        "Then, connectors put the meeting to work in whatever your team already uses.",
-        "Slack, Teams, Gmail and Outlook. Jira. Or an AI that takes on the work. Use the ones you have, and ignore the rest."
-      ]
-    },
-    {
-      "id": "sendout",
-      "min": 17,
-      "lines": [
-        "Send the recap to a Slack or Teams channel, or open it as a draft in Gmail or Outlook.",
-        "Everyone who took something on can get a follow-up with only their work.",
-        "You can edit every message, and each one goes only when you press its button."
-      ]
-    },
-    {
-      "id": "jira",
-      "min": 6,
-      "lines": [
-        "If your team uses Jira, there is a connector for that too.",
-        "MeetingScribe can turn those action items into Jira tickets, with you approving every one."
-      ]
-    },
-    {
-      "id": "signin",
-      "min": 11,
-      "lines": [
-        "Connect it once in the app, with a personal access token, an API token, or your browser's session cookie for single sign-on sites.",
-        "It stays in your Mac's Keychain or in Windows Credential Manager, never in a file."
-      ]
-    },
-    {
-      "id": "space",
-      "min": 6,
-      "lines": [
-        "Then choose which Jira space new tickets should go to."
-      ]
-    },
-    {
-      "id": "learn",
-      "min": 17,
-      "lines": [
-        "Every team's Jira is different, so it first learns yours.",
-        "It reads that space's recent tickets, and picks up which fields people fill in, the usual values, and how descriptions are laid out.",
-        "You can see what it learned and correct any of it, and it remembers."
-      ]
-    },
-    {
-      "id": "extract",
-      "min": 8.5,
-      "lines": [
-        "The same local model reads the meeting, and pulls out the work that belongs in Jira.",
-        "Owners, due dates, and the keywords to search for."
-      ]
-    },
-    {
-      "id": "search",
-      "min": 12,
-      "lines": [
-        "Then it searches every Jira space you can see, not just your own.",
-        "Each ticket it finds is compared with the new work: the same deliverable, merely related, or unrelated."
-      ]
-    },
-    {
-      "id": "decide",
-      "min": 15,
-      "lines": [
-        "Work that already has an open ticket gets a comment, not a duplicate.",
-        "Genuinely new work gets a new ticket, linked to its relatives.",
-        "And if a closed ticket's problem is back, it opens a fresh one, and links the history."
-      ]
-    },
-    {
-      "id": "draft",
-      "min": 16,
-      "lines": [
-        "Every field is filled in from the conversation, and checked against what your Jira space allows.",
-        "Type, priority, assignee, due date, components, epic, sprint, even required custom fields.",
-        "Nothing is pushed until you press Create, and you can edit any field first."
-      ]
-    },
-    {
-      "id": "board",
-      "min": 8.5,
-      "lines": [
-        "Press Create, and it is on the board.",
-        "The comments are posted, and the meeting note links to every ticket."
-      ]
-    },
-    {
-      "id": "handoff",
-      "min": 15,
-      "lines": [
-        "And action items do not have to wait for you.",
-        "Choose Hand to AI on any one. Your local or company AI reads the task, works out where it belongs, and asks what it needs to know.",
-        "You answer, and choose where it works: one repository, several, or a plain folder."
-      ]
-    },
-    {
-      "id": "handwork",
-      "min": 25,
-      "lines": [
-        "It changes a separate copy, never your own checkout.",
-        "It can create, edit and delete files, but it cannot run anything. MeetingScribe runs the test commands you approved, and shows the AI any failure, until they pass.",
-        "Then it opens draft pull requests, one per repository, linked to each other.",
-        "A plain folder has no pull request, so its files are updated, with a backup and an undo button."
-      ]
-    },
-    {
-      "id": "usecases",
-      "min": 13,
-      "lines": [
-        "Use it for stand-ups, migration syncs, incident reviews, sprint planning, and stakeholder calls.",
-        "Anywhere talk turns into work."
-      ]
-    },
-    {
-      "id": "privacy",
-      "min": 10,
-      "lines": [
-        "By default, recording, transcription, and every model stay on your computer.",
-        "The only things that leave are the messages and Jira updates you approve, sent where you chose."
-      ]
-    },
-    {
-      "id": "company",
-      "min": 17,
-      "lines": [
-        "Do not want a local model? Let your company's AI write the notes instead.",
-        "Use an API key, your Amazon, Google or Azure account, a company gateway, or the Claude, Gemini or Copilot command you are already signed in to.",
-        "Only text is sent, and only after you agree. Audio and voices never leave."
-      ]
-    },
-    {
-      "id": "windows",
-      "min": 9,
-      "lines": [
-        "MeetingScribe runs on Apple Silicon Macs and on Windows PCs.",
-        "Use the installer, or one command in the terminal. On Windows it runs on the processor, or on an NVIDIA graphics card if you have one."
-      ]
-    },
-    {
-      "id": "limits",
-      "min": 24,
-      "lines": [
-        "Now, the honest part. Here is what it can still get wrong.",
-        "In a short meeting, someone who barely speaks can be missed, or folded into another voice.",
-        "Strict naming means more Speaker 2s. Without a name on screen or said aloud, even people it knows stay a maybe.",
-        "Cross-talk, accents and jargon can still garble the transcript.",
-        "And a small local model can get details wrong, or invent them, so read the note before you act on it."
-      ]
-    },
-    {
-      "id": "early",
-      "min": 30,
-      "lines": [
-        "It also asks a lot of your computer. Without a fast graphics card or an Apple chip, processing can take longer than the meeting.",
-        "The installers are not signed yet, so Windows and macOS will warn you when you open them.",
-        "The desktop app is new. It has been tested with recorded voices and a simulated call, not yet in real Teams or Zoom meetings, and the Mac app only on automated test machines.",
-        "The Jira screen is new too. So far it has only created tickets on a simulated Jira.",
-        "And recording people comes with rules. Tell them, and follow the law and your company's policy."
-      ]
-    },
-    {
-      "id": "newer",
-      "min": 22,
-      "lines": [
-        "The newest features have limits of their own.",
-        "The commands you approve run the code the AI just wrote, on your computer, so read a task before you start it.",
-        "Small local models struggle with code. In our test, one went in circles and never finished.",
-        "Of the company routes, only the signed-in Claude command has been run for real. And pull requests, Slack, Teams and email drafts have only been tested against stand-ins."
-      ]
-    },
-    {
-      "id": "outro",
-      "min": 9,
-      "lines": [
-        "Install it once, join your meetings as usual, and check the notes when you are ready.",
-        "MeetingScribe. Meetings, written down, and followed up."
-      ]
-    }
+    {"id": "title", "min": 3, "lines": [
+      "MeetingScribe turns your calls into notes and follow-ups.",
+      "No bot joins the meeting, and nothing leaves your computer unless you say so."
+    ]},
+    {"id": "note", "min": 3, "lines": [
+      "Join Teams, Zoom or Google Meet as usual. It records by itself, and a few minutes after you hang up, the note is ready."
+    ]},
+    {"id": "templates", "min": 3, "lines": [
+      "A stand-up, a one-on-one and an incident review each get the note they need. You can add your own."
+    ]},
+    {"id": "actions", "min": 3, "lines": [
+      "Every action item lands on one list, and work that keeps coming back shows as carried over."
+    ]},
+    {"id": "upcoming", "min": 3, "lines": [
+      "Before your next call, a brief shows what was said last time and what is still open. It comes straight from your notes, so nothing is made up."
+    ]},
+    {"id": "send", "min": 3, "lines": [
+      "Send the recap and each person's follow-up to Slack, Teams, Gmail or Outlook. Nothing goes until you press the button."
+    ]},
+    {"id": "connectors", "min": 3, "lines": [
+      "Turn action items into Jira tickets, or hand one to an AI that opens a draft pull request."
+    ]},
+    {"id": "assistants", "min": 3, "lines": [
+      "Turn on MCP, and Claude or Cursor on your computer can read your meetings. It can only read."
+    ]},
+    {"id": "meetings", "min": 3, "lines": [
+      "Nobody on the call can see it, so telling them is up to you. It gives you a notice to paste into the chat."
+    ]},
+    {"id": "consent", "min": 3, "lines": [
+      "List the meetings it must never record, and have old ones deleted automatically."
+    ]},
+    {"id": "limits", "min": 3, "lines": [
+      "It is early software. The installers are unsigned, and a small local model can get details wrong, so read the note before you act on it.",
+      "It has only been tested on simulated calls, and the calendar, Slack and Teams only against stand-ins.",
+      "And recording people comes with legal rules, so ask first."
+    ]},
+    {"id": "outro", "min": 4, "lines": [
+      "MeetingScribe. Meetings, written down and followed up."
+    ]}
   ]
 }

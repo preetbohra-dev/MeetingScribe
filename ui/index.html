@@ -32,7 +32,7 @@ button:disabled { opacity: .55; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(.94); }
 button.link { background: none; border: 0; padding: 0; color: var(--soft); text-decoration: underline; }
-input[type=text], input[type=search], input[type=password], select, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; width: 100%; }
+input[type=text], input[type=search], input[type=password], input[type=number], select, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; width: 100%; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .row { display: flex; gap: 8px; align-items: center; }
 .row.wrap { flex-wrap: wrap; }
@@ -243,7 +243,7 @@ function showDownload(s) {
 
 // -- main frame --------------------------------------------------------------
 function showMain() {
-  const items = [["meetings", "Meetings"], ["search", "Search and ask"], ["people", "People"], ["connectors", "Connectors"], ["tasks", "Tasks"], ["settings", "Settings"]];
+  const items = [["meetings", "Meetings"], ["upcoming", "Upcoming"], ["actions", "Action items"], ["search", "Search and ask"], ["people", "People"], ["connectors", "Connectors"], ["tasks", "Tasks"], ["settings", "Settings"]];
   const navEl = h("nav", null);
   const brand = h("div", {class: "brand"}); brand.innerHTML = LOGO; brand.append("MeetingScribe");
   navEl.append(brand);
@@ -282,7 +282,7 @@ function render() {
   if (openId && view === "jira") return renderReview(main);
   if (openId && view === "send") return renderSend(main);
   if (openId && view !== "tasks") return renderMeeting(main);
-  ({meetings: renderList, search: renderSearch, people: renderPeople, connectors: renderConnectors, jira: renderJira, tasks: renderTasks, settings: renderSettings})[view](main);
+  ({meetings: renderList, search: renderSearch, people: renderPeople, upcoming: renderUpcoming, actions: renderActions, connectors: renderConnectors, jira: renderJira, tasks: renderTasks, settings: renderSettings})[view](main);
 }
 async function renderList(main) {
   lastList = "";
@@ -292,7 +292,7 @@ async function renderList(main) {
 async function refreshList() {
   const list = await call("meetings"), el = document.getElementById("list");
   const w = document.getElementById("warnings");
-  if (w) w.replaceChildren(...(statusNow.warnings || []).map(t => h("div", {class: "warn"}, t)));
+  if (w) w.replaceChildren(...recordingNotice(), ...(statusNow.warnings || []).map(t => h("div", {class: "warn"}, t)));
   const stamp = JSON.stringify([list, statusNow.processing]);
   if (!el || stamp === lastList) return;
   lastList = stamp;
@@ -304,6 +304,16 @@ async function refreshList() {
     return h("button", {class: "panel meeting", onclick: () => go("meetings", m.id)},
       h("div", {class: "grow"}, h("div", null, m.title), h("div", {class: "soft small"}, [when(m.started_at), m.minutes ? m.minutes + " min" : null, m.source].filter(Boolean).join(" · "))), busy);
   }));
+}
+function copyButton(text, label) {
+  return h("button", {onclick: async () => {
+    try { await navigator.clipboard.writeText(text); toast("Copied."); }
+    catch { toast("Your computer didn't allow copying."); }
+  }}, label);
+}
+function recordingNotice() {
+  if (statusNow.state !== "recording" || !statusNow.notice) return [];
+  return [h("div", {class: "panel row wrap"}, h("span", {class: "dot rec"}), h("span", {class: "grow"}, "Recording now. Everyone on the call should know."), copyButton(statusNow.notice, "Copy a notice for the chat"))];
 }
 async function renderMeeting(main) {
   const m = await call("meeting", openId);
@@ -321,6 +331,7 @@ async function renderMeeting(main) {
     unknown.forEach(v => col.append(voiceCard(m, v)));
   }
   col.append(h("h2", null, "Summary"), h("div", {class: "panel"}, m.summary.length ? h("ul", {class: "plain"}, m.summary.map(s => h("li", null, rich(s)))) : h("p", {class: "soft"}, "No summary.")));
+  m.sections.forEach(s => col.append(h("h2", null, s.heading), h("div", {class: "panel"}, s.items.length ? h("ul", {class: "plain"}, s.items.map(x => h("li", null, rich(x)))) : h("p", {class: "soft"}, "None."))));
   col.append(h("h2", null, "Action items"), h("div", {class: "panel"}, m.actions.length ? h("ul", {class: "plain"}, m.actions.map(s => { const item = s.replace(/^\[[ x]\]\s*/, ""); return h("li", null, rich(item), " ", h("button", {class: "link small", onclick: () => handToAi(m.id, item.replace(/\*\*/g, ""))}, "Hand to AI")); })) : h("p", {class: "soft"}, "None."),
     h("div", {class: "row wrap", style: "gap:10px;margin-top:10px"},
       m.destinations.length ? h("button", {class: "primary", onclick: () => go("send", m.id)}, "Send recap and follow-ups") : h("button", {onclick: () => go("connectors")}, "Connect Slack, Teams, Gmail or Outlook"),
@@ -337,7 +348,9 @@ async function renderMeeting(main) {
   const ask = h("input", {type: "text", placeholder: "Ask about this meeting", onkeydown: e => e.key === "Enter" && doAsk()});
   const askBtn = h("button", {onclick: doAsk}, "Ask"), answer = h("div");
   async function doAsk() { await askInto(ask, askBtn, answer, m.id); }
-  col.append(h("h2", null, "Ask"), h("div", {class: "row"}, ask, askBtn), answer);
+  col.append(h("h2", null, "Ask"), h("div", {class: "row"}, ask, askBtn),
+    m.questions.length ? h("div", {class: "row wrap", style: "margin-top:8px"}, m.questions.map(q => h("button", {class: "small", onclick: () => { ask.value = q; doAsk(); }}, q))) : null, answer);
+  col.append(styleBox(m));
   col.append(h("h2", null, "Transcript"), h("div", {class: "panel"}, m.turns.length ? m.turns.map(t => h("div", {class: "turn"}, h("span", {class: "soft small"}, clock(t.start) + "  "), h("b", null, t.speaker + ": "), t.text, t.flag ? h("span", {class: "soft small"}, " (" + t.flag + ")") : null)) : h("p", {class: "soft"}, "Nothing was said.")));
   const del = h("button", {class: "link", onclick: () => {
     del.replaceWith(h("span", {class: "row"}, h("span", null, "Delete this meeting's note and audio for good?"),
@@ -346,6 +359,29 @@ async function renderMeeting(main) {
   }}, "Delete this meeting");
   col.append(h("div", {class: "row", style: "margin-top:18px; gap:16px"}, m.note_exists ? h("button", {onclick: () => call("open_note", m.id)}, "Open the note") : null, del));
   main.replaceChildren(col);
+}
+function styleBox(m) {
+  const pick = h("select", {"aria-label": "Note style"}, m.templates.map(t => h("option", {value: t.id}, t.name)));
+  pick.value = m.template;
+  const line = h("p", {class: "soft small", style: "margin-top:8px"});
+  const sid = m.id;
+  function wait() {
+    btn.disabled = true; line.textContent = "Rewriting the note. On some computers this takes a few minutes…";
+    const poll = setInterval(async () => {
+      const s = await call("rewrite_state", sid);
+      if (s.running) return;
+      clearInterval(poll);
+      if (s.failed) { btn.disabled = false; line.textContent = "The AI couldn't rewrite this note, so the old one is still there."; }
+      else if (view === "meetings" && openId === sid) render();
+    }, 2000);
+  }
+  const btn = h("button", {onclick: async () => {
+    const r = await call("rewrite_note", sid, pick.value);
+    if (r.ok) wait(); else toast(r.message);
+  }}, "Rewrite the note");
+  const box = h("div", null, h("h2", null, "Note style"), h("div", {class: "row"}, pick, btn), line);
+  if (m.rewriting) wait();
+  return box;
 }
 function voiceCard(m, v) {
   const input = h("input", {type: "text", placeholder: "Their name", "aria-label": "Name for " + v.label, onkeydown: e => e.key === "Enter" && save(input.value)});
@@ -404,6 +440,66 @@ function renderSearch(main) {
     h("div", {class: "row"}, input, h("button", {class: "primary", onclick: find}, "Search"), askBtn), ansBox, out));
   input.focus();
 }
+// -- what is still open, and what is coming ------------------------------------
+async function renderActions(main) {
+  const all = await call("actions"), who = h("select", {"aria-label": "Whose", onchange: () => paint()}, h("option", {value: "all"}, "Everyone"), h("option", {value: "mine"}, "Only mine"));
+  const box = h("div");
+  const set = async (i, status) => { await call("action_set", i.id, status); renderActions(document.getElementById("main")); };
+  const days = n => n === 0 ? "today" : n === 1 ? "1 day" : n + " days";
+  function row(i) {
+    const open = i.status === "open", last = i.meetings[i.meetings.length - 1];
+    return h("div", {class: "panel"}, h("label", {class: "check", style: "margin-bottom:4px"},
+        h("input", {type: "checkbox", checked: i.status === "done", onchange: () => set(i, open ? "done" : "open")}),
+        h("span", null, h("b", null, i.owner + ": "), i.task)),
+      h("div", {class: "row wrap small", style: "gap:12px;padding-left:22px"},
+        h("span", {class: "soft grow"}, [last.title, open ? "open " + days(i.days) : null, i.carried ? "raised in " + (i.carried + 1) + " meetings" : null].filter(Boolean).join(" · ")),
+        i.carried ? h("span", {class: "tag need"}, "Carried over") : null,
+        h("button", {class: "link small", onclick: () => go("meetings", last.id)}, "Meeting"),
+        open ? h("button", {class: "link small", onclick: () => handToAi(last.id, i.task)}, "Hand to AI") : null,
+        open ? h("button", {class: "link small", onclick: () => set(i, "dismissed")}, "Not a task") : h("button", {class: "link small", onclick: () => set(i, "open")}, "Reopen")));
+  }
+  function paint() {
+    const shown = all.filter(i => who.value === "all" || i.mine), open = shown.filter(i => i.status === "open"), closed = shown.filter(i => i.status !== "open");
+    box.replaceChildren(...(open.length ? open.map(row) : [h("div", {class: "panel soft"}, "Nothing open.")]),
+      closed.length ? h("details", {style: "margin-top:14px"}, h("summary", null, "Finished (" + closed.length + ")"), closed.map(row)) : "");
+  }
+  paint();
+  main.replaceChildren(h("div", {class: "column"}, h("h1", null, "Action items"),
+    h("p", {class: "soft"}, "Everything people took on, across all your meetings. Ticking one here ticks it in the note. The same work raised again shows as carried over."),
+    h("div", {style: "max-width:200px;margin-bottom:12px"}, who), box));
+}
+function briefPanel(b) {
+  const out = [];
+  if (b.people.length > 1) out.push(h("p", null, h("b", null, "Invited: "), b.people.join(", ")));
+  b.last.forEach((m, i) => out.push(h("h2", null, (!m.same_series ? "Same people: " : i ? "Earlier: " : "Last time: ") + m.title),
+    h("p", {class: "soft small"}, when(m.started_at), " ", h("button", {class: "link small", onclick: () => go("meetings", m.id)}, "Open")),
+    m.summary.length ? h("ul", {class: "plain"}, m.summary.map(s => h("li", null, rich(s)))) : h("p", {class: "soft"}, "No summary.")));
+  if (b.open.length) out.push(h("h2", null, "Still open"), h("ul", {class: "plain"}, b.open.map(i => h("li", null, h("b", null, i.owner + ": "), i.task, i.carried ? h("span", {class: "soft small"}, "  (raised in " + (i.carried + 1) + " meetings)") : null))));
+  if (!b.something) out.push(h("p", {class: "soft"}, "Nothing in your meetings matches this, so it looks like a first meeting."));
+  return h("div", {class: "panel", style: "margin-top:-4px"}, out);
+}
+async function renderUpcoming(main) {
+  const up = await call("upcoming");
+  const about = h("input", {type: "text", placeholder: "A meeting's name, or a person", "aria-label": "Prepare for", onkeydown: e => e.key === "Enter" && find()}), found = h("div", {style: "margin-top:10px"});
+  async function find() { if (about.value.trim()) found.replaceChildren(briefPanel(await call("brief_search", about.value))); }
+  const col = h("div", {class: "column"}, h("h1", null, "Upcoming"), h("p", {class: "soft"}, "Before a call, see what was said last time and what is still open. This comes straight from your notes, with no AI, so nothing is made up."),
+    h("div", {class: "row"}, about, h("button", {class: "primary", onclick: find}, "Prepare")), found);
+  if (up.error) col.append(h("div", {class: "warn", style: "margin-top:12px"}, up.error));
+  if (!up.connected) col.append(h("div", {class: "panel", style: "margin-top:14px"}, h("p", null, "Connect your calendar to see your next meetings here, and get a notification before each one."), h("button", {onclick: () => go("connectors")}, "Connect a calendar")));
+  else {
+    col.append(h("h2", null, "Next two weeks"));
+    if (!up.events.length) col.append(h("div", {class: "panel soft"}, "Nothing on your calendar."));
+    up.events.forEach(e => {
+      const slot = h("div");
+      col.append(h("button", {class: "panel meeting", onclick: async () => {
+        if (slot.firstChild) return slot.replaceChildren();
+        const b = await call("brief_event", e.id);
+        slot.replaceChildren(b ? briefPanel(b) : h("p", {class: "soft"}, "That event has changed."));
+      }}, h("div", {class: "grow"}, h("div", null, e.title), h("div", {class: "soft small"}, when(e.start) + (e.people.length ? " · " + e.people.length + " invited" : "")))), slot);
+    });
+  }
+  main.replaceChildren(col);
+}
 async function renderPeople(main) {
   const people = await call("people");
   main.replaceChildren(h("div", {class: "column"}, h("h1", null, "People"),
@@ -428,6 +524,18 @@ async function renderSettings(main) {
   const [notify, notifyL] = box(s.notify, "Show notifications when recording starts and stops");
   const [screen, screenL] = box(s.screen_names, "Read people's names from the meeting window (pictures are never saved)");
   const [login, loginL] = box(s.start_at_login, "Start MeetingScribe when I log in");
+  const notice = h("textarea", {rows: 2, "aria-label": "Notice"}); notice.value = s.consent_notice;
+  const never = h("textarea", {rows: 2, placeholder: "HR\ndoctor", "aria-label": "Never record"}); never.value = s.never_record.join("\n");
+  const keepWarn = h("p", {class: "problem"});
+  const count = e => Math.max(0, parseInt(e.value, 10) || 0);
+  async function previewKeep() {
+    const n = await call("retention_preview", count(keepAll), count(keepAudio)), parts = [];
+    if (n.meetings) parts.push(n.meetings + (n.meetings === 1 ? " meeting" : " meetings") + " and their notes");
+    if (n.audio) parts.push("the audio of " + n.audio + (n.audio === 1 ? " more" : " more"));
+    keepWarn.textContent = parts.length ? "Saving this permanently deletes " + parts.join(" and ") + " soon after." : "";
+  }
+  const keepAll = h("input", {type: "number", min: "0", style: "width:90px", value: String(s.retain_days), "aria-label": "Days to keep meetings", oninput: previewKeep});
+  const keepAudio = h("input", {type: "number", min: "0", style: "width:90px", value: String(s.retain_audio_days), "aria-label": "Days to keep audio", oninput: previewKeep});
   const vocab = h("textarea", {rows: 4, placeholder: "app sumo = AppSumo"});
   vocab.value = Object.entries(s.vocabulary).map(([a, b]) => a + " = " + b).join("\n");
   const saveBtn = h("button", {class: "primary", onclick: async () => {
@@ -435,7 +543,7 @@ async function renderSettings(main) {
     for (const line of vocab.value.split("\n")) { const i = line.indexOf("="); if (i > 0 && line.slice(i + 1).trim()) vocabulary[line.slice(0, i).trim()] = line.slice(i + 1).trim(); }
     const others = s.meeting_apps.filter(a => !["teams", "zoom", "browsers"].includes(a));
     const r = await call("save_settings", {my_name: name.value.trim(), language: lang.value, output_dir: folder.value.trim(), work_only: workOnly.checked, keep_audio: audio.checked, notify: notify.checked, screen_names: screen.checked, start_at_login: login.checked,
-      meeting_apps: [...(teams.checked ? ["teams"] : []), ...(zoom.checked ? ["zoom"] : []), ...(web.checked ? ["browsers"] : []), ...others], vocabulary});
+      consent_notice: notice.value.trim(), never_record: never.value.split("\n").map(x => x.trim()).filter(Boolean), retain_days: count(keepAll), retain_audio_days: count(keepAudio), meeting_apps: [...(teams.checked ? ["teams"] : []), ...(zoom.checked ? ["zoom"] : []), ...(web.checked ? ["browsers"] : []), ...others], vocabulary});
     toast(r.message);
   }}, "Save");
   const field = (label, ...kids) => h("div", {class: "field"}, h("label", null, label), ...kids);
@@ -448,7 +556,33 @@ async function renderSettings(main) {
     field("Record these", teamsL, zoomL, webL),
     field("Notes and privacy", workL, audioL, notifyL, screenL),
     s.packaged ? field("Starting up", loginL) : null,
-    field("Words to fix", h("p", {class: "soft small"}, "One per line, as heard = how to spell it."), vocab), saveBtn));
+    field("Words to fix", h("p", {class: "soft small"}, "One per line, as heard = how to spell it."), vocab),
+    h("h2", null, "Consent and keeping meetings"),
+    field("Notice for the meeting chat", h("p", {class: "soft small"}, "While recording, the Meetings page offers this to copy. Nobody on the call can see MeetingScribe, so telling them is up to you."), notice),
+    field("Never record", h("p", {class: "soft small"}, "One per line. A meeting with any of these in its title is not recorded, and a recording already started is deleted."), never),
+    field("Delete whole meetings after", h("div", {class: "row"}, keepAll, h("span", {class: "soft"}, "days (0 keeps them)"))),
+    field("Delete only the audio after", h("div", {class: "row"}, keepAudio, h("span", {class: "soft"}, "days (0 keeps it)"))), keepWarn, saveBtn,
+    h("h2", null, "Note templates"), h("div", {id: "templates"})));
+  previewKeep();
+  renderTemplates();
+}
+async function renderTemplates() {
+  const box = document.getElementById("templates"); if (!box) return;
+  const st = await call("templates_state");
+  const name = h("input", {type: "text", "aria-label": "Template name"}), words = h("input", {type: "text", placeholder: "board, investor", "aria-label": "Words in the title"}), focus = h("input", {type: "text", placeholder: "Say what the board was asked to decide.", "aria-label": "What to focus on"});
+  const sections = h("textarea", {rows: 3, placeholder: "Decisions: what the board approved\nFigures: numbers that were stated", "aria-label": "Sections"}), problem = h("p", {class: "problem"});
+  const field = (label, ...kids) => h("div", {class: "field"}, h("label", null, label), ...kids);
+  const qs = h("textarea", {rows: 3, "aria-label": "Saved questions"}); qs.value = st.questions.join("\n");
+  box.replaceChildren(h("p", {class: "soft small"}, "A template adds sections to the note, and is picked by words in the meeting's title. You can change it on any meeting."),
+    ...st.templates.map(t => h("div", {class: "panel row"}, h("div", {class: "grow"}, h("b", null, t.name), h("div", {class: "soft small"}, [t.words.length ? "Title has: " + t.words.join(", ") : "When nothing else matches", t.sections.length ? "Adds: " + t.sections.map(s => s.heading).join(", ") : null].filter(Boolean).join(" · "))),
+      t.mine ? h("button", {class: "link small", onclick: async () => { await call("template_remove", t.id); renderTemplates(); }}, "Remove") : null)),
+    h("details", {class: "panel"}, h("summary", null, "Add a template"), field("Name", name), field("Words in the meeting's title (comma between each)", words), field("What the summary should focus on (optional)", focus), field("Extra sections, one per line, as Heading: what goes in it", sections), problem,
+      h("button", {onclick: async () => {
+        const r = await call("template_add", name.value, words.value.split(","), focus.value, sections.value.split("\n"));
+        if (r.ok) { toast(r.message); renderTemplates(); } else problem.textContent = r.message;
+      }}, "Add")),
+    h("h2", null, "Saved questions"), h("p", {class: "soft small"}, "One per line. They appear as buttons when you ask about a meeting."), qs,
+    h("button", {style: "margin-top:8px", onclick: async () => { await call("questions_save", qs.value.split("\n")); toast("Saved."); }}, "Save questions"));
 }
 // -- tasks handed to the AI ----------------------------------------------------
 const TASK_WORDS = {working: "Working", questions: "Needs your answers", attention: "Needs you", review: "Ready for you", done: "Finished", stopped: "Stopped"};
@@ -603,8 +737,30 @@ async function renderConnectors(main) {
     const account = service === "outlook" ? h("select", {"aria-label": "Outlook account"}, h("option", {value: "work"}, "Work or school account"), h("option", {value: "personal"}, "Personal account")) : null;
     return [account, h("button", {style: account ? "margin-left:10px" : "", onclick: async () => { await call("connector_set_email", service, account ? account.value : "work"); refresh(); }}, "Turn on")];
   }
+  function calendar() {
+    if (st.calendar) return [h("div", {class: "row"}, h("span", {class: "dot ok"}), h("span", {class: "grow"}, "Connected"), h("button", {class: "link small", onclick: async () => { await call("calendar_disconnect"); refresh(); }}, "Disconnect"))];
+    const link = h("input", {type: "password", autocomplete: "off", "aria-label": "Calendar link"}), msg = h("p", {class: "problem"});
+    const save = h("button", {onclick: async () => {
+      save.disabled = true; msg.textContent = "";
+      try { const r = await call("calendar_connect", link.value); if (r.ok) { toast(r.message); return refresh(); } msg.textContent = r.message; }
+      finally { save.disabled = false; }
+    }}, "Connect");
+    return [h("details", null, h("summary", {class: "small"}, "Connect a calendar"),
+      h("p", {class: "soft small"}, "Paste your calendar's private iCal link. In Google Calendar it is under Settings, your calendar, “Secret address in iCal format”. In Outlook on the web it is under Settings, Calendar, Shared calendars, Publish a calendar, and your company may have turned that off."),
+      h("div", {class: "field"}, h("label", null, "iCal link"), link), h("p", {class: "soft small"}, "Anyone with this link can read that calendar, so it is kept in this computer's secure password store."), msg, save)];
+  }
+  function assistants() {
+    if (!st.mcp.on) return [h("button", {onclick: async () => { await call("mcp_set", true); refresh(); }}, "Turn on")];
+    return [h("div", {class: "row"}, h("span", {class: "dot ok"}), h("span", {class: "grow"}, "On"), h("button", {class: "link small", onclick: async () => { await call("mcp_set", false); refresh(); }}, "Turn off")),
+      h("p", {class: "soft small", style: "margin-top:8px"}, "It can only read. Whatever the assistant reads goes wherever that assistant sends it, which is usually its AI provider, so check your company allows that."),
+      h("p", {class: "small", style: "margin-bottom:2px"}, "Claude Code: run this once."), h("pre", {class: "desc"}, st.mcp.claude), copyButton(st.mcp.claude, "Copy"),
+      h("p", {class: "small", style: "margin:10px 0 2px"}, "Claude Desktop, Cursor and others: add this to their MCP settings."), h("pre", {class: "desc"}, st.mcp.config), copyButton(st.mcp.config, "Copy")];
+  }
   main.replaceChildren(h("div", {class: "column"}, h("h1", null, "Connectors"),
     h("p", {class: "soft"}, "Use the ones your team works in, and ignore the rest. Nothing is sent or changed until you approve it."),
+    h("h2", null, "Get ready for meetings"),
+    card("Calendar", "See your next meetings under Upcoming, and get a brief before each one. It only reads.", ...calendar()),
+    card("AI assistants (MCP)", "Let Claude, Cursor or another assistant on this computer read your meetings and open action items.", ...assistants()),
     h("h2", null, "Turn meetings into work"),
     card("Jira", "Draft tickets from action items, checked against what already exists.", h("button", {onclick: () => go("jira")}, st.jira ? "Open Jira" : "Connect Jira")),
     card("Hand to AI", "An AI creates, edits and removes files to finish an action item, then opens a draft pull request or updates a folder.", h("button", {onclick: () => go("tasks")}, st.task_places ? "Open Tasks" : "Set up a repository or folder")),
