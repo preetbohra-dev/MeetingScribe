@@ -102,6 +102,8 @@ def steps(page, work, failed):
 
     for name in ("actions", "people", "tasks", "settings"):
         nav(name)
+        if name == "settings":  # its templates arrive after the rest of the page
+            page.wait_for_selector("#templates details", state="attached", timeout=20000)
         sweep(name)
 
     page.click("button:has-text('Change…')")
