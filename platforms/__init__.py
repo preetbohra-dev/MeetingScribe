@@ -8,6 +8,7 @@
   background_process()      keep the daemon out of the Dock / taskbar
   lower_priority()          let meeting processing yield to the foreground
   single_instance(f)        exclusive lock on an open file; False if already held
+  answer_open()             let the running recorder show the window when the app is opened
   run_loop(seconds)         wait while native audio callbacks run
   play_audio(path)          play a WAV and block until it ends
   request_permissions(cfg)  ask for optional permissions once, at daemon start

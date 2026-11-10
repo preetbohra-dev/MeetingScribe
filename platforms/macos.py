@@ -12,6 +12,7 @@ import logging
 import os
 import struct
 import subprocess
+import sys
 import threading
 import time
 
@@ -68,10 +69,59 @@ def single_instance(lock_file):
         return False
 
 
+_open_answer = None  # the object macOS calls when someone opens the app
+
+
+def answer_open():
+    """To macOS the packaged recorder and the window are one app, so opening it while only the
+    recorder runs is sent to the recorder, and fails (error -600) unless it can take that."""
+    global _open_answer
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        from AppKit import NSApplication, NSRunningApplication
+        from Foundation import NSAppleEventManager, NSBundle, NSObject
+
+        started = None
+
+        class OpenAnswer(NSObject):
+            def handleEvent_withReply_(self, event, reply):
+                nonlocal started
+                try:
+                    bundle = NSBundle.mainBundle().bundleIdentifier()
+                    for other in NSRunningApplication.runningApplicationsWithBundleIdentifier_(bundle):
+                        if other.processIdentifier() != os.getpid() and other.activationPolicy() == 0:  # a window
+                            other.activateWithOptions_(1 << 1)
+                            return
+                    if started is None or started.poll() is not None:  # one still starting up isn't listed above yet
+                        started = subprocess.Popen([sys.executable], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception as e:
+                    log.warning("could not open the window: %s", e)
+
+        app = NSApplication.sharedApplication()
+        app.setActivationPolicy_(1)  # NSApplicationActivationPolicyAccessory: no Dock icon, but it can answer
+        app.finishLaunching()
+        _open_answer = OpenAnswer.alloc().init()
+        run_loop(0.5)  # macOS's own "launched" event must not count as someone opening the app
+        events = NSAppleEventManager.sharedAppleEventManager()
+        selector = b"handleEvent:withReply:"
+        for kind in (b"oapp", b"rapp"):
+            events.setEventHandler_andSelector_forEventClass_andEventID_(_open_answer, selector, int.from_bytes(b"aevt", "big"), int.from_bytes(kind, "big"))
+    except Exception as e:
+        log.warning("opening the app while the recorder runs won't work: %s", e)
+
+
 def run_loop(seconds):
-    """Waits while letting Core Audio / ScreenCaptureKit callbacks run."""
-    from Foundation import NSDate, NSRunLoop
-    NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(seconds))
+    """Waits while letting Core Audio / ScreenCaptureKit callbacks and, when answer_open is on, macOS's own events run."""
+    from Foundation import NSDate, NSDefaultRunLoopMode, NSRunLoop
+    until = NSDate.dateWithTimeIntervalSinceNow_(seconds)
+    if _open_answer is None:
+        NSRunLoop.currentRunLoop().runUntilDate_(until)
+        return
+    from AppKit import NSApplication, NSEventMaskAny
+    app = NSApplication.sharedApplication()
+    while (event := app.nextEventMatchingMask_untilDate_inMode_dequeue_(NSEventMaskAny, until, NSDefaultRunLoopMode, True)) is not None:
+        app.sendEvent_(event)
 
 
 def play_audio(path):
@@ -380,7 +430,6 @@ class ProcessTapCapture:
         ca.AudioDeviceStop.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
 
     def start(self):
-        import objc
         from Foundation import NSBundle, NSNumber
         NSBundle.bundleWithPath_("/System/Library/Frameworks/CoreAudio.framework").load()
         CATapDescription = objc.lookUpClass("CATapDescription")

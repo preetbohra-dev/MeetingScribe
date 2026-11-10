@@ -940,7 +940,7 @@ class Daemon:
                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def run(self):
-        self.check_permissions()
+        threading.Thread(target=self.check_permissions, daemon=True).start()  # a permission prompt can wait for a long time, and the app must still open
         self.recover()
         log.info("daemon started; watching %s", ", ".join(a["name"] for a in self.apps))
         start_tray(self.cfg, self)
@@ -3939,10 +3939,11 @@ def card_approve(cfg, d, n):
 def cmd_run(cfg, args):
     setup_logging(cfg, "daemon")
     plat.background_process()
+    plat.answer_open()
     if not terms_accepted(cfg):
         log.error("terms of use not accepted; run %s terms (or %s) first", plat.CTL, plat.INSTALL)
         notify(cfg, f"MeetingScribe is not recording: run {plat.CTL} terms to accept the terms of use.")
-        time.sleep(3600)  # launchd would otherwise restart us every few seconds
+        plat.run_loop(3600)  # launchd would otherwise restart us every few seconds
         sys.exit(0)
     cfg["work_dir"].mkdir(parents=True, exist_ok=True)
     lock = open(cfg["work_dir"] / "daemon.lock", "w", encoding="utf-8")

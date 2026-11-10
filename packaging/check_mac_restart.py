@@ -5,6 +5,7 @@ quit, and come back after a crash.
     python packaging/check_mac_restart.py dist/MeetingScribe.app/Contents/MacOS/MeetingScribe
 """
 
+import json
 import os
 import plistlib
 import re
@@ -16,6 +17,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import meeting_scribe as ms  # noqa: E402
 import meetingscribe_app as app  # noqa: E402
 
 ITEM = app.login_item()
@@ -64,33 +66,53 @@ def windows(exe):
     return [int(line.split()[0]) for line in out.splitlines() if line.strip().endswith(exe) and "ps -axo" not in line]
 
 
-def opens_while_recorder_runs(exe):
-    """Quitting the window leaves the recorder running; opening the app must still give a window."""
-    bundle = str(Path(exe).parents[2])
-    opened = subprocess.run(["open", bundle], capture_output=True, text=True)
-    print(f"open: exit {opened.returncode} {opened.stderr.strip()}", flush=True)
-    print(subprocess.run(["lsappinfo", "list"], capture_output=True, text=True).stdout[:3000], flush=True)
-    end = time.time() + 45
+def open_app(exe):
+    opened = subprocess.run(["open", str(Path(exe).parents[2])], capture_output=True, text=True)
+    if opened.returncode:
+        sys.exit(f"the app would not open while the recorder ran: {opened.stderr.strip()}")
+
+
+def wait_for_window(exe, seconds):
+    end = time.time() + seconds
     while time.time() < end and not windows(exe):
         time.sleep(1)
-    found = windows(exe)
-    for pid in found:
-        os.kill(pid, signal.SIGTERM)
-    time.sleep(3)
-    return opened.returncode == 0 and bool(found)
+    return windows(exe)
+
+
+def opens_while_recorder_runs(exe):
+    """Quitting the window leaves the recorder running; opening the app must still give one window."""
+    time.sleep(8)
+    if windows(exe):
+        sys.exit("the recorder opened a window by itself when it started")
+    for attempt in ("first", "again after quitting the window"):
+        open_app(exe)
+        found = wait_for_window(exe, 45)
+        if not found:
+            sys.exit(f"no window appeared when the app was opened ({attempt})")
+        open_app(exe)  # already open: it must come forward, not double up
+        time.sleep(8)
+        if len(windows(exe)) != 1:
+            sys.exit(f"opening the app twice gave {len(windows(exe))} windows")
+        os.kill(found[0], signal.SIGTERM)
+        time.sleep(4)
+    print("the app opens while the recorder runs, in one window", flush=True)
 
 
 def main():
     exe = sys.argv[1] if os.path.isabs(sys.argv[1]) else os.path.abspath(sys.argv[1])
     with tempfile.TemporaryDirectory() as t:
         plist = Path(t) / f"{LABEL}.plist"
-        plist.write_bytes(plistlib.dumps({**ITEM, "ProgramArguments": [exe, "run"]}))
+        work = Path(t) / "work"
+        work.mkdir()
+        (work / "terms_accepted.json").write_text(json.dumps({"version": ms.DISCLAIMER_VERSION}), encoding="utf-8")
+        config = Path(t) / "config.toml"
+        config.write_text(f"notify = false\nwork_dir = {json.dumps(str(work))}\n", encoding="utf-8")
+        plist.write_bytes(plistlib.dumps({**ITEM, "ProgramArguments": [exe, "run"], "EnvironmentVariables": {"MEETINGSCRIBE_CONFIG": str(config)}}))
         subprocess.run(["launchctl", "bootstrap", DOMAIN, str(plist)], check=True)
         try:
             if not wait_for_start(60):
                 sys.exit("the recorder did not start at load")
-            opens = opens_while_recorder_runs(exe)
-            print(f"the app opened while the recorder ran: {opens}", flush=True)
+            opens_while_recorder_runs(exe)
             os.kill(running(), signal.SIGKILL)
             time.sleep(SETTLE_S)
             stays_stopped("force quit", signal.SIGKILL, exe)
@@ -102,8 +124,6 @@ def main():
             if not back or back == crashed:
                 sys.exit("the recorder did not come back after a crash")
             print("it came back after a crash", flush=True)
-            if not opens:
-                sys.exit("the app would not open while the recorder was running")
         finally:
             subprocess.run(["launchctl", "bootout", f"{DOMAIN}/{LABEL}"], capture_output=True)
 

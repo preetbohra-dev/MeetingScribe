@@ -119,6 +119,10 @@ def single_instance(lock_file):
         return False
 
 
+def answer_open():
+    pass
+
+
 def run_loop(seconds):
     time.sleep(seconds)
 
