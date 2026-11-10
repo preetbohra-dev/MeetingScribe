@@ -31,6 +31,11 @@ jobs:
           if ($o -notmatch 'No saved voices') { throw "unexpected output: $o" }
       - name: The packaged program answers an AI assistant
         run: python packaging/check_mcp.py dist/MeetingScribe/MeetingScribe.exe
+      - name: Every page and box works in the app's browser engine
+        run: |
+          python -m pip install playwright
+          python -m playwright install chromium
+          python packaging/check_ui.py chromium
       - name: Installer and zip
         shell: pwsh
         run: |
@@ -76,9 +81,25 @@ jobs:
             dist/*.dmg
             dist/*.zip
 
+  mac_window:  # a job of its own, so that a packaged build can't be published without it
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install -r requirements.txt playwright
+          python -m playwright install webkit
+      - name: Every page and box works in the Mac's browser engine
+        run: python packaging/check_ui.py webkit
+      - name: The real Mac window takes typing and paste
+        run: python packaging/check_mac_window.py
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, mac]
+    needs: [windows, mac, mac_window]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

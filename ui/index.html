@@ -106,6 +106,8 @@ function h(tag, props, ...kids) {
   for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) e.append(c);
   return e;
 }
+// Returns nothing on purpose: a key handler that returns false makes the browser drop the key.
+const onEnter = fn => e => { if (e.key === "Enter") fn(); };
 function toast(text) {
   const t = document.getElementById("toast");
   t.textContent = text; t.style.display = "block";
@@ -345,7 +347,7 @@ async function renderMeeting(main) {
       }}, v.confirmed ? "Undo this name" : "Not this person"))));
     col.append(h("h2", null, "People"), people);
   }
-  const ask = h("input", {type: "text", placeholder: "Ask about this meeting", onkeydown: e => e.key === "Enter" && doAsk()});
+  const ask = h("input", {type: "text", placeholder: "Ask about this meeting", onkeydown: onEnter(() => doAsk())});
   const askBtn = h("button", {onclick: doAsk}, "Ask"), answer = h("div");
   async function doAsk() { await askInto(ask, askBtn, answer, m.id); }
   col.append(h("h2", null, "Ask"), h("div", {class: "row"}, ask, askBtn),
@@ -384,7 +386,7 @@ function styleBox(m) {
   return box;
 }
 function voiceCard(m, v) {
-  const input = h("input", {type: "text", placeholder: "Their name", "aria-label": "Name for " + v.label, onkeydown: e => e.key === "Enter" && save(input.value)});
+  const input = h("input", {type: "text", placeholder: "Their name", "aria-label": "Name for " + v.label, onkeydown: onEnter(() => save(input.value))});
   async function save(name) {
     if (!name.trim()) return input.focus();
     card.querySelectorAll("button").forEach(b => b.disabled = true);
@@ -424,7 +426,7 @@ async function askInto(input, btn, out, sid) {
   } finally { btn.disabled = false; }
 }
 function renderSearch(main) {
-  const input = h("input", {type: "search", placeholder: "Words, a person, a topic", onkeydown: e => e.key === "Enter" && find()});
+  const input = h("input", {type: "search", placeholder: "Words, a person, a topic", onkeydown: onEnter(() => find())});
   const out = h("div", {style: "margin-top:12px"}), ansBox = h("div");
   const askBtn = h("button", {onclick: () => askInto(input, askBtn, ansBox, null)}, "Ask the AI");
   async function find() {
@@ -480,7 +482,7 @@ function briefPanel(b) {
 }
 async function renderUpcoming(main) {
   const up = await call("upcoming");
-  const about = h("input", {type: "text", placeholder: "A meeting's name, or a person", "aria-label": "Prepare for", onkeydown: e => e.key === "Enter" && find()}), found = h("div", {style: "margin-top:10px"});
+  const about = h("input", {type: "text", placeholder: "A meeting's name, or a person", "aria-label": "Prepare for", onkeydown: onEnter(() => find())}), found = h("div", {style: "margin-top:10px"});
   async function find() { if (about.value.trim()) found.replaceChildren(briefPanel(await call("brief_search", about.value))); }
   const col = h("div", {class: "column"}, h("h1", null, "Upcoming"), h("p", {class: "soft"}, "Before a call, see what was said last time and what is still open. This comes straight from your notes, with no AI, so nothing is made up."),
     h("div", {class: "row"}, about, h("button", {class: "primary", onclick: find}, "Prepare")), found);
