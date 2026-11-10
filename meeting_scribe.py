@@ -1111,8 +1111,6 @@ def detect_language(cfg, audio):
         def judged(samples):
             mel = log_mel_spectrogram(samples, n_mels=model.dims.n_mels, padding=0)
             return model.detect_language(pad_or_trim(mel, N_FRAMES, axis=-2).astype(mx.float16))[1]
-        other = judged(audio)
-        log.info("language without repeating: %s", sorted(((round(float(v), 2), k) for k, v in other.items()), reverse=True)[:2])
         # Padded out with silence, mostly Hindi speech was judged 94% English. Repeating the speech to
         # fill the model's 30 seconds gives it only speech to judge.
         return judged(np.resize(audio, N_SAMPLES).astype(np.float32))
