@@ -39,7 +39,7 @@ d = base / "work" / "sessions" / "2026-11-08_100000"
 d.mkdir(parents=True)
 (d / "mic.pcm").write_bytes(silence + me + silence + bytes(len(others)))
 (d / "system.pcm").write_bytes(silence + bytes(len(me)) + silence + others)
-(d / "session.json").write_text(json.dumps({"status": "recorded", "title": "Smoke test", "source": "Zoom", "app": "zoom",
+(d / "session.json").write_text(json.dumps({"status": "recorded", "title": "Zoom meeting", "source": "Zoom", "app": "zoom",
                                             "started_at": "2026-11-08T10:00:00+00:00", "duration_s": 40}))
 subprocess.run([app, "download-models"], env=env, check=True, timeout=1800)
 run = subprocess.run([app, "process", str(d)], env=env, timeout=1800)
@@ -52,4 +52,6 @@ print(note)
 assert "could not be written" not in note, "the AI model did not run"
 assert "migration" in note.lower() and "## Transcript" in note
 assert Path(meta["notes"]).with_suffix(".json").exists()
+print("the call was named:", meta["title"])
+assert meta["title"] in Path(meta["notes"]).stem
 print("smoke test passed")

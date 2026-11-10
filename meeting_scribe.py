@@ -2304,6 +2304,48 @@ def process_session(cfg, session_dir):
            (f". Run {plat.CTL} jira to review tickets." if cfg["jira"]["base_url"] and not FROZEN else ""))
 
 
+TOPIC_INSTRUCTIONS = """Below are the notes of a meeting. Write a title for it in English: three to six words saying what it was about. Use only what the notes say. Do not name people. Answer with the title and nothing else.
+
+{notes}"""
+
+
+def topic_from_answer(answer):
+    """The title in a model's answer, or "" when what came back doesn't look like one."""
+    lines = [x for x in (answer or "").splitlines() if x.strip()]
+    if not lines:
+        return ""
+    topic = re.sub(r"^\W*(?:title\s*:)?\W*", "", lines[0], flags=re.I)
+    topic = topic.strip(" \t\"'“”‘’*_#.:")
+    return topic if 2 <= len(topic.split()) <= 9 and len(topic) <= 70 else ""
+
+
+def people_on_call(cfg, speakers):
+    """The people recognized on a call, as a title would say them. Guesses are left out."""
+    names = [n for n, s in speakers.items() if s.get("known") and not same_person(n, cfg["my_name"])]
+    if not names:
+        return ""
+    shown, more = names[:2], len(speakers) - len(names[:2])
+    if more:
+        return f"{', '.join(shown)} and {more} other{'s' if more > 1 else ''}"
+    return " and ".join(shown)
+
+
+def name_call(cfg, meta, notes, speakers, llm):
+    """A call whose window gave no name, as ad hoc calls do, is named for its topic and its people."""
+    if meta["title"] != f"{meta.get('source')} meeting":
+        return meta["title"]
+    topic = ""
+    if llm:
+        try:
+            topic = topic_from_answer(llm.chat(TOPIC_INSTRUCTIONS.format(notes=notes[:4000]), 40))
+        except Exception:
+            log.exception("could not name this call")
+    people = people_on_call(cfg, speakers)
+    if topic:
+        return f"{topic} with {people}" if people else topic
+    return f"Call with {people}" if people else meta["title"]
+
+
 def write_note(cfg, meta, turns, speakers, llm=None, dropped=None, strict=False):
     """Summarize the turns and write the meeting's Markdown note; returns its path. With strict,
     a failed model raises, for when there is already a good note that a basic one would replace."""
@@ -2318,9 +2360,12 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None, strict=False)
     transcript = "\n".join(f"[{ts(t['start'])}] {t['speaker']}: {t['text']}{tag(t, ' ({})')}"
                            for t in turns)
 
+    namer = None
     if transcript.strip():
         try:
-            notes = summarize(cfg, transcript, llm or LLM(cfg), template)
+            llm = llm or LLM(cfg)
+            notes = summarize(cfg, transcript, llm, template)
+            namer = llm
         except Exception as e:
             if strict:
                 raise
@@ -2333,7 +2378,7 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None, strict=False)
         notes = f"## Summary\n- No {what} was detected in this recording.\n\n## Action Items\n- None identified."
 
     end = started + dt.timedelta(seconds=duration)
-    title = meta["title"]
+    title = meta["title"] = name_call(cfg, meta, notes, speakers, namer)
     md = [f"# {title}", "",
           f"**Date:** {started:%A %d %B %Y, %H:%M}–{end:%H:%M} ({round(duration / 60)} min)  ",
           f"**Source:** {meta.get('source', 'Microsoft Teams')} · " + (
