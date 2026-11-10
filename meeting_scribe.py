@@ -98,7 +98,7 @@ DEFAULTS = {
     "keep_audio": True,  # keep a stereo WAV (L = Me, R = Others) next to the notes
     "my_name": "Me",
     "others_name": "Others",
-    "language": "",  # "" = auto-detect, or e.g. "en"
+    "language": "",  # "" = detect, even if it changes mid-meeting; "en" etc. = only that one
     "mlx_llm_model": "mlx-community/Qwen2.5-14B-Instruct-4bit",
     # llamacpp: Hugging Face repo + file of a GGUF model.
     "gguf_model": "bartowski/Qwen2.5-14B-Instruct-GGUF/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
@@ -223,7 +223,7 @@ def self_command(*args):
 def terms_accepted(cfg):
     p = cfg["work_dir"] / "terms_accepted.json"
     try:
-        return json.loads(p.read_text()).get("version") == DISCLAIMER_VERSION
+        return json.loads(p.read_text(encoding="utf-8")).get("version") == DISCLAIMER_VERSION
     except (OSError, ValueError):
         return False
 
@@ -245,7 +245,7 @@ def record_terms(cfg):
     cfg["work_dir"].mkdir(parents=True, exist_ok=True)
     (cfg["work_dir"] / "terms_accepted.json").write_text(json.dumps(
         {"version": DISCLAIMER_VERSION, "accepted_at": dt.datetime.now().isoformat(timespec="seconds"),
-         "user": getpass.getuser()}))
+         "user": getpass.getuser()}), encoding="utf-8")
 
 
 def config_path():
@@ -630,7 +630,7 @@ class Recording:
 
     def _save_meta(self):
         tmp = self.dir / "session.json.tmp"
-        tmp.write_text(json.dumps(self.meta, indent=2))
+        tmp.write_text(json.dumps(self.meta, indent=2), encoding="utf-8")
         tmp.replace(self.dir / "session.json")
 
     def start(self):
@@ -784,12 +784,12 @@ class Daemon:
 
     def recover(self):
         for meta_path in sorted(self.sessions.glob("*/session.json")):
-            meta = json.loads(meta_path.read_text())
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
             if meta.get("status") == "recording":  # we crashed or the computer lost power mid-call
                 sizes = [p.stat().st_size for p in meta_path.parent.glob("*.pcm")]
                 meta["status"] = "recorded"
                 meta["duration_s"] = round(max(sizes, default=0) / 2 / TARGET_SR, 1)
-                meta_path.write_text(json.dumps(meta, indent=2))
+                meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
             if meta.get("status") == "recorded":
                 log.info("re-queueing unprocessed session %s", meta_path.parent.name)
                 self.queue.append(meta_path.parent)
@@ -899,7 +899,7 @@ class Daemon:
              "queued": len(self.queue)}
         tmp = self.cfg["work_dir"] / "status.tmp"
         try:
-            tmp.write_text(json.dumps(s))
+            tmp.write_text(json.dumps(s), encoding="utf-8")
             tmp.replace(self.cfg["work_dir"] / "status.json")
         except OSError as e:  # the app may be reading it this instant on Windows
             log.debug("status: %s", e)
@@ -1093,6 +1093,129 @@ def whisper_transcribe(cfg, audio, **kwargs):
                          for s in segments]}
 
 
+LANG_WINDOW_S = 15  # speech per language check across the meeting
+LANG_FINE_S = 3  # ...and around a change of language, to find where it happened
+LANG_MIN_SPEECH_S = 3  # too little to tell the language from
+LANG_MIN_BLOCK_S = 4  # a shorter stretch is a stray word or a wrong guess, not a change of language
+LANG_SURE = 0.5
+
+
+def detect_language(cfg, audio):
+    """{language: probability} for up to 30 s of audio, from whichever backend is configured."""
+    if cfg["asr_backend"] == "mlx":
+        import mlx.core as mx
+        from mlx_whisper.audio import N_FRAMES, N_SAMPLES, log_mel_spectrogram, pad_or_trim
+        from mlx_whisper.transcribe import ModelHolder
+        model = ModelHolder.get_model(cfg["whisper_model"], mx.float16)
+        mel = log_mel_spectrogram(audio, n_mels=model.dims.n_mels, padding=N_SAMPLES)
+        return model.detect_language(pad_or_trim(mel, N_FRAMES, axis=-2).astype(mx.float16))[1]
+    return dict(faster_whisper_model(cfg).detect_language(audio, language_detection_segments=1)[2])
+
+
+def pick_language(probs):
+    """(language, probability). Whisper often hears spoken Hindi as Urdu, which is written in a
+    different script; when Hindi is a close second the two are counted together as Hindi."""
+    best = max(probs, key=probs.get)
+    if best == "ur" and probs.get("hi", 0) >= 0.15:
+        return "hi", probs["ur"] + probs["hi"]
+    return best, probs[best]
+
+
+def split_speech(clips, size):
+    """Flat [start, end, ...] clips cut into runs of size seconds of speech."""
+    runs, cur, used = [], [], 0.0
+    for s, e in zip(clips[::2], clips[1::2]):
+        while e - s > 1e-6:
+            take = min(e - s, size - used)
+            cur += [round(s, 3), round(s + take, 3)]
+            used += take
+            s += take
+            if used >= size - 1e-6:
+                runs.append(cur)
+                cur, used = [], 0.0
+    return runs + ([cur] if cur else [])
+
+
+def joined_spans(clips):
+    """Spans that touch become one. Whisper starts afresh at every span, so a needless cut loses words."""
+    out = []
+    for s, e in zip(clips[::2], clips[1::2]):
+        if out and abs(out[-1] - s) < 1e-3:
+            out[-1] = e
+        else:
+            out += [s, e]
+    return out
+
+
+def spoken_seconds(clips):
+    return sum(e - s for s, e in zip(clips[::2], clips[1::2]))
+
+
+def language_of(cfg, audio, clips):
+    """The language of these clips, or None when there is too little speech or the model is unsure."""
+    if spoken_seconds(clips) < LANG_MIN_SPEECH_S:
+        return None
+    speech = np.concatenate([audio[int(s * TARGET_SR):int(e * TARGET_SR)] for s, e in zip(clips[::2], clips[1::2])])
+    language, sure = pick_language(detect_language(cfg, speech))
+    return language if sure >= LANG_SURE else None
+
+
+def quietest_moment(audio, t, reach=1.5):
+    """The quietest instant within reach of t, so that a cut between languages misses the words."""
+    frame = int(0.03 * TARGET_SR)
+    start = max(0, int((t - reach) * TARGET_SR))
+    part = audio[start:int((t + reach) * TARGET_SR)]
+    if len(part) < frame:
+        return t
+    energy = [float(np.abs(part[i:i + frame]).mean()) for i in range(0, len(part) - frame + 1, frame)]
+    return round((start + frame * int(np.argmin(energy)) + frame / 2) / TARGET_SR, 3)
+
+
+def language_blocks(cfg, audio, clips):
+    """[(language, clips)], one for each stretch of the meeting in one language. Whisper left to
+    itself picks a language from the first seconds and holds it to the end, which loses or
+    garbles whatever is said after someone switches."""
+    windows = split_speech(clips, LANG_WINDOW_S)
+    labels = [language_of(cfg, audio, w) for w in windows]
+    if not any(labels):
+        return [(None, clips)]
+    for order in (range(1, len(labels)), range(len(labels) - 2, -1, -1)):  # unsure windows take a neighbour's
+        for i in order:
+            near = i - 1 if order.step > 0 else i + 1
+            labels[i] = labels[i] or labels[near]
+    if len(set(labels)) == 1:
+        return [(labels[0], clips)]
+    pieces = []
+    for i, w in enumerate(windows):
+        if (i and labels[i - 1] != labels[i]) or (i + 1 < len(labels) and labels[i + 1] != labels[i]):
+            pieces += [(language_of(cfg, audio, p) or labels[i], p) for p in split_speech(w, LANG_FINE_S)]
+        else:
+            pieces.append((labels[i], w))
+
+    def merged(items):
+        out = []
+        for language, spans in items:
+            if out and out[-1][0] == language:
+                out[-1] = (language, out[-1][1] + spans)
+            else:
+                out.append((language, list(spans)))
+        return out
+
+    blocks = merged(pieces)
+    while len(blocks) > 1:
+        i = min(range(len(blocks)), key=lambda n: spoken_seconds(blocks[n][1]))
+        if spoken_seconds(blocks[i][1]) >= LANG_MIN_BLOCK_S:
+            break
+        into = i - 1 if i == len(blocks) - 1 or (i and spoken_seconds(blocks[i - 1][1]) >= spoken_seconds(blocks[i + 1][1])) else i + 1
+        blocks[i] = (blocks[into][0], blocks[i][1])
+        blocks = merged(blocks)
+    blocks = [(language, joined_spans(spans)) for language, spans in blocks]
+    for (_, a), (_, b) in zip(blocks, blocks[1:]):
+        if abs(a[-1] - b[0]) < 1e-3:
+            a[-1] = b[0] = quietest_moment(audio, a[-1])
+    return blocks
+
+
 def release_whisper():
     """Free Whisper's memory before the LLM loads."""
     _whisper.clear()
@@ -1112,13 +1235,23 @@ def transcribe_track(cfg, audio, speaker):
         return []
     log.info("%s track: transcribing %.0f s of speech", speaker,
              sum(clips[i + 1] - clips[i] for i in range(0, len(clips), 2)))
-    kwargs = dict(condition_on_previous_text=False, clip_timestamps=clips, word_timestamps=True,
-                  hallucination_silence_threshold=2.0)
-    if cfg["language"]:
-        kwargs["language"] = cfg["language"]
-    result = whisper_transcribe(cfg, audio, **kwargs)
+    blocks = [(cfg["language"], clips)]
+    if not cfg["language"]:
+        try:
+            blocks = language_blocks(cfg, audio, clips)
+        except Exception:  # Whisper can still choose one language for itself
+            log.exception("could not check for language changes")
+            blocks = [(None, clips)]
+    log.info("%s track: languages %s", speaker, [b[0] or "auto" for b in blocks])
+    found = []
+    for language, spans in blocks:
+        kwargs = dict(condition_on_previous_text=False, clip_timestamps=spans, word_timestamps=True,
+                      hallucination_silence_threshold=2.0)
+        if language:
+            kwargs["language"] = language
+        found += whisper_transcribe(cfg, audio, **kwargs).get("segments", [])
     segs = []
-    for s in result.get("segments", []):
+    for s in sorted(found, key=lambda x: x["start"]):
         text = s["text"].strip()
         if not text:
             continue
@@ -1225,12 +1358,12 @@ class VoiceLibrary:
         self.cfg, self.dir = cfg, cfg["work_dir"] / "voices"
         self.path = self.dir / "index.json"
         archive_old_voiceprints(cfg)
-        self.voices = json.loads(self.path.read_text()) if self.path.exists() else {}
+        self.voices = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {}
 
     def save(self):
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.voices))
+        tmp.write_text(json.dumps(self.voices), encoding="utf-8")
         tmp.replace(self.path)
 
     def canonical(self, name):
@@ -1690,9 +1823,11 @@ Respond in Markdown with exactly these sections, in this order, and nothing befo
 ## Action Items
 - [ ] **Owner**: task (due date if one was stated)
 Include every task someone volunteered for, agreed to, or was asked to do. Use "{me}" for tasks I committed to, otherwise the speaker label or name of whoever took the task, or "Unassigned". If there are none, write "- None identified."
+
+The meeting may be in more than one language, and people may switch partway through. Cover all of it. Write the notes in English, translating what was said in other languages, and keep every heading exactly as written above.
 """
 
-CHUNK_INSTRUCTIONS = """This is part {i} of {n} of an online meeting transcript. "{me}" is the note-taker; every other label is one remote participant. Extract terse bullets of: key points, decisions, and action items (with owner if known). Output bullets only."""
+CHUNK_INSTRUCTIONS = """This is part {i} of {n} of an online meeting transcript. "{me}" is the note-taker; every other label is one remote participant. Extract terse bullets of: key points, decisions, and action items (with owner if known). Write them in English, whatever language was spoken. Output bullets only."""
 
 WORK_FILTER_INSTRUCTIONS = """Below are numbered lines from an online work meeting. Find the lines that are NOT work related.
 
@@ -1787,7 +1922,7 @@ class LLM:
 def ai_choice(cfg):
     """What the user chose in setup: {"provider": "local"}, or the provider they agreed to send transcripts to."""
     try:
-        return json.loads((cfg["work_dir"] / "ai_choice.json").read_text())
+        return json.loads((cfg["work_dir"] / "ai_choice.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
@@ -1795,7 +1930,7 @@ def ai_choice(cfg):
 def record_ai_choice(cfg, provider):
     cfg["work_dir"].mkdir(parents=True, exist_ok=True)
     (cfg["work_dir"] / "ai_choice.json").write_text(json.dumps(
-        {"provider": provider, "agreed_at": dt.datetime.now().isoformat(timespec="seconds"), "user": getpass.getuser()}))
+        {"provider": provider, "agreed_at": dt.datetime.now().isoformat(timespec="seconds"), "user": getpass.getuser()}), encoding="utf-8")
 
 
 def use_local_ai(cfg):
@@ -1860,6 +1995,11 @@ def filter_is_summary_model(cfg):
             or cfg["work_filter_model"] in ("", cfg["mlx_llm_model"]))
 
 
+def other_script(text):
+    letters = [c for c in text if c.isalpha()]
+    return bool(letters) and sum(ord(c) > 0x24F for c in letters) * 2 > len(letters)
+
+
 def work_only(cfg, llm, segments):
     """Keep only work discussion: the model lists the lines that are small talk or
     personal, batch by batch, then each candidate is re-checked with the lines around
@@ -1887,7 +2027,8 @@ def work_only(cfg, llm, segments):
                           for j in range(max(0, i - 3), min(len(lines), i + 3)))
         return llm.chat(WORK_CONFIRM_INSTRUCTIONS.format(excerpt=excerpt.rstrip()), 5)
 
-    order = sorted(candidates)
+    # The filter has only been proven on English, so it never removes lines in another script.
+    order = sorted(i for i in candidates if not other_script(segs[i]["text"]))
     if getattr(llm, "parallel", False):  # a network call per line is slow one at a time
         with concurrent.futures.ThreadPoolExecutor(4) as pool:
             answers = list(pool.map(confirm, order))
@@ -1920,7 +2061,9 @@ def summarize(cfg, transcript, llm, template=note_templates.GENERAL):
     focus, extra = note_templates.prompt_parts(template)
     out = llm.chat(FINAL_INSTRUCTIONS.format(**names, focus=focus, extra=extra) + "\n" + material, 1500 + 200 * len(template["sections"]))
     i = out.find("## Summary")
-    out = out[i:] if i >= 0 else out
+    if i < 0:  # e.g. the headings came back translated: nothing could read such a note
+        raise ValueError("the model's answer has no Summary section")
+    out = out[i:]
     # Small models often drop the checkbox syntax; make every action item a task.
     head, sep, items = out.partition("## Action Items")
     items = re.sub(r"(?m)^\s*[-*]\s+(?!\[[ x]\])(?!None identified)", "- [ ] ", items)
@@ -2054,7 +2197,7 @@ def safe_filename(s):
 
 def process_session(cfg, session_dir):
     meta_path = session_dir / "session.json"
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     duration = meta.get("duration_s", 0)
     log.info("processing %s (%s, %.0f min)", session_dir.name, meta["title"], duration / 60)
 
@@ -2123,12 +2266,12 @@ def process_session(cfg, session_dir):
             save_voice_samples(session_dir, sysa, segments, speakers)
         except Exception:
             log.exception("could not save voice samples")
-    (session_dir / "speakers.json").write_text(json.dumps(speakers))
+    (session_dir / "speakers.json").write_text(json.dumps(speakers), encoding="utf-8")
 
     turns = merge_turns(segments)
     for t in turns:
         t.pop("words", None)
-    (session_dir / "transcript.json").write_text(json.dumps(turns, indent=2, ensure_ascii=False))
+    (session_dir / "transcript.json").write_text(json.dumps(turns, indent=2, ensure_ascii=False), encoding="utf-8")
     out = write_note(cfg, meta, turns, speakers, llm, dropped)
 
     if cfg["keep_audio"]:
@@ -2145,7 +2288,7 @@ def process_session(cfg, session_dir):
         (session_dir / p).unlink(missing_ok=True)
 
     meta.update(status="done", notes=str(out), work_filtered=dropped is not None, dropped=dropped)
-    meta_path.write_text(json.dumps(meta, indent=2))
+    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     log.info("wrote %s", out)
     notify(cfg, f"Meeting notes ready: {out.name}" +
            (f". Run {plat.CTL} jira to review tickets." if cfg["jira"]["base_url"] and not FROZEN else ""))
@@ -2947,7 +3090,7 @@ def edit_in_editor(text):
         f.write(text)
     try:
         subprocess.run([*os.environ.get("EDITOR", "nano").split(), f.name])
-        return Path(f.name).read_text().strip()
+        return Path(f.name).read_text(encoding="utf-8").strip()
     finally:
         os.unlink(f.name)
 
@@ -3270,15 +3413,15 @@ def save_jira_record(rec_path, record):
 
 def last_jira_project(cfg, record):
     path = cfg["work_dir"] / "jira_state.json"
-    state = json.loads(path.read_text()) if path.exists() else {}
+    state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     return record.get("project") or state.get("last_project") or cfg["jira"]["project"]
 
 
 def remember_jira_project(cfg, project):
     path = cfg["work_dir"] / "jira_state.json"
-    state = json.loads(path.read_text()) if path.exists() else {}
+    state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     state["last_project"] = project
-    path.write_text(json.dumps(state))
+    path.write_text(json.dumps(state), encoding="utf-8")
 
 
 def jira_candidates(cfg, llm, d, meeting, started, note, rec_path, record, refresh):
@@ -3792,7 +3935,7 @@ def cmd_run(cfg, args):
         time.sleep(3600)  # launchd would otherwise restart us every few seconds
         sys.exit(0)
     cfg["work_dir"].mkdir(parents=True, exist_ok=True)
-    lock = open(cfg["work_dir"] / "daemon.lock", "w")
+    lock = open(cfg["work_dir"] / "daemon.lock", "w", encoding="utf-8")
     if not plat.single_instance(lock):
         log.error("another MeetingScribe daemon is already running")
         sys.exit(0)
@@ -3856,7 +3999,7 @@ def cmd_test_capture(cfg, args):
 
 def find_session(cfg, ref):
     sessions = sorted(p.parent for p in (cfg["work_dir"] / "sessions").glob("*/session.json")
-                      if json.loads(p.read_text()).get("status") == "done")
+                      if json.loads(p.read_text(encoding="utf-8")).get("status") == "done")
     if not sessions:
         sys.exit("no processed meetings yet")
     if ref in (None, "latest"):
@@ -3980,14 +4123,14 @@ def cmd_listen(cfg, args):
     """Play the clip of each unrecognized voice (or one of them) and show what it said."""
     d = find_session(cfg, args.session)
     sp_path = d / "speakers.json"
-    speakers = json.loads(sp_path.read_text()) if sp_path.exists() else {}
+    speakers = json.loads(sp_path.read_text(encoding="utf-8")) if sp_path.exists() else {}
     todo = [n for n, s in speakers.items() if not s["known"] and s.get("sample")]
     if args.label:
         todo = [n for n in todo if n == args.label]
     if not todo:
         sys.exit(f"no unrecognized voices to play in {d.name}" +
                  (f" named {args.label!r}" if args.label else ""))
-    turns = json.loads((d / "transcript.json").read_text())
+    turns = json.loads((d / "transcript.json").read_text(encoding="utf-8"))
     print(f"Meeting {d.name}")
     for n in todo:
         if speakers[n].get("suggest"):
@@ -4023,7 +4166,7 @@ def cmd_refilter(cfg, args):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     todo = []
     for p in sorted((cfg["work_dir"] / "sessions").glob("*/session.json")):
-        meta = json.loads(p.read_text())
+        meta = json.loads(p.read_text(encoding="utf-8"))
         if (meta.get("status") == "done" and (args.session or "") in p.parent.name
                 and (args.force or not meta.get("work_filtered"))
                 and (p.parent / "transcript.json").exists()):
@@ -4033,9 +4176,9 @@ def cmd_refilter(cfg, args):
     flt = LLM(cfg, cfg["work_filter_model"])
     llm = flt if filter_is_summary_model(cfg) else LLM(cfg)
     for d, meta in todo:
-        turns = json.loads((d / "transcript.json").read_text())
+        turns = json.loads((d / "transcript.json").read_text(encoding="utf-8"))
         sp_path = d / "speakers.json"
-        speakers = json.loads(sp_path.read_text()) if sp_path.exists() else {}
+        speakers = json.loads(sp_path.read_text(encoding="utf-8")) if sp_path.exists() else {}
         turns, dropped = work_only(cfg, flt, turns) if turns else ([], 0)
         for name, info in speakers.items():  # the "They said" quote must be a kept line
             mine = [t for t in turns if t["speaker"] == name]
@@ -4045,14 +4188,14 @@ def cmd_refilter(cfg, args):
             else:
                 info.pop("first", None)
         old = current_note(cfg, meta)
-        (d / "transcript.json").write_text(json.dumps(turns, indent=2, ensure_ascii=False))
-        sp_path.write_text(json.dumps(speakers))
+        (d / "transcript.json").write_text(json.dumps(turns, indent=2, ensure_ascii=False), encoding="utf-8")
+        sp_path.write_text(json.dumps(speakers), encoding="utf-8")
         meta["id"] = d.name
         out = write_note(cfg, meta, turns, speakers, llm, dropped)
         if old.exists() and old != out:
             old.unlink()
         meta.update(notes=str(out), work_filtered=True)
-        (d / "session.json").write_text(json.dumps(meta, indent=2))
+        (d / "session.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
         print(f"{d.name}: dropped {dropped} non-work line(s) -> {out.name}")
 
 
@@ -4084,7 +4227,7 @@ def cmd_rewrite(cfg, args):
     if old.exists() and old != out:
         old.unlink()
     meta["notes"] = str(out)
-    (d / "session.json").write_text(json.dumps(meta, indent=2))
+    (d / "session.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     print(out.name)
 
 
@@ -4306,7 +4449,7 @@ def models_ready(cfg):
     """Whether a download of these models has run to the end. It may have fetched more: switching
     from a local note writer to company AI needs nothing new."""
     try:
-        done = json.loads((cfg["work_dir"] / "models_ready.json").read_text())
+        done = json.loads((cfg["work_dir"] / "models_ready.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
     return all(list(x) in done for x in model_plan(cfg))
@@ -4357,7 +4500,7 @@ def check_models(cfg):
     bad = model_store.missing(model_manifest(), plan, constants.HF_HUB_CACHE)
     if not bad:
         cfg["work_dir"].mkdir(parents=True, exist_ok=True)
-        (cfg["work_dir"] / "models_ready.json").write_text(json.dumps(plan))
+        (cfg["work_dir"] / "models_ready.json").write_text(json.dumps(plan), encoding="utf-8")
         (cfg["work_dir"] / "download_error.txt").unlink(missing_ok=True)
     return bad
 
@@ -4405,7 +4548,7 @@ def download_models(cfg):
     (cfg["work_dir"] / "models_ready.json").unlink(missing_ok=True)
     plan, manifest = model_plan(cfg), model_manifest()
     size = download_size(cfg)
-    (cfg["work_dir"] / "download_size.json").write_text(json.dumps(size))
+    (cfg["work_dir"] / "download_size.json").write_text(json.dumps(size), encoding="utf-8")
     if not cfg.get("llm_fits", True):
         print(f"This computer has {plat.ram_gb():.0f} GB of memory, too little for a local note writer, so only the speech models are downloaded.")
     if size:
@@ -4416,7 +4559,7 @@ def download_models(cfg):
         fetch_model(manifest, constants.HF_HUB_CACHE, ctx, repo, filename)
     if cfg["llm_backend"] == "ollama":
         print("Ollama backend: pull the model you want with `ollama pull`.")
-    (cfg["work_dir"] / "models_ready.json").write_text(json.dumps(plan))
+    (cfg["work_dir"] / "models_ready.json").write_text(json.dumps(plan), encoding="utf-8")
     print("Done. Model loading is offline from now on (HF_HUB_OFFLINE=1).")
 
 
@@ -4554,7 +4697,7 @@ def main():
     if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # the app reads this as UTF-8
     if sys.stderr is None:  # pythonw.exe (Windows background task) has no console streams
-        sys.stdout = sys.stderr = open(os.devnull, "w")
+        sys.stdout = sys.stderr = open(os.devnull, "w", encoding="utf-8")
     try:
         args.fn(load_config(), args)
     except NotImplementedError as e:  # a platform piece that is not built yet

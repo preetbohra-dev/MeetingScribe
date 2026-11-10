@@ -223,6 +223,10 @@ the assistant starts MeetingScribe itself. What it reads goes wherever that assi
 ./ctl.sh brief "migration sync"  # what to know before a meeting, or about a person
 ```
 
+**More than one language.** A meeting can switch language partway through. The language is checked throughout, each part
+is written in its own script, and the notes are written in English. Tested with English and Hindi on generated voices. Very
+short switches of a few words can stay in the surrounding language.
+
 **Consent and keeping meetings**, under **Settings**:
 
 - While recording, the Meetings page offers a notice to paste into the meeting chat. There is no bot, so nobody on the
@@ -400,7 +404,7 @@ Edit `config.toml`, then `./ctl.sh restart`. Every key is optional. The ones you
 | Key | What it does |
 |---|---|
 | `my_name` | The label for your own lines (default `Me`) |
-| `language` | e.g. `"en"` to skip language detection |
+| `language` | Empty detects the language, even when it changes during a meeting. `"en"`, `"hi"` and so on mean only that language: speech in any other is lost |
 | `mic_device` | Part of a mic's name, e.g. `"AirPods"` |
 | `keep_audio` | Save a stereo WAV (left = you, right = others) next to each note |
 | `work_only` | `false` keeps every line |

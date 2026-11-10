@@ -4,7 +4,7 @@
 output_dir = "~/Documents/Meeting Notes"
 my_name = "Me"
 others_name = "Others"
-language = ""                 # "" = auto-detect, or "en", "de", ...
+language = ""                 # "" = detect, even if it changes during a meeting; "en", "hi", ... = only that language, and the rest is lost
 keep_audio = false             # stereo WAV (L = Me, R = Others) saved next to each note
 notify = true                 # notification on start / stop / notes ready
 

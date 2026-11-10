@@ -74,6 +74,8 @@ def drive(window, work, sid, out):
         js(f"document.querySelector({json.dumps(selector)}).value = ''")
 
     try:
+        if not window.events.loaded.wait(200):  # a test machine's first WebKit start is slow
+            raise RuntimeError("the page never loaded")
         if wait("!!document.getElementById('nav-meetings')", "the app to open"):
             js(f"go('meetings', {json.dumps(sid)})")
             name = "input[aria-label='Name for Speaker 3']"
@@ -114,7 +116,7 @@ def main():
         app.Api.ensure_recorder = lambda self: True
         out = []
         window = webview.create_window("MeetingScribe", str(app.UI), js_api=app.Api(), width=1100, height=760)
-        threading.Thread(target=lambda: (time.sleep(240), os._exit(3)), daemon=True).start()  # never hang the build
+        threading.Thread(target=lambda: (time.sleep(420), os._exit(3)), daemon=True).start()  # never hang the build
         webview.start(drive, (window, work, sid, out))
     if out != ["ok"]:
         sys.exit("The Mac window failed:\n- " + "\n- ".join(out or ["it closed without finishing"]))

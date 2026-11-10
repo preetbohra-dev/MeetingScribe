@@ -515,7 +515,7 @@ async function renderSettings(main) {
   const s = await call("settings"), ai = await call("cloud_state");
   const aiNow = ai.cloud ? ai.providers.find(p => p.id === ai.settings.provider) : null;
   const name = h("input", {type: "text", value: s.my_name});
-  const lang = h("select", null, [["", "Detect automatically"], ["en", "English"], ["hi", "Hindi"], ["de", "German"], ["fr", "French"], ["es", "Spanish"], ["ja", "Japanese"]].map(([v, t]) => h("option", {value: v}, t)));
+  const lang = h("select", null, [["", "Detect automatically, even if it changes during a meeting"], ["en", "Only English"], ["hi", "Only Hindi"], ["de", "Only German"], ["fr", "Only French"], ["es", "Only Spanish"], ["ja", "Only Japanese"]].map(([v, t]) => h("option", {value: v}, t)));
   lang.value = s.language;
   const folder = h("input", {type: "text", value: s.output_dir});
   const box = (on, text) => { const c = h("input", {type: "checkbox", checked: on}); return [c, h("label", {class: "check"}, c, h("span", null, text))]; };
@@ -553,7 +553,7 @@ async function renderSettings(main) {
     field("Who writes the notes", h("div", {class: "row"}, h("span", {class: "grow"}, aiNow ? aiNow.label : "This computer"),
       h("button", {onclick: () => showAiChoice(true)}, "Change…"),
       aiNow && aiNow.key ? h("button", {onclick: async () => { await call("use_local", true); boot(); }}, "Forget key") : null)),
-    field("Your name in notes", name), field("Language of your meetings", lang),
+    field("Your name in notes", name), field("Language of your meetings", h("p", {class: "soft small"}, "Choose one language only if everything is said in it. Speech in any other language is lost."), lang),
     field("Notes folder", h("div", {class: "row"}, folder, h("button", {onclick: async () => { const p = await call("choose_folder"); if (p) folder.value = p; }}, "Choose…"), h("button", {onclick: () => call("open_notes_folder")}, "Open"))),
     field("Record these", teamsL, zoomL, webL),
     field("Notes and privacy", workL, audioL, notifyL, screenL),

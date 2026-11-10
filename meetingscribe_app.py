@@ -168,7 +168,7 @@ class Api:
     def download_progress(self):
         cfg = self.cfg
         try:
-            total = json.loads((cfg["work_dir"] / "download_size.json").read_text())
+            total = json.loads((cfg["work_dir"] / "download_size.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             total = None
         hub = Path(os.environ.get("HF_HUB_CACHE") or os.environ.get("HF_HOME", "~/.cache/huggingface") + "/hub").expanduser()
@@ -224,7 +224,7 @@ class Api:
         cfg = self.cfg
         notice = cfg["consent_notice"]
         try:
-            s = json.loads((cfg["work_dir"] / "status.json").read_text())
+            s = json.loads((cfg["work_dir"] / "status.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             s = {"time": 0, "state": "off", "warnings": []}
         s["alive"] = time.time() - s.get("time", 0) < ALIVE_S
