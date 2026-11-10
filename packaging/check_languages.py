@@ -41,6 +41,8 @@ def main():
         turns = json.loads((d / "transcript.json").read_text(encoding="utf-8"))
         said = " ".join(t["text"] for t in turns)
         sys.stdout.reconfigure(encoding="utf-8")
+        log = base / "l" / "process.log"
+        print(log.read_text(encoding="utf-8", errors="replace")[-2500:] if log.exists() else "(no log)")
         print(said)
         note = Path(meta["notes"]).read_text(encoding="utf-8")
         hindi = len(re.findall(r"[ऀ-ॿ]+", said))
