@@ -45,6 +45,7 @@ import logging.handlers
 import math
 import re
 import shlex
+import shutil
 import ssl
 import subprocess
 import tempfile
@@ -63,8 +64,12 @@ import numpy as np
 import cloud_llm
 import platforms
 import screen_names
+import briefs
 import model_store
+import note_templates
+import notes_mcp
 import task_agent
+import tracker
 from screen_names import looks_like_name
 
 plat = platforms.load()
@@ -132,6 +137,12 @@ DEFAULTS = {
     "screen_every_s": 20,  # seconds between looks at the meeting window
     "screen_max": 12,  # looks per meeting
     "mic_silence_warn_s": 45,  # warn during a call when the mic has delivered nothing this long
+    "consent_notice": "Heads up: I'm recording and transcribing this call on my computer for my own notes. Tell me if you'd rather I didn't.",
+    "never_record": [],  # a meeting whose title contains any of these is not recorded
+    "retain_days": 0,  # delete whole meetings older than this; 0 = keep them
+    "retain_audio_days": 0,  # delete only the audio of meetings older than this; 0 = keep it
+    "brief_minutes": 10,  # how long before a calendar meeting its brief is announced
+    "mcp_enabled": False,  # let AI assistants on this computer read meetings (see notes_mcp.py)
     "meeting_window_exclude_regex": r"^(Chat|Activity|Calendar|Teams|Calls|Files|Apps|OneDrive|Copilot|Settings|Assignments|Approvals|People|Notifications|Window)\b",
     # Last, so they win: per-OS asr_backend ("mlx" / "faster-whisper"), whisper_model,
     # llm_backend ("mlx" / "llamacpp" / "ollama" / "cloud"), and on Windows gguf_model (sized to
@@ -195,6 +206,13 @@ MeetingScribe is provided "as is", without warranty of any kind. By using it you
   MeetingScribe or for any loss, claim or damage that results from it.
 * MeetingScribe is not an official tool of any company, and nothing about it is legal advice.
   If in doubt, ask your legal or privacy team before using it."""
+
+
+def app_version():
+    try:
+        return (HERE / "packaging" / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "0"
 
 
 def self_command(*args):
@@ -723,7 +741,16 @@ class Recording:
 # Daemon
 # --------------------------------------------------------------------------
 
+def on_never_record_list(cfg, title):
+    title = (title or "").casefold()
+    return bool(title) and any(w.strip() and w.strip().casefold() in title for w in cfg["never_record"])
+
+
 class Daemon:
+    refused = None  # the app in a call that must not be recorded, until that call ends
+    next_chores = 0.0
+    chores = None
+
     def __init__(self, cfg):
         self.cfg = cfg
         self.paused_flag = cfg["work_dir"] / "paused"
@@ -783,7 +810,7 @@ class Daemon:
     def tick(self):
         now = time.monotonic()
         if self.rec is None:
-            call = self.find_call(self.probe.app_states(self.apps))
+            call = self.allowed(self.find_call(self.probe.app_states(self.apps)))
             if not call or not self.candidate or call[0] is not self.candidate[0]:
                 self.mic_since = now if call else None
             self.candidate = call
@@ -794,6 +821,13 @@ class Daemon:
             mic_active, out_active = self.probe.app_states([self.app])[self.app["id"]]
             found = meeting_window(self.cfg, self.app)
             title = found[1] if found else None
+            if on_never_record_list(self.cfg, title):  # the name often appears only after the call starts
+                self.refused = self.app["id"]
+                self.stop_recording(discard=True)
+                notify(self.cfg, "Recording stopped and deleted: this meeting is on your never-record list.")
+                self.pump_queue()
+                self.write_status()
+                return
             if mic_active:
                 self.last_mic = now
             # A meeting-looking window only counts while the app still has its call audio
@@ -816,9 +850,30 @@ class Daemon:
         self.pump_queue()
         self.write_status()
 
+    def allowed(self, call):
+        """The call, unless it is one that must not be recorded."""
+        if not call:
+            self.refused = None
+            return None
+        app, _, title = call
+        if self.refused != app["id"] and on_never_record_list(self.cfg, title):
+            self.refused = app["id"]
+            log.info("a meeting on the never-record list is not being recorded")
+            notify(self.cfg, "Not recording: this meeting is on your never-record list.")
+        return None if self.refused == app["id"] else call
+
+    def start_chores(self):
+        """Calendar and clean-up, on their own thread: a slow network must never hold up recording."""
+        now = time.monotonic()
+        if now >= self.next_chores and not (self.chores and self.chores.is_alive()):
+            self.next_chores = now + 60
+            self.chores = threading.Thread(target=run_chores, args=(self.cfg,), daemon=True)
+            self.chores.start()
+
     def step(self):
         """One pass of the loop: normally tick(); while the app has paused us, finish what
         is in hand but start nothing new. Settings are re-read between calls."""
+        self.start_chores()
         if self.reload_flag.exists() and not self.rec:
             self.reload_flag.unlink(missing_ok=True)
             self.cfg = load_config()
@@ -857,18 +912,16 @@ class Daemon:
         self.rec = Recording(self.cfg, self.sessions / sid, app, service, title)
         self.rec.start()
         self.last_signal = time.monotonic()
-        notify(self.cfg, f"Recording {service} meeting{': ' + title if title else ''}")
+        notify(self.cfg, f"Recording {service} meeting{': ' + title if title else ''}. Make sure everyone knows.")
 
-    def stop_recording(self):
+    def stop_recording(self, discard=False):
         rec, self.rec, self.mic_since = self.rec, None, None
         self.app = self.candidate = None
         dur = rec.stop()
         log.info("meeting ended after %.0f s", dur)
-        if dur < self.cfg["min_meeting_s"]:
-            log.info("recording shorter than min_meeting_s; discarding")
-            for p in rec.dir.iterdir():
-                p.unlink()
-            rec.dir.rmdir()
+        if discard or dur < self.cfg["min_meeting_s"]:
+            log.info("discarding this recording")
+            shutil.rmtree(rec.dir)
             return
         notify(self.cfg, "Meeting ended. Transcribing and summarizing locally…")
         self.queue.append(rec.dir)
@@ -901,6 +954,21 @@ class Daemon:
         finally:
             if self.rec:
                 self.stop_recording()
+
+
+def run_chores(cfg):
+    """The recorder's background jobs. Neither may take the recorder down with it."""
+    try:
+        sweep_retention(cfg)
+    except Exception:
+        log.exception("could not clean up old meetings")
+    try:
+        calendar = briefs.Briefs(sys.modules[__name__], cfg)
+        calendar.sync()
+        for text in calendar.due_notices(cfg["brief_minutes"]):
+            notify(cfg, text)
+    except Exception:
+        log.exception("could not update the calendar")
 
 
 def start_tray(cfg, daemon):
@@ -1614,11 +1682,11 @@ SYSTEM_PROMPT = ("You are a meticulous meeting assistant. Use only information p
 
 FINAL_INSTRUCTIONS = """The material below comes from an online meeting. Lines labelled "{me}" are the person these notes belong to. Every other label is one remote participant, identified by voice: a real name when the voice was recognized, otherwise "Speaker 1", "Speaker 2", and so on. Keep "Speaker N" labels as they are unless that person's name is clearly stated in the conversation.
 
-Respond in Markdown with exactly these two sections and nothing before or after them:
+Respond in Markdown with exactly these sections, in this order, and nothing before or after them:
 
 ## Summary
-- 4 to 10 concise bullets: topics discussed, decisions made, open questions.
-
+- 4 to 10 concise bullets: topics discussed, decisions made, open questions.{focus}
+{extra}
 ## Action Items
 - [ ] **Owner**: task (due date if one was stated)
 Include every task someone volunteered for, agreed to, or was asked to do. Use "{me}" for tasks I committed to, otherwise the speaker label or name of whoever took the task, or "Unassigned". If there are none, write "- None identified."
@@ -1830,7 +1898,7 @@ def work_only(cfg, llm, segments):
     return [s for i, s in enumerate(segs) if i not in drop], len(drop)
 
 
-def summarize(cfg, transcript, llm):
+def summarize(cfg, transcript, llm, template=note_templates.GENERAL):
     names = {"me": cfg["my_name"], "others": cfg["others_name"]}
     limit = cfg["llm_chunk_chars"]
     if len(transcript) <= limit:
@@ -1849,7 +1917,8 @@ def summarize(cfg, transcript, llm):
             notes.append(f"### Part {i}\n" + llm.chat(
                 CHUNK_INSTRUCTIONS.format(i=i, n=len(chunks), **names) + "\n\n" + c, 1000))
         material = "NOTES FROM EACH PART OF THE MEETING:\n" + "\n\n".join(notes)
-    out = llm.chat(FINAL_INSTRUCTIONS.format(**names) + "\n" + material)
+    focus, extra = note_templates.prompt_parts(template)
+    out = llm.chat(FINAL_INSTRUCTIONS.format(**names, focus=focus, extra=extra) + "\n" + material, 1500 + 200 * len(template["sections"]))
     i = out.find("## Summary")
     out = out[i:] if i >= 0 else out
     # Small models often drop the checkbox syntax; make every action item a task.
@@ -1953,12 +2022,18 @@ def note_section(text, heading):
     return [ln[2:].strip() for ln in m.group(1).splitlines() if ln.startswith("- ")] if m else []
 
 
+def template_sections(text):
+    """[{heading, items}] for the sections a template put between Summary and Action Items."""
+    heads = re.findall(r"(?m)^## (.+)$", text.partition("## Action Items")[0])
+    return [{"heading": h, "items": note_section(text, re.escape(h))} for h in heads if h != "Summary"]
+
+
 def write_sidecar(cfg, meta, turns, speakers, note):
     """<note>.json for AI tools, and one line per meeting in index.jsonl in the notes folder."""
     text = note.read_text(encoding="utf-8")
     participants = [cfg["my_name"]] + list(speakers) if speakers else sorted({t["speaker"] for t in turns})
     data = {"id": meta.get("id"), "title": meta["title"], "started_at": meta["started_at"],
-            "duration_min": round(meta.get("duration_s", 0) / 60), "source": meta.get("source"),
+            "duration_min": round(meta.get("duration_s", 0) / 60), "source": meta.get("source"), "template": meta.get("template"),
             "note": note.name, "participants": participants, "unconfirmed_speakers":
             [n for n, s in speakers.items() if not s["known"]],
             "talk_share_percent": dict(talk_shares(turns)), "summary": note_section(text, "Summary"),
@@ -2069,16 +2144,19 @@ def process_session(cfg, session_dir):
     for p in ("mic.pcm", "system.pcm"):
         (session_dir / p).unlink(missing_ok=True)
 
-    meta.update(status="done", notes=str(out), work_filtered=dropped is not None)
+    meta.update(status="done", notes=str(out), work_filtered=dropped is not None, dropped=dropped)
     meta_path.write_text(json.dumps(meta, indent=2))
     log.info("wrote %s", out)
     notify(cfg, f"Meeting notes ready: {out.name}" +
            (f". Run {plat.CTL} jira to review tickets." if cfg["jira"]["base_url"] and not FROZEN else ""))
 
 
-def write_note(cfg, meta, turns, speakers, llm=None, dropped=None):
-    """Summarize the turns and write the meeting's Markdown note; returns its path."""
+def write_note(cfg, meta, turns, speakers, llm=None, dropped=None, strict=False):
+    """Summarize the turns and write the meeting's Markdown note; returns its path. With strict,
+    a failed model raises, for when there is already a good note that a basic one would replace."""
     started = dt.datetime.fromisoformat(meta["started_at"])
+    template = note_templates.find(cfg, meta.get("template") or "") or note_templates.choose(cfg, meta["title"])
+    meta["template"] = template["id"]
     duration = meta.get("duration_s", 0)
 
     def tag(t, fmt):
@@ -2089,8 +2167,10 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None):
 
     if transcript.strip():
         try:
-            notes = summarize(cfg, transcript, llm or LLM(cfg))
+            notes = summarize(cfg, transcript, llm or LLM(cfg), template)
         except Exception as e:
+            if strict:
+                raise
             log.exception("the AI model failed; writing a basic note")
             why = f" {e}" if isinstance(e, cloud_llm.CloudError) else ""
             notify(cfg, "The AI model failed on this meeting, so its note is a basic one with the full transcript." + why)
@@ -2112,6 +2192,8 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None):
     shares = talk_shares(turns)
     if shares:
         md.append("**Talk time:** " + ", ".join(f"{n} {p}%" for n, p in shares) + "  ")
+    if template is not note_templates.GENERAL:
+        md.append(f"**Template:** {template['name']}  ")
     if dropped:
         md.append(f"**Filtered:** {dropped} non-work line(s) left out  ")
     md += ["", notes.strip(), ""]
@@ -3962,14 +4044,7 @@ def cmd_refilter(cfg, args):
                 info["first"] = [mine[0]["start"], text.replace("|", "/")]
             else:
                 info.pop("first", None)
-        # A note renamed by hand keeps its name: its title becomes the meeting's title.
-        prefix = f"{dt.datetime.fromisoformat(meta['started_at']):%Y-%m-%d %H%M} - "
-        old = Path(meta.get("notes") or cfg["output_dir"] / "missing")
-        if not old.exists():
-            found = sorted(cfg["output_dir"].glob(prefix + "*.md"))
-            if len(found) == 1:
-                old = found[0]
-                meta["title"] = old.stem[len(prefix):]
+        old = current_note(cfg, meta)
         (d / "transcript.json").write_text(json.dumps(turns, indent=2, ensure_ascii=False))
         sp_path.write_text(json.dumps(speakers))
         meta["id"] = d.name
@@ -3979,6 +4054,89 @@ def cmd_refilter(cfg, args):
         meta.update(notes=str(out), work_filtered=True)
         (d / "session.json").write_text(json.dumps(meta, indent=2))
         print(f"{d.name}: dropped {dropped} non-work line(s) -> {out.name}")
+
+
+def current_note(cfg, meta):
+    """A meeting's note file. One renamed by hand keeps its name: that becomes the meeting's title."""
+    prefix = f"{dt.datetime.fromisoformat(meta['started_at']):%Y-%m-%d %H%M} - "
+    old = Path(meta.get("notes") or cfg["output_dir"] / "missing")
+    if not old.exists():
+        found = sorted(cfg["output_dir"].glob(prefix + "*.md"))
+        if len(found) == 1:
+            old = found[0]
+            meta["title"] = old.stem[len(prefix):]
+    return old
+
+
+def cmd_rewrite(cfg, args):
+    """Write a meeting's note again with another template. If the AI fails, the old note stays."""
+    d = cfg["work_dir"] / "sessions" / args.session
+    speakers, meta = session_speakers(d)
+    if not note_templates.find(cfg, args.template):
+        sys.exit("no such template")
+    old = current_note(cfg, meta)
+    jira = re.search(rf"{re.escape(JIRA_BEGIN)}.*?{re.escape(JIRA_END)}\n", old.read_text(encoding="utf-8"), re.S) if old.exists() else None
+    meta.update(id=d.name, template=args.template)
+    out = write_note(cfg, meta, read_json(d / "transcript.json", []), speakers, None, meta.get("dropped"), strict=True)
+    if jira:
+        text = out.read_text(encoding="utf-8")
+        out.write_text(text.replace("\n---\n\n## Transcript", "\n" + jira.group(0) + "\n---\n\n## Transcript", 1), encoding="utf-8")
+    if old.exists() and old != out:
+        old.unlink()
+    meta["notes"] = str(out)
+    (d / "session.json").write_text(json.dumps(meta, indent=2))
+    print(out.name)
+
+
+def delete_session(cfg, d):
+    """Removes the recording, the note, and its files."""
+    meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
+    note = Path(meta["notes"]) if meta.get("notes") else None
+    if note and note.parent == cfg["output_dir"]:
+        for suffix in (".md", ".json", ".wav"):
+            note.with_suffix(suffix).unlink(missing_ok=True)
+    index = cfg["output_dir"] / "index.jsonl"
+    if index.exists():
+        kept = [ln for ln in index.read_text(encoding="utf-8").splitlines() if json.loads(ln).get("id") != d.name]
+        index.write_text("".join(ln + "\n" for ln in kept), encoding="utf-8")
+    shutil.rmtree(d)
+
+
+def older_than(meta, days, now):
+    try:
+        started = dt.datetime.fromisoformat(meta["started_at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return days > 0 and now - (started if started.tzinfo else started.astimezone()) >= dt.timedelta(days=days)
+
+
+def retention_due(cfg, retain_days, retain_audio_days, now=None):
+    """([sessions to delete], [(session, note) to lose their audio]). Only finished meetings."""
+    now, whole, audio = now or dt.datetime.now().astimezone(), [], []
+    for d, meta in done_sessions(cfg):
+        if older_than(meta, retain_days, now):
+            whole.append(d)
+        elif older_than(meta, retain_audio_days, now):
+            note = Path(meta["notes"]) if meta.get("notes") else None
+            if (note and note.with_suffix(".wav").exists()) or (d / "voices").exists():
+                audio.append((d, note))
+    return whole, audio
+
+
+def sweep_retention(cfg, now=None):
+    """Delete what has passed the limits in Settings. Returns (meetings deleted, audio deleted)."""
+    if not cfg["retain_days"] and not cfg["retain_audio_days"]:
+        return 0, 0
+    whole, audio = retention_due(cfg, cfg["retain_days"], cfg["retain_audio_days"], now)
+    for d in whole:
+        delete_session(cfg, d)
+    for d, note in audio:
+        if note and note.parent == cfg["output_dir"]:
+            note.with_suffix(".wav").unlink(missing_ok=True)
+        shutil.rmtree(d / "voices", ignore_errors=True)
+    if whole or audio:
+        log.info("retention: deleted %d meeting(s) and the audio of %d more", len(whole), len(audio))
+    return len(whole), len(audio)
 
 
 def done_sessions(cfg):
@@ -4081,6 +4239,48 @@ def cmd_ask(cfg, args):
     print(result["answer"])
     if result["sources"]:
         print("\nFrom: " + ", ".join(f"{s['title']} ({s['started_at'][:10]})" for s in result["sources"]))
+
+
+def cmd_actions(cfg, args):
+    items = tracker.Tracker(sys.modules[__name__], cfg).items(args.all)
+    if args.json:
+        print(json.dumps(items, ensure_ascii=False))
+        return
+    if not items:
+        print("No open action items.")
+    for i in items:
+        carried = f", raised in {i['carried'] + 1} meetings" if i["carried"] else ""
+        print(f"[{i['status']}] {i['owner']}: {i['task']}  ({i['days']} days{carried}; {i['meetings'][-1]['title']})")
+
+
+def cmd_brief(cfg, args):
+    b = briefs.Briefs(sys.modules[__name__], cfg).brief(args.about, [args.about])
+    if args.json:
+        print(json.dumps(b, ensure_ascii=False))
+        return
+    if not b["something"]:
+        print("Nothing in your meetings matches that.")
+    for m in b["last"]:
+        print(f"\n{m['started_at'][:10]}  {m['title']}")
+        for s in m["summary"]:
+            print(f"  - {s}")
+    if b["open"]:
+        print("\nStill open:")
+        for i in b["open"]:
+            print(f"  - {i['owner']}: {i['task']}")
+
+
+def cmd_calendar_test(cfg, args):
+    """Read a saved calendar file and list what would show under Upcoming, to diagnose a calendar."""
+    now = dt.datetime.now().astimezone()
+    print(json.dumps(briefs.parse_events(Path(args.file).read_bytes(), now, now + dt.timedelta(days=args.days)), ensure_ascii=False))
+
+
+def cmd_mcp(cfg, args):
+    if not cfg["mcp_enabled"]:
+        sys.exit("AI assistant access is off. Turn it on under Connectors in the app, or set mcp_enabled = true in config.toml.")
+    logging.disable(logging.WARNING)
+    notes_mcp.serve(sys.modules[__name__], cfg)
 
 
 def cmd_terms(cfg, args):
@@ -4322,6 +4522,23 @@ def main():
     p.add_argument("--session", help="only this meeting (id or part of it); default all meetings")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_ask)
+    p = sub.add_parser("actions", help="open action items across all meetings")
+    p.add_argument("--all", action="store_true", help="include finished ones")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_actions)
+    p = sub.add_parser("brief", help="what was said last time, for a meeting title or a person")
+    p.add_argument("about")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_brief)
+    p = sub.add_parser("calendar-test", help="list the meetings in a saved .ics file")
+    p.add_argument("file")
+    p.add_argument("--days", type=int, default=14)
+    p.set_defaults(fn=cmd_calendar_test)
+    p = sub.add_parser("rewrite", help=argparse.SUPPRESS)  # the app's background worker
+    p.add_argument("session")
+    p.add_argument("--template", required=True)
+    p.set_defaults(fn=cmd_rewrite)
+    sub.add_parser("mcp", help="let an AI assistant on this computer read your meetings").set_defaults(fn=cmd_mcp)
     sub.add_parser("terms", help="show and accept the terms of use").set_defaults(fn=cmd_terms)
     p = sub.add_parser("task-run", help=argparse.SUPPRESS)  # the app's background worker
     p.add_argument("id")

@@ -85,6 +85,7 @@ class Api:
         self._window = None  # underscore: pywebview walks every public attribute for methods to expose
         self._jira_jobs = {}
         self._task_jobs = {}
+        self._rewrites = {}
         self._jira_lock = threading.Lock()  # a card can't be approved twice by a double click
         self._send_lock = threading.Lock()
 
@@ -221,6 +222,7 @@ class Api:
 
     def status(self):
         cfg = self.cfg
+        notice = cfg["consent_notice"]
         try:
             s = json.loads((cfg["work_dir"] / "status.json").read_text())
         except (OSError, ValueError):
@@ -228,6 +230,7 @@ class Api:
         s["alive"] = time.time() - s.get("time", 0) < ALIVE_S
         if not s["alive"]:
             s.update(state="off", warnings=[])
+        s["notice"] = notice
         return s
 
     def set_paused(self, paused):
@@ -268,7 +271,9 @@ class Api:
             voices.append({"label": name, "known": s["known"], "confirmed": s.get("confirmed", False), "seconds": s.get("seconds"),
                            "suggest": s.get("suggest"), "first": s.get("first"), "has_clip": bool(s.get("sample"))})
         return {"id": sid, "meta": {k: meta.get(k) for k in ("title", "started_at", "duration_s", "source", "status")},
-                "summary": ms.note_section(text, "Summary"), "actions": ms.note_section(text, "Action Items"),
+                "summary": ms.note_section(text, "Summary"), "actions": ms.note_section(text, "Action Items"), "sections": ms.template_sections(text),
+                "template": meta.get("template") or "general", "templates": [{"id": t["id"], "name": t["name"]} for t in ms.note_templates.all_templates(self.cfg)],
+                "questions": ms.note_templates.questions(self.cfg), "rewriting": self._rewriting(sid),
                 "talk": ms.talk_shares(turns), "turns": [{"start": t["start"], "speaker": t["speaker"], "text": t["text"], "flag": t.get("flag")} for t in turns],
                 "voices": voices, "note_exists": note.exists(), "me": self.cfg["my_name"],
                 "jira": bool(self.cfg["jira"]["base_url"]), "destinations": self._connectors().destinations()}
@@ -303,20 +308,26 @@ class Api:
 
     def delete_meeting(self, sid):
         """Removes the recording, the note, and its files, after the page has confirmed."""
-        import shutil
-        d = self._session(sid)
-        cfg = self.cfg
-        _, meta = ms.session_speakers(d)
-        note = Path(meta["notes"]) if meta.get("notes") else None
-        if note and note.parent == cfg["output_dir"]:
-            for suffix in (".md", ".json", ".wav"):
-                note.with_suffix(suffix).unlink(missing_ok=True)
-        index = cfg["output_dir"] / "index.jsonl"
-        if index.exists():
-            kept = [ln for ln in index.read_text(encoding="utf-8").splitlines() if json.loads(ln).get("id") != sid]
-            index.write_text("".join(ln + "\n" for ln in kept), encoding="utf-8")
-        shutil.rmtree(d)
+        ms.delete_session(self.cfg, self._session(sid))
         return True
+
+    def _rewriting(self, sid):
+        job = self._rewrites.get(sid)
+        return bool(job and job.poll() is None)
+
+    def rewrite_note(self, sid, template):
+        self._session(sid)
+        if not ms.note_templates.find(self.cfg, template if isinstance(template, str) else ""):
+            return {"ok": False, "message": "That template is gone."}
+        if self._rewriting(sid):
+            return {"ok": False, "message": "Already rewriting this note."}
+        self._rewrites[sid] = subprocess.Popen(ms.self_command("rewrite", sid, "--template", template), stdout=subprocess.DEVNULL,
+                                               stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+        return {"ok": True}
+
+    def rewrite_state(self, sid):
+        job = self._rewrites.get(sid)
+        return {"running": self._rewriting(sid), "failed": bool(job and job.poll() not in (None, 0))}
 
     def open_note(self, sid):
         _, meta = ms.session_speakers(self._session(sid))
@@ -348,6 +359,79 @@ class Api:
             return {"answer": None, "error": out, "sources": []}
         return json.loads(out.splitlines()[-1])
 
+    # -- action items and briefs
+
+    @property
+    def _tracker(self):
+        return ms.tracker.Tracker(ms, self.cfg)
+
+    @property
+    def _briefs(self):
+        return ms.briefs.Briefs(ms, self.cfg)
+
+    def actions(self):
+        return self._tracker.items(include_closed=True)
+
+    def action_set(self, item_id, status):
+        return self._tracker.set_status(str(item_id), str(status))
+
+    def upcoming(self):
+        return self._briefs.upcoming()
+
+    def calendar_connect(self, url):
+        try:
+            self._briefs.connect(url)
+        except ms.briefs.BriefError as e:
+            return {"ok": False, "message": str(e)}
+        return {"ok": True, "message": "Calendar connected."}
+
+    def calendar_disconnect(self):
+        self._briefs.disconnect()
+        return True
+
+    def brief_event(self, event_id):
+        b = self._briefs
+        e = b.event(str(event_id))
+        return b.brief(e["title"], e["people"]) if e else None
+
+    def brief_search(self, about):
+        about = " ".join(str(about).split())
+        return self._briefs.brief(about, [about])
+
+    # -- note templates
+
+    def templates_state(self):
+        c = self.cfg
+        return {"templates": ms.note_templates.all_templates(c), "questions": ms.note_templates.questions(c)}
+
+    def template_add(self, name, words, focus, sections):
+        if not isinstance(words, list) or not isinstance(sections, list):
+            return {"ok": False, "message": "Those fields have the wrong type."}
+        try:
+            ms.note_templates.add(self.cfg, name, words, focus, sections)
+        except ms.note_templates.TemplateError as e:
+            return {"ok": False, "message": str(e)}
+        return {"ok": True, "message": "Saved."}
+
+    def template_remove(self, template_id):
+        ms.note_templates.remove(self.cfg, str(template_id))
+        return True
+
+    def questions_save(self, lines):
+        return ms.note_templates.save_questions(self.cfg, lines if isinstance(lines, list) else [])
+
+    # -- AI assistants on this computer
+
+    def mcp_state(self):
+        cfg, command = self.cfg, ms.self_command("mcp")
+        entry = {"command": command[0], "args": command[1:]}
+        return {"on": cfg["mcp_enabled"], "config": json.dumps({"mcpServers": {"meetingscribe": entry}}, indent=2),
+                "claude": "claude mcp add meetingscribe -- " + " ".join(f'"{c}"' if " " in c else c for c in command)}
+
+    def mcp_set(self, on):
+        ms.save_settings({"mcp_enabled": on is True})
+        return self.mcp_state()
+
     # -- people
 
     def people(self):
@@ -376,7 +460,8 @@ class Api:
 
     def connector_state(self):
         c = self.cfg
-        return {"destinations": self._connectors().destinations(), "jira": bool(c["jira"]["base_url"]), "task_places": len(ms.task_agent.Tasks(ms, c).repos())}
+        return {"destinations": self._connectors().destinations(), "jira": bool(c["jira"]["base_url"]), "task_places": len(ms.task_agent.Tasks(ms, c).repos()),
+                "calendar": self._briefs.connected(), "mcp": self.mcp_state()}
 
     def connector_add_channel(self, service, name, url):
         return self._connector_result(lambda: self._connectors().add_channel(service, name, url) and "Connected. A test message was posted to the channel.")
@@ -675,7 +760,8 @@ class Api:
     # -- settings
 
     SETTINGS = {"my_name": str, "language": str, "output_dir": str, "keep_audio": bool, "work_only": bool,
-                "notify": bool, "screen_names": bool, "meeting_apps": list, "mic_device": str}
+                "notify": bool, "screen_names": bool, "meeting_apps": list, "mic_device": str, "consent_notice": str,
+                "never_record": list, "retain_days": int, "retain_audio_days": int}
 
     def settings(self):
         cfg = self.cfg
@@ -690,7 +776,7 @@ class Api:
         changes = {}
         for k, kind in self.SETTINGS.items():
             if k in values:
-                if not isinstance(values[k], kind):
+                if not isinstance(values[k], kind) or (kind is int and (isinstance(values[k], bool) or values[k] < 0)):
                     return {"ok": False, "message": f"{k} has the wrong type"}
                 changes[k] = values[k]
         if "my_name" in changes and not changes["my_name"].strip():
@@ -701,6 +787,10 @@ class Api:
             start_at_login(bool(values["start_at_login"]))
         (self.cfg["work_dir"] / "reload").touch()
         return {"ok": True, "message": "Saved."}
+
+    def retention_preview(self, days, audio_days):
+        whole, audio = ms.retention_due(self.cfg, max(0, int(days or 0)), max(0, int(audio_days or 0)))
+        return {"meetings": len(whole), "audio": len(audio)}
 
     def choose_folder(self):
         import webview

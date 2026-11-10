@@ -35,7 +35,7 @@ case "${1:-status}" in
     "$HERE/.venv/bin/python" "$HERE/meetingscribe_app.py" ;;
   reject)  # reject "Priya Shah" [session]: that name is wrong for that voice
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" reject-name "$2" --session "${3:-latest}" ;;
-  search|ask)
+  search|ask|actions|brief)
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" "$@" ;;
   terms)  # show and accept the terms of use
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" terms ;;
@@ -47,5 +47,5 @@ case "${1:-status}" in
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" "$@" ;;
   logs)
     tail -n 50 -F "$LOG/daemon.log" "$LOG/process.log" "$LOG/stderr.log" ;;
-  *) echo "usage: $0 app|start|stop|restart|status|logs|name|reject|listen|voices|search|ask|refilter|jira|ai|terms|process|download-models"; exit 1 ;;
+  *) echo "usage: $0 app|start|stop|restart|status|logs|name|reject|listen|voices|search|ask|actions|brief|refilter|jira|ai|terms|process|download-models"; exit 1 ;;
 esac

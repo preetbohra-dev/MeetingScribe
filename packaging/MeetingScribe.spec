@@ -10,10 +10,10 @@ ROOT = Path(SPECPATH).parent
 VERSION = (ROOT / "packaging" / "VERSION").read_text().strip()
 MAC = sys.platform == "darwin"
 
-datas = [(str(ROOT / "config.toml"), "."), (str(ROOT / "models.json"), "."), (str(ROOT / "ui"), "ui")]
-binaries, hiddenimports = [], ["screen_names", "cloud_llm", "task_agent", "connectors", "model_store", "truststore", *collect_submodules("keyring.backends")]
+datas = [(str(ROOT / "config.toml"), "."), (str(ROOT / "models.json"), "."), (str(ROOT / "ui"), "ui"), (str(ROOT / "packaging" / "VERSION"), "packaging")]
+binaries, hiddenimports = [], ["screen_names", "cloud_llm", "task_agent", "connectors", "model_store", "truststore", "briefs", "tracker", "note_templates", "notes_mcp", *collect_submodules("keyring.backends")]
 
-packages = ["onnxruntime", "webview", "huggingface_hub", "anthropic", "google.auth", "boto3", "botocore"]
+packages = ["onnxruntime", "webview", "huggingface_hub", "anthropic", "google.auth", "boto3", "botocore", "icalendar", "recurring_ical_events", "x_wr_timezone", "tzdata"]
 packages += ["mlx", "mlx_whisper", "mlx_lm", "transformers", "tokenizers"] if MAC else [
     "faster_whisper", "ctranslate2", "llama_cpp", "av", "comtypes", "pythonnet", "clr_loader", "pystray"]
 for package in packages:

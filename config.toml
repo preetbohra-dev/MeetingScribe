@@ -40,6 +40,13 @@ work_filter_model = ""        # "" = same model as mlx_llm_model (loaded once); 
 # Suspected echo / low-confidence lines are kept and tagged in the note; true = delete them
 drop_suspect_lines = false
 
+# What the app offers to paste into the meeting chat while recording
+# consent_notice = "Heads up: I'm recording and transcribing this call on my computer for my own notes."
+never_record = []              # a meeting whose title contains any of these is not recorded, e.g. ["HR", "doctor"]
+retain_days = 0                # delete whole meetings older than this many days; 0 = keep them
+retain_audio_days = 0          # delete only the audio of meetings older than this; 0 = keep it
+mcp_enabled = false            # let AI assistants on this computer read your meetings: `mcp` command
+
 # Company AI (optional): choose it in the app's Settings, or with `./ctl.sh ai --set <provider>`.
 # Transcript text goes to that provider; audio, voices and screen pictures stay here. API keys are kept
 # in your keychain, not this file, and nothing is sent until you have agreed to the provider.

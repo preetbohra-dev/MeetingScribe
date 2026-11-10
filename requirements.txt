@@ -6,6 +6,7 @@ sounddevice
 keyring
 huggingface_hub
 truststore
+recurring-ical-events  # reads the calendar link, repeating meetings included
 onnxruntime
 pywebview  # the desktop app's window
 anthropic[vertex,bedrock]  # company AI: Claude directly, on Google Cloud, AWS or Foundry
