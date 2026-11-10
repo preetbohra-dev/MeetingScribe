@@ -74,6 +74,8 @@ jobs:
         run: bash packaging/check_mac_download.sh dist/MeetingScribe.app/Contents/MacOS/MeetingScribe
       - name: A meeting that changes language keeps every part of it
         run: python packaging/check_languages.py dist/MeetingScribe.app/Contents/MacOS/MeetingScribe
+      - name: The recorder can be stopped, and comes back after a crash
+        run: python packaging/check_mac_restart.py dist/MeetingScribe.app/Contents/MacOS/MeetingScribe
       - name: Disk image and zip
         run: |
           packaging/make_dmg.sh "$(cat packaging/VERSION)"

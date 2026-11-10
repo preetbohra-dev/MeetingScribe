@@ -555,3 +555,85 @@ def test_local_settings_win(monkeypatch, tmp_path):
     (tmp_path / "config.local.toml").write_text('my_name = "Local"\n')
     c = ms.load_config()
     assert c["my_name"] == "Local" and c["notify"] is False
+
+
+# -- naming a call that has no name of its own
+
+
+class Scripted:
+    def __init__(self, *answers):
+        self.answers = list(answers)
+
+    def chat(self, user, max_tokens=1500):
+        return self.answers.pop(0)
+
+
+NOTE = "## Summary\n- We planned the move.\n\n## Action Items\n- None identified."
+SAM = {"Sam Lee": {"known": True, "seconds": 60}}
+UNTITLED = {**META, "title": "Microsoft Teams meeting", "source": "Microsoft Teams"}
+
+
+@pytest.mark.parametrize("answer, want", [
+    ("Firewall migration plan", "Firewall migration plan"),
+    ('"Firewall migration plan."', "Firewall migration plan"),
+    ("Title: **Firewall migration plan**", "Firewall migration plan"),
+    ("# Firewall migration plan\n\nThis title fits.", "Firewall migration plan"),
+    ("Sorry, I can only help if you give me some more of the conversation to work from today", ""),
+    ("Migration", ""),
+    ("", ""),
+])
+def test_only_a_real_title_is_taken_from_the_model(answer, want):
+    assert ms.topic_from_answer(answer) == want
+
+
+def test_an_unnamed_call_gets_its_topic_and_people(cfg):
+    meta = dict(UNTITLED)
+    note = ms.write_note(cfg, meta, [turn("Me", LONG), turn("Sam Lee", LONG)], SAM, Scripted(NOTE, "Firewall migration plan"))
+    assert meta["title"] == "Firewall migration plan with Sam Lee" and "Firewall migration plan with Sam Lee" in note.stem
+    assert note.read_text(encoding="utf-8").startswith("# Firewall migration plan with Sam Lee\n")
+
+
+def test_a_guessed_name_is_not_put_in_the_title(cfg):
+    meta = dict(UNTITLED)
+    guess = {"Speaker 1": {"known": False, "seconds": 60, "suggest": {"name": "Sam Lee"}}}
+    ms.write_note(cfg, meta, [turn("Me", LONG)], guess, Scripted(NOTE, "Firewall migration plan"))
+    assert meta["title"] == "Firewall migration plan"
+
+
+@pytest.mark.parametrize("names, want", [
+    (["Sam Lee"], "Sam Lee"),
+    (["Sam Lee", "Priya Shah"], "Sam Lee and Priya Shah"),
+    (["Sam Lee", "Priya Shah", "Tom Ross"], "Sam Lee, Priya Shah and 1 other"),
+])
+def test_people_in_a_title(cfg, names, want):
+    assert ms.people_on_call(cfg, {n: {"known": True} for n in names}) == want
+
+
+def test_unrecognized_people_are_counted(cfg):
+    speakers = {"Sam Lee": {"known": True}, "Speaker 1": {"known": False}, "Speaker 2": {"known": False}}
+    assert ms.people_on_call(cfg, speakers) == "Sam Lee and 2 others"
+
+
+def test_a_model_that_cannot_name_it_still_leaves_the_people(cfg):
+    meta = dict(UNTITLED)
+    ms.write_note(cfg, meta, [turn("Me", LONG)], SAM, Scripted(NOTE, "x"))
+    assert meta["title"] == "Call with Sam Lee"
+
+
+def test_a_failed_name_never_costs_the_note(cfg):
+    meta = dict(UNTITLED)
+    note = ms.write_note(cfg, meta, [turn("Me", LONG)], {}, Scripted(NOTE))  # the second question raises
+    assert meta["title"] == "Microsoft Teams meeting" and "We planned the move" in note.read_text(encoding="utf-8")
+
+
+def test_a_broken_model_gives_a_basic_note_named_for_the_people(cfg):
+    meta = dict(UNTITLED)
+    ms.write_note(cfg, meta, [turn("Me", LONG)], SAM, BrokenLLM())
+    assert meta["title"] == "Call with Sam Lee"
+
+
+def test_a_meeting_with_its_own_name_keeps_it(cfg):
+    llm = FakeLLM(NOTE)
+    meta = dict(META)
+    ms.write_note(cfg, meta, [turn("Me", LONG)], SAM, llm)
+    assert meta["title"] == "Sync" and len(llm.prompts) == 1

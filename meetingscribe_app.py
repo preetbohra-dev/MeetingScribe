@@ -32,6 +32,33 @@ def run_command(*args, timeout=None):
     return (True, out) if r.returncode == 0 else (False, err.splitlines()[-1] if err else "That didn't work.")
 
 
+def login_plist():
+    return Path("~/Library/LaunchAgents/local.meetingscribe.plist").expanduser()
+
+
+def login_item():
+    """What launchd runs at login. It restarts the recorder after a crash, but not after
+    someone quits or force quits it."""
+    return {"Label": "local.meetingscribe", "ProgramArguments": [sys.executable, "run"],
+            "RunAtLoad": True, "KeepAlive": {"Crashed": True}, "ThrottleInterval": 30,
+            "ProcessType": "Background"}
+
+
+def refresh_login_item(recording):
+    """Earlier versions had launchd restart the recorder after every exit, so it could not be
+    stopped. Replace an out-of-date item, but never by cutting off a recording."""
+    if not ms.FROZEN or sys.platform != "darwin" or recording:
+        return
+    import plistlib
+    try:
+        if plistlib.loads(login_plist().read_bytes()) == login_item():
+            return
+    except Exception:  # none, or unreadable: nothing of ours to replace
+        return
+    start_at_login(False)
+    start_at_login(True)
+
+
 def start_at_login(enable):
     """Have the recorder start when the user logs in. Only the packaged app registers this
     way; a checkout has its install script's scheduled task or launch agent."""
@@ -49,16 +76,14 @@ def start_at_login(enable):
                 except OSError:
                     pass
     else:
-        plist = Path("~/Library/LaunchAgents/local.meetingscribe.plist").expanduser()
+        plist = login_plist()
         if not enable:
             subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
             plist.unlink(missing_ok=True)
             return
         import plistlib
         plist.parent.mkdir(parents=True, exist_ok=True)
-        plist.write_bytes(plistlib.dumps({"Label": "local.meetingscribe", "ProgramArguments": [sys.executable, "run"],
-                                          "RunAtLoad": True, "KeepAlive": True, "ThrottleInterval": 30,
-                                          "ProcessType": "Background"}))
+        plist.write_bytes(plistlib.dumps(login_item()))
         subprocess.run(["launchctl", "load", str(plist)], capture_output=True)
 
 
@@ -73,7 +98,7 @@ def starts_at_login():
             return True
         except OSError:
             return False
-    return Path("~/Library/LaunchAgents/local.meetingscribe.plist").expanduser().exists()
+    return login_plist().exists()
 
 
 class Api:
@@ -805,7 +830,8 @@ def open_window():
     cfg["work_dir"].mkdir(parents=True, exist_ok=True)
     window = webview.create_window(APP_NAME, str(UI), js_api=api, width=1100, height=760, min_size=(760, 560))
     api._window = window
-    threading.Thread(target=lambda: ms.terms_accepted(cfg) and ms.models_ready(cfg) and api.ensure_recorder(), daemon=True).start()
+    threading.Thread(target=lambda: (refresh_login_item(api.status()["state"] == "recording"),
+                                     ms.terms_accepted(cfg) and ms.models_ready(cfg) and api.ensure_recorder()), daemon=True).start()
     webview.start()
 
 

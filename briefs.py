@@ -19,6 +19,7 @@ DAYS_AHEAD = 14
 SYNC_EVERY_S = 15 * 60
 MAX_CALENDAR = 30 * 2**20
 LAST_MEETINGS = 3
+AVAILABILITY = {"busy", "free", "tentative", "out of office", "away", "working elsewhere"}
 STALE = re.compile(r"\b(weekly|daily|monthly|biweekly|bi-weekly|meeting|sync|call|invitation|updated|fw|re)\b|\d+|[^\w\s]")
 
 
@@ -127,6 +128,8 @@ class Briefs:
         now = dt.datetime.now().astimezone()
         data = read_calendar(url, self.ms.model_store.context(self.cfg["jira"]["ca_bundle"]))
         events = parse_events(data, now - dt.timedelta(hours=1), now + dt.timedelta(days=DAYS_AHEAD))
+        if events and all(e["title"].casefold() in AVAILABILITY for e in events):
+            raise BriefError("This calendar link only shows Busy or Free, not meeting names. In Outlook on the web, open Settings, Calendar, Shared calendars, Publish a calendar, choose “Can view all details”, publish, then connect with that link. Your company may not offer that choice.")
         self.ms.write_json(self.file, {"connected": connected, "fetched": now.isoformat(timespec="seconds"), "events": events, "error": ""})
         return events
 

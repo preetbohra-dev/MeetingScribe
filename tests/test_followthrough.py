@@ -578,3 +578,23 @@ def test_settings_validate_the_new_values(world):
     cfg = world.cfg
     assert cfg["retain_days"] == 30 and cfg["never_record"] == ["HR"] and cfg["consent_notice"] == "Hi"
     assert not api.save_settings({"retain_days": -1})["ok"] and not api.save_settings({"retain_days": True})["ok"] and not api.save_settings({"never_record": "HR"})["ok"]
+
+
+def calendar_titled(*titles):
+    day = (dt.datetime.now(UTC) + dt.timedelta(days=2)).strftime("%Y%m%d")
+    events = "".join(f"BEGIN:VEVENT\r\nUID:{i}\r\nSUMMARY:{t}\r\nDTSTART:{day}T1{i}0000Z\r\nDTEND:{day}T1{i}3000Z\r\nEND:VEVENT\r\n" for i, t in enumerate(titles))
+    return f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{events}END:VCALENDAR\r\n".encode()
+
+
+def test_a_calendar_that_hides_meeting_names_says_how_to_fix_it(world, monkeypatch):
+    fake_calendar(monkeypatch, calendar_titled("Busy", "Tentative"))
+    with pytest.raises(briefs.BriefError, match="Can view all details"):
+        briefs.Briefs(ms, world.cfg).connect("https://cal.example/secret")
+    assert not briefs.Briefs(ms, world.cfg).connected()
+
+
+def test_a_calendar_with_some_busy_time_is_fine(world, monkeypatch):
+    fake_calendar(monkeypatch, calendar_titled("Busy", "Design review"))
+    b = briefs.Briefs(ms, world.cfg)
+    b.connect("https://cal.example/secret")
+    assert [e["title"] for e in b.upcoming()["events"]] == ["Busy", "Design review"]

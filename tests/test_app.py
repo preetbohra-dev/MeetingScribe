@@ -280,3 +280,54 @@ def test_daemon_does_not_reload_mid_call(daemon, monkeypatch):
     monkeypatch.setattr(daemon, "tick", lambda: None)
     daemon.step()
     assert daemon.reload_flag.exists()
+
+
+@pytest.fixture
+def mac_login(tmp_path, monkeypatch):
+    """A packaged app on a Mac, with launchctl replaced by a list of what was asked of it."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setattr(ms, "FROZEN", True)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    calls = []
+    monkeypatch.setattr(app.subprocess, "run", lambda args, **kw: calls.append(args[1]))
+    return calls
+
+
+def old_login_item():
+    import plistlib
+    app.login_plist().parent.mkdir(parents=True)
+    old = plistlib.dumps({**app.login_item(), "KeepAlive": True})
+    app.login_plist().write_bytes(old)
+    return old
+
+
+def test_force_quit_is_not_undone_but_a_crash_is(mac_login):
+    import plistlib
+    app.start_at_login(True)
+    assert plistlib.loads(app.login_plist().read_bytes())["KeepAlive"] == {"Crashed": True}
+
+
+def test_an_older_login_item_is_replaced_and_reloaded(mac_login):
+    import plistlib
+    old_login_item()
+    app.refresh_login_item(recording=False)
+    assert plistlib.loads(app.login_plist().read_bytes()) == app.login_item() and mac_login == ["unload", "load"]
+
+
+def test_replacing_the_login_item_never_cuts_off_a_recording(mac_login):
+    old = old_login_item()
+    app.refresh_login_item(recording=True)
+    assert app.login_plist().read_bytes() == old and mac_login == []
+
+
+def test_a_current_login_item_is_left_running(mac_login):
+    app.start_at_login(True)
+    mac_login.clear()
+    app.refresh_login_item(recording=False)
+    assert mac_login == []
+
+
+def test_starting_at_login_stays_off_if_it_was_turned_off(mac_login):
+    app.refresh_login_item(recording=False)
+    assert not app.login_plist().exists() and mac_login == []
