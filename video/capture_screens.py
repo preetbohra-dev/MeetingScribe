@@ -218,8 +218,7 @@ def capture(work, url, engine="chromium", out=SHOTS):
         page.click("#templates button:has-text('Add'):not(:has-text('template'))")
         page.wait_for_selector("text=Adds: Decisions")
         page.locator("#templates .panel", has_text="Board").locator("text=Remove").click()
-        page.wait_for_timeout(500)
-        assert page.locator("text=Adds: Decisions").count() == 0, "template not removed"
+        page.wait_for_selector("text=Adds: Decisions", state="detached", timeout=20000)
 
         nav("meetings")
         page.click("text=Daily stand-up")
