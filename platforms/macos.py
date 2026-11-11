@@ -430,6 +430,7 @@ class ProcessTapCapture:
         ca.AudioDeviceStop.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
 
     def start(self):
+        import objc
         from Foundation import NSBundle, NSNumber
         NSBundle.bundleWithPath_("/System/Library/Frameworks/CoreAudio.framework").load()
         CATapDescription = objc.lookUpClass("CATapDescription")

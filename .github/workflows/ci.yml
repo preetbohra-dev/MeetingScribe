@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, "desktop-*"]
   pull_request:
+  workflow_call:  # a release can't publish unless this passes
 
 jobs:
   mac:
@@ -18,9 +19,11 @@ jobs:
         run: |
           python -m pip install -r requirements.txt pytest pyflakes pillow scipy torchaudio
       - name: Lint
-        run: python -m pyflakes meeting_scribe.py meetingscribe_app.py screen_names.py cloud_llm.py task_agent.py connectors.py model_store.py packaging/publish_models.py platforms tests
+        run: python -m pyflakes $(git ls-files '*.py' ':!video/')
       - name: Shell scripts parse
         run: bash -n install.sh uninstall.sh ctl.sh
+      - name: Recording the other side of a call starts
+        run: python packaging/check_mac_capture.py
       - name: Imports and CLI
         run: |
           python -c "import meeting_scribe as m; assert m.DEFAULTS['asr_backend'] == 'mlx'"
@@ -45,7 +48,7 @@ jobs:
           for m in ("scipy", "torch", "speechbrain"):
               assert importlib.util.find_spec(m) is None, f"{m} must not be a Windows dependency"
       - name: Lint
-        run: python -m pyflakes meeting_scribe.py meetingscribe_app.py screen_names.py cloud_llm.py task_agent.py connectors.py model_store.py packaging/publish_models.py platforms tests
+        run: python -m pyflakes (git ls-files '*.py' ':!video/')
       - name: PowerShell scripts parse
         shell: pwsh
         run: |

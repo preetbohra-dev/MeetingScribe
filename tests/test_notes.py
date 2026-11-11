@@ -379,6 +379,37 @@ def test_working_mic_does_not_warn(cfg, monkeypatch):
     assert told == [] and r.warnings == []
 
 
+def test_silent_other_side_warns_once(cfg, monkeypatch):
+    r, told = recording(cfg, monkeypatch, 2)
+    r.sys.mode, r.sys_w.peak = "all", 0
+    r.watchdog(True, False)
+    r.watchdog(True, False)
+    assert told == [ms.Recording.OTHERS_SILENT] and r.warnings == [ms.Recording.OTHERS_SILENT]
+
+
+def test_other_side_that_cannot_start_warns(cfg, monkeypatch):
+    r, told = recording(cfg, monkeypatch, 2)
+
+    class Broken(Stream):
+        def start(self):
+            raise NameError("name 'objc' is not defined")
+
+    class Fine(Stream):
+        def start(self):
+            pass
+
+    r.sys, r.mic = Broken(), Fine()
+    r.start()
+    assert told == [ms.Recording.OTHERS_SILENT] and r.warnings == [ms.Recording.OTHERS_SILENT]
+
+
+def test_working_other_side_does_not_warn(cfg, monkeypatch):
+    r, told = recording(cfg, monkeypatch, 2)
+    r.sys.mode = "all"
+    r.watchdog(True, False)
+    assert told == [] and r.warnings == []
+
+
 def test_track_writer_tracks_sound(tmp_path):
     w = ms.TrackWriter(tmp_path / "x.pcm", time.monotonic())
     w.write(np.zeros(1600, np.float32), 16000, time.monotonic())

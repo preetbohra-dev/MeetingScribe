@@ -633,11 +633,19 @@ class Recording:
         tmp.write_text(json.dumps(self.meta, indent=2), encoding="utf-8")
         tmp.replace(self.dir / "session.json")
 
+    OTHERS_SILENT = "The other side of this call isn't being recorded, so the notes will only have what your microphone picks up."
+
+    def others_not_recorded(self):
+        if self.OTHERS_SILENT not in self.warnings:
+            self.warnings.append(self.OTHERS_SILENT)
+            notify(self.cfg, self.OTHERS_SILENT)
+
     def start(self):
         try:
             self.sys.start()
         except Exception as e:
             log.error("system audio capture failed to start: %s", e)
+            self.others_not_recorded()
         try:
             self.mic.start()
         except Exception as e:
@@ -697,6 +705,7 @@ class Recording:
             self.warned.add("sys0")
             log.error("system audio is pure silence even when tapping everything: the "
                       "'System Audio Recording Only' permission is probably denied")
+            self.others_not_recorded()
 
     def maybe_look_at_screen(self, now):
         """A few looks at the meeting window, each while someone else is talking. Runs off
