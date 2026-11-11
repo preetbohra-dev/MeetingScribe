@@ -103,9 +103,12 @@ jobs:
       - name: The real Mac window takes typing and paste
         run: python packaging/check_mac_window.py
 
+  ci:  # the lint and every test, on both systems
+    uses: ./.github/workflows/ci.yml
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, mac, mac_window]
+    needs: [ci, windows, mac, mac_window]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
