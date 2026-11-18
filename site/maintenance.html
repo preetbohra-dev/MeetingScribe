@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MeetingScribe: back shortly</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#fbfbfd;--ink:#1d1d1f;--ink-2:#4a4a50;--ink-3:#86868b;--line:rgba(0,0,0,.09);--rec:#e5483a;--link:#b9361f}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0b0b0f;--ink:#f2f2f5;--ink-2:#b4b4bd;--ink-3:#7c7c86;--line:rgba(255,255,255,.09);--rec:#ff5a4a;--link:#ff8b7a}
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);display:flex;align-items:center;justify-content:center;padding:24px 16px;
+  font:1.0625rem/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:30rem;width:100%}
+.brand{display:flex;align-items:center;gap:.6rem;font-weight:600;letter-spacing:-.01em;margin-bottom:2.5rem}
+.brand img{width:28px;height:28px}
+.status{display:inline-flex;align-items:center;gap:.5rem;font-size:.8125rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);margin-bottom:.75rem}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--rec)}
+h1{font-size:clamp(1.9rem,6vw,2.5rem);line-height:1.1;letter-spacing:-.025em;margin:0 0 1rem}
+p{color:var(--ink-2);margin:0 0 1rem}
+.foot{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);font-size:.875rem;color:var(--ink-3)}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:.18em}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><img src="icon.svg" alt="">MeetingScribe</div>
+  <div class="status"><span class="dot"></span>Down for maintenance</div>
+  <h1>Back shortly.</h1>
+  <p>This page is being updated. Check again in a little while.</p>
+  <p>The MeetingScribe app is not affected. Recordings and notes stay on your computer and keep working as usual.</p>
+  <div class="foot"><a href="https://preetbohra.com">preetbohra.com</a></div>
+</main>
+</body>
+</html>
