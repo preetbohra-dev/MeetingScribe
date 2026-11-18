@@ -31,9 +31,9 @@
       "id": "detect",
       "min": 11,
       "lines": [
-        "MeetingScribe runs quietly in the background.",
+        "MeetingScribe runs on your own computer.",
         "When you join a call, it starts recording two tracks: your microphone, and the meeting's own audio.",
-        "No buttons to press, and no bot joining the meeting."
+        "And it reminds you to tell everyone on the call, then to confirm that you did."
       ]
     },
     {
@@ -67,7 +67,7 @@
       "min": 10.5,
       "lines": [
         "An unknown voice? Hear a clip, and name it once.",
-        "From then on, it is recognised, as long as there is evidence that person attended."
+        "If that person agrees, their voice is saved, and from then on they are recognised, as long as there is evidence they attended."
       ]
     },
     {
@@ -134,10 +134,11 @@
     },
     {
       "id": "consent",
-      "min": 15,
+      "min": 22,
       "lines": [
-        "One thing matters more than all of this. There is no bot in the call, so nobody can see that MeetingScribe is there.",
-        "Telling people is up to you, so it gives you a notice to paste into the chat.",
+        "One thing matters more than all of this: everyone on a call should know it is being recorded.",
+        "So MeetingScribe gives you a notice to paste into the chat, and writes no notes until you confirm that everyone was told.",
+        "Each confirmation is kept in a dated consent record. A recording nobody confirms is deleted after a day.",
         "You can also list the meetings it must never record, and have old ones deleted automatically."
       ]
     },

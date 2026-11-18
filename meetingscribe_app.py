@@ -301,6 +301,7 @@ class Api:
                 "questions": ms.note_templates.questions(self.cfg), "rewriting": self._rewriting(sid),
                 "talk": ms.talk_shares(turns), "turns": [{"start": t["start"], "speaker": t["speaker"], "text": t["text"], "flag": t.get("flag")} for t in turns],
                 "voices": voices, "note_exists": note.exists(), "me": self.cfg["my_name"],
+                "consent": ms.read_json(d / "consent.json"), "consent_wait_h": ms.CONSENT_WAIT_H,
                 "jira": bool(self.cfg["jira"]["base_url"]), "destinations": self._connectors().destinations()}
 
     def voice_clip(self, sid, label):
@@ -315,9 +316,9 @@ class Api:
             return None
         return "data:audio/wav;base64," + base64.b64encode(path.read_bytes()).decode()
 
-    def name_voice(self, sid, label, name):
+    def name_voice(self, sid, label, name, agreed=False):
         self._session(sid)
-        ok, msg = run_command("name-speaker", label, name, "--session", sid)
+        ok, msg = run_command("name-speaker", label, name, "--session", sid, *(["--agreed"] if agreed is True else []))
         return {"ok": ok, "message": msg}
 
     def reject_voice(self, sid, label):
@@ -334,6 +335,29 @@ class Api:
     def delete_meeting(self, sid):
         """Removes the recording, the note, and its files, after the page has confirmed."""
         ms.delete_session(self.cfg, self._session(sid))
+        return True
+
+    # -- consent
+
+    def confirm_consent(self, sid):
+        """You confirm everyone in this meeting was told it is being recorded."""
+        e = ms.confirm_consent(self.cfg, self._session(sid))
+        return {"time": e["time"], "user": e["user"]}
+
+    def consent_record(self):
+        entries, problem = ms.check_consent_log(self.cfg)
+        return {"entries": entries[-200:][::-1], "count": len(entries), "problem": problem,
+                "path": str(ms.consent_log_path(self.cfg))}
+
+    def open_consent_record(self):
+        """Shows the file in Finder or File Explorer. A .jsonl file has no app to open it with."""
+        path = ms.consent_log_path(self.cfg)
+        if not path.exists():
+            return False
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", "/select,", str(path)], creationflags=CREATE_NO_WINDOW)
+        else:
+            subprocess.Popen(["open", "-R", str(path)])
         return True
 
     def _rewriting(self, sid):
@@ -461,7 +485,8 @@ class Api:
 
     def people(self):
         lib = ms.VoiceLibrary(self.cfg)
-        return [{"name": n, "seconds": v["seconds"], "saved_at": v["saved_at"]} for n, v in sorted(lib.voices.items())]
+        return [{"name": n, "seconds": v["seconds"], "saved_at": v["saved_at"], "agreed_at": v.get("agreed_at")}
+                for n, v in sorted(lib.voices.items())]
 
     def person_clip(self, name):
         lib = ms.VoiceLibrary(self.cfg)
@@ -469,7 +494,13 @@ class Api:
         return self._data_url(lib.dir / v["file"]) if v else None
 
     def forget_person(self, name):
-        return ms.VoiceLibrary(self.cfg).forget(name)
+        if not ms.VoiceLibrary(self.cfg).forget(name):
+            return False
+        ms.log_consent(self.cfg, "voice_deleted", person=name, reason="you asked")
+        return True
+
+    def person_agreed(self, name):
+        return ms.VoiceLibrary(self.cfg).agreed(name)
 
     # -- Slack, Teams, Gmail and Outlook. A webhook link goes to the keychain and never comes back.
 

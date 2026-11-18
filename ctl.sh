@@ -1,5 +1,5 @@
 #!/bin/bash
-# MeetingScribe control: ./ctl.sh start | stop | restart | status | logs | name | listen | voices | refilter | jira | process | download-models
+# MeetingScribe control: ./ctl.sh start | stop | restart | status | logs | name | listen | voices | consent | refilter | jira | process | download-models
 LABEL="local.meetingscribe"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 APP="$HOME/Applications/MeetingScribe.app"
@@ -23,12 +23,16 @@ case "${1:-status}" in
     pgrep -f "meeting_scribe.py process" >/dev/null && echo "processing: a meeting is being transcribed/summarized"
     echo "--- last daemon log lines"; tail -n 8 "$LOG/daemon.log" 2>/dev/null
     echo "--- live detection (from this terminal)"; "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" status ;;
-  name)   # ./ctl.sh name "Speaker 2" "Priya Shah" [session]
-    "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" name-speaker "$2" "$3" --session "${4:-latest}" ;;
+  name)   # ./ctl.sh name "Speaker 2" "Priya Shah" [session] [--agreed]
+    session=latest; agreed=()
+    for a in "${@:4}"; do if [ "$a" = --agreed ]; then agreed=(--agreed); else session="$a"; fi; done
+    "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" name-speaker "$2" "$3" --session "$session" "${agreed[@]}" ;;
   listen) # ./ctl.sh listen ["Speaker 2"] [session]
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" listen ${2:+"$2"} --session "${3:-latest}" ;;
-  voices) # ./ctl.sh voices [--forget "Name"]
+  voices) # ./ctl.sh voices [--forget "Name"] [--agreed "Name"]
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" voices "${@:2}" ;;
+  consent) # ./ctl.sh consent [--confirm] [--session ID]: confirm everyone was told, or show the consent record
+    "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" consent "${@:2}" ;;
   refilter) # ./ctl.sh refilter [--session ID] [--force]
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" refilter "${@:2}" ;;
   app)  # open the desktop app
@@ -47,5 +51,5 @@ case "${1:-status}" in
     "$HERE/.venv/bin/python" "$HERE/meeting_scribe.py" "$@" ;;
   logs)
     tail -n 50 -F "$LOG/daemon.log" "$LOG/process.log" "$LOG/stderr.log" ;;
-  *) echo "usage: $0 app|start|stop|restart|status|logs|name|reject|listen|voices|search|ask|actions|brief|refilter|jira|ai|terms|process|download-models"; exit 1 ;;
+  *) echo "usage: $0 app|start|stop|restart|status|logs|name|reject|listen|voices|consent|search|ask|actions|brief|refilter|jira|ai|terms|process|download-models"; exit 1 ;;
 esac

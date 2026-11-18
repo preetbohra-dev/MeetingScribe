@@ -206,7 +206,7 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
       <div id="d-w2" style="margin-top:18px"><div class="lbl">Call audio · only from the meeting app</div><canvas id="cv2" width="740" height="110" style="margin-top:10px"></canvas></div>
     </div>
     <div class="abs" id="d-chips" style="left:0;width:1920px;top:820px;text-align:center">
-      <span class="chip n">No buttons</span>&nbsp;&nbsp;<span class="chip n">No meeting bot</span>&nbsp;&nbsp;<span class="chip n">No virtual audio drivers</span>
+      <span class="chip n">Starts with the call</span>&nbsp;&nbsp;<span class="chip n">Reminds you to tell people</span>&nbsp;&nbsp;<span class="chip n">No virtual audio drivers</span>
     </div>
   </section>
 
@@ -356,7 +356,7 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
     <div class="abs card" id="v-next" style="left:120px;top:680px;width:1680px;height:150px;padding:30px 40px;display:flex;align-items:center;gap:30px">
       <span class="chip g">Next meeting</span>
       <span style="font-size:27px">Participants: Me, Samantha Lee, Daniel Ortiz, <b style="color:var(--green)">Ravi Kumar</b></span>
-      <span class="sub" style="font-size:22px;margin-left:auto">recognised by voice, once there is evidence</span>
+      <span class="sub" style="font-size:22px;margin-left:auto">voice saved with their agreement, matched once there is evidence</span>
     </div>
   </section>
 
@@ -643,19 +643,21 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
   </section>
 
   <section class="scene" id="s-consent">
-    <div id="cs-h" class="abs h2" style="left:0;width:1920px;top:110px;text-align:center;font-size:56px">No bot in the call. So tell people.</div>
+    <div id="cs-h" class="abs h2" style="left:0;width:1920px;top:110px;text-align:center;font-size:56px">Everyone on the call should know.</div>
     <div class="abs card" id="cs-a" style="left:130px;top:290px;width:530px;height:500px;padding:42px">
       <b style="font-size:36px">A notice to paste</b>
       <div id="cs-msg" style="margin-top:30px;background:#26262b;border-radius:16px;padding:26px;font-size:28px;line-height:1.4">Heads up: I'm recording and transcribing this call for my own notes. Tell me if you'd rather I didn't.</div>
     </div>
     <div class="abs card" id="cs-b" style="left:695px;top:290px;width:530px;height:500px;padding:42px">
-      <b style="font-size:36px">Never record</b>
-      <div style="margin-top:30px;font-size:32px;line-height:2"><span class="chip r">HR</span><br><span class="chip r">Doctor</span><br><span class="chip r">Legal</span></div>
+      <b style="font-size:36px">Confirm, then notes</b>
+      <div style="margin-top:34px"><span class="chip g" style="font-size:28px">✓ Everyone was told</span></div>
+      <div style="margin-top:26px;font-family:var(--mono);font-size:22px;line-height:1.6;color:#dcdce0">Tue 10:02 · priya<br>during the call</div>
+      <div class="sub" style="margin-top:22px;font-size:23px">Every confirmation is dated in a consent record. Unconfirmed recordings are deleted after a day.</div>
     </div>
     <div class="abs card" id="cs-c" style="left:1260px;top:290px;width:530px;height:500px;padding:42px">
-      <b style="font-size:36px">Delete old meetings</b>
-      <div style="margin-top:40px;font-size:96px;font-weight:800;letter-spacing:-3px">90 days</div>
-      <div class="sub" style="margin-top:16px">Or only the audio. You choose.</div>
+      <b style="font-size:36px">Never record</b>
+      <div style="margin-top:30px;font-size:32px;line-height:2"><span class="chip r">HR</span> <span class="chip r">Doctor</span> <span class="chip r">Legal</span></div>
+      <div class="sub" style="margin-top:40px;font-size:23px">And old meetings, or only their audio, deleted after the days you choose.</div>
     </div>
   </section>
 
@@ -1386,7 +1388,7 @@ scene("consent", (s, L, e) => {
   IN("#cs-h", s + .1);
   A("#cs-a", L[1] + .1, .7, {opacity: [0, 1], y: [30, 0]});
   A("#cs-b", L[2] + .1, .7, {opacity: [0, 1], y: [30, 0]});
-  A("#cs-c", L[2] + 2.6, .7, {opacity: [0, 1], y: [30, 0]});
+  A("#cs-c", L[3] + .1, .7, {opacity: [0, 1], y: [30, 0]});
 });
 
 scene("usecases", (s, L, e) => {

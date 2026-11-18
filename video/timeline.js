@@ -42,28 +42,28 @@ window.TIMELINE = {
   {
    "id": "detect",
    "start": 21.316,
-   "dur": 13.876,
+   "dur": 14.772,
    "lines": [
     {
      "t": 0.7,
-     "dur": 2.496,
-     "text": "MeetingScribe runs quietly in the background."
+     "dur": 2.325,
+     "text": "MeetingScribe runs on your own computer."
     },
     {
-     "t": 3.616,
+     "t": 3.445,
      "dur": 5.547,
      "text": "When you join a call, it starts recording two tracks: your microphone, and the meeting's own audio."
     },
     {
-     "t": 9.583,
-     "dur": 3.093,
-     "text": "No buttons to press, and no bot joining the meeting."
+     "t": 9.412,
+     "dur": 4.16,
+     "text": "And it reminds you to tell everyone on the call, then to confirm that you did."
     }
    ]
   },
   {
    "id": "pipeline",
-   "start": 35.192,
+   "start": 36.088,
    "dur": 18.243,
    "lines": [
     {
@@ -90,7 +90,7 @@ window.TIMELINE = {
   },
   {
    "id": "note",
-   "start": 53.435,
+   "start": 54.331,
    "dur": 11,
    "lines": [
     {
@@ -107,7 +107,7 @@ window.TIMELINE = {
   },
   {
    "id": "languages",
-   "start": 64.435,
+   "start": 65.331,
    "dur": 12.432,
    "lines": [
     {
@@ -124,8 +124,8 @@ window.TIMELINE = {
   },
   {
    "id": "voices",
-   "start": 76.867,
-   "dur": 10.5,
+   "start": 77.763,
+   "dur": 12.304,
    "lines": [
     {
      "t": 0.7,
@@ -134,14 +134,14 @@ window.TIMELINE = {
     },
     {
      "t": 3.893,
-     "dur": 4.8,
-     "text": "From then on, it is recognised, as long as there is evidence that person attended."
+     "dur": 7.211,
+     "text": "If that person agrees, their voice is saved, and from then on they are recognised, as long as there is evidence they attended."
     }
    ]
   },
   {
    "id": "templates",
-   "start": 87.367,
+   "start": 90.067,
    "dur": 15.412,
    "lines": [
     {
@@ -163,7 +163,7 @@ window.TIMELINE = {
   },
   {
    "id": "actions",
-   "start": 102.779,
+   "start": 105.479,
    "dur": 15.476,
    "lines": [
     {
@@ -185,7 +185,7 @@ window.TIMELINE = {
   },
   {
    "id": "upcoming",
-   "start": 118.255,
+   "start": 120.955,
    "dur": 13,
    "lines": [
     {
@@ -207,7 +207,7 @@ window.TIMELINE = {
   },
   {
    "id": "connectors",
-   "start": 131.255,
+   "start": 133.955,
    "dur": 14.288,
    "lines": [
     {
@@ -224,7 +224,7 @@ window.TIMELINE = {
   },
   {
    "id": "sendout",
-   "start": 145.543,
+   "start": 148.243,
    "dur": 17,
    "lines": [
     {
@@ -246,7 +246,7 @@ window.TIMELINE = {
   },
   {
    "id": "handoff",
-   "start": 162.543,
+   "start": 165.243,
    "dur": 18.825,
    "lines": [
     {
@@ -268,7 +268,7 @@ window.TIMELINE = {
   },
   {
    "id": "assistants",
-   "start": 181.368,
+   "start": 184.068,
    "dur": 16.137,
    "lines": [
     {
@@ -290,21 +290,26 @@ window.TIMELINE = {
   },
   {
    "id": "consent",
-   "start": 197.505,
-   "dur": 18.591,
+   "start": 200.205,
+   "dur": 27.587,
    "lines": [
     {
      "t": 0.7,
-     "dur": 6.549,
-     "text": "One thing matters more than all of this. There is no bot in the call, so nobody can see that MeetingScribe is there."
+     "dur": 5.141,
+     "text": "One thing matters more than all of this: everyone on a call should know it is being recorded."
     },
     {
-     "t": 7.669,
-     "dur": 3.925,
-     "text": "Telling people is up to you, so it gives you a notice to paste into the chat."
+     "t": 6.261,
+     "dur": 6.869,
+     "text": "So MeetingScribe gives you a notice to paste into the chat, and writes no notes until you confirm that everyone was told."
     },
     {
-     "t": 12.015,
+     "t": 13.551,
+     "dur": 7.04,
+     "text": "Each confirmation is kept in a dated consent record. A recording nobody confirms is deleted after a day."
+    },
+    {
+     "t": 21.011,
      "dur": 5.376,
      "text": "You can also list the meetings it must never record, and have old ones deleted automatically."
     }
@@ -312,7 +317,7 @@ window.TIMELINE = {
   },
   {
    "id": "privacy",
-   "start": 216.096,
+   "start": 227.792,
    "dur": 12.048,
    "lines": [
     {
@@ -329,7 +334,7 @@ window.TIMELINE = {
   },
   {
    "id": "early",
-   "start": 228.144,
+   "start": 239.84,
    "dur": 36.519,
    "lines": [
     {
@@ -361,7 +366,7 @@ window.TIMELINE = {
   },
   {
    "id": "outro",
-   "start": 264.663,
+   "start": 276.359,
    "dur": 10.171,
    "lines": [
     {
@@ -377,5 +382,5 @@ window.TIMELINE = {
    ]
   }
  ],
- "total": 274.833
+ "total": 286.529
 };

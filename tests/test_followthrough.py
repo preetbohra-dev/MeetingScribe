@@ -506,7 +506,7 @@ def test_a_title_that_appears_late_deletes_the_recording(recorder):
 
 def test_an_ordinary_meeting_records_and_reminds_about_consent(recorder):
     recorder.tick()
-    assert recorder.rec and "Make sure everyone knows" in recorder.told[0]
+    assert recorder.rec and "Tell everyone, then confirm" in recorder.told[0]
 
 
 def test_after_a_refused_call_the_next_one_records(recorder):

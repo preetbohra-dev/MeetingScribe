@@ -49,7 +49,7 @@ def library(cfg, **people):
     lib = ms.VoiceLibrary(cfg)
     clip = np.ones(16000 * 4, np.float32) * 0.1
     for name, i in people.items():
-        lib.add(name, clip, unit(i))
+        lib.add(name, clip, unit(i), "2026-11-01T09:00:00+05:30")
     lib.save()
     return ms.VoiceLibrary(cfg)
 
@@ -198,7 +198,7 @@ def test_forgetting_removes_the_audio_too(cfg):
 
 def test_clip_is_capped(cfg):
     lib = ms.VoiceLibrary(cfg)
-    lib.add("Long", np.ones(16000 * 40, np.float32) * 0.1, unit(0))
+    lib.add("Long", np.ones(16000 * 40, np.float32) * 0.1, unit(0), "2026-11-01T09:00:00+05:30")
     assert len(ms.read_wav(lib.dir / lib.voices["Long"]["file"])) == 16000 * ms.MAX_CLIP_S
 
 
@@ -243,7 +243,7 @@ class FakeLLM:
 
 def test_naming_updates_everything_and_saves_the_voice(cfg):
     d, note = meeting(cfg)
-    msg = ms.name_speaker(cfg, d, "Speaker 1", "  Priya   Shah ")
+    msg = ms.name_speaker(cfg, d, "Speaker 1", "  Priya   Shah ", agreed=True)
     assert "saved" in msg
     text = note.read_text(encoding="utf-8")
     assert "**Participants:** Me, Speaker 2 (unrecognized), Priya Shah" in text
@@ -263,7 +263,7 @@ def test_naming_the_last_voice_clears_the_table(cfg):
 
 def test_short_clip_names_the_meeting_but_saves_no_voice(cfg):
     d, _ = meeting(cfg, clip_s=1)
-    assert "too little clean speech" in ms.name_speaker(cfg, d, "Speaker 1", "Tom")
+    assert "too little clean speech" in ms.name_speaker(cfg, d, "Speaker 1", "Tom", agreed=True)
     assert ms.VoiceLibrary(cfg).voices == {}
 
 

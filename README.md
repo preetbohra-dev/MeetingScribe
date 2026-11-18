@@ -11,9 +11,9 @@ Meeting notes that write themselves, for Teams, Zoom and Google Meet, on your Ma
 
 ---
 
-MeetingScribe runs in the background. When a call starts in Microsoft Teams, Zoom or a meeting in your web browser
-(Google Meet, Teams or Zoom on the web, Webex, ...) it records it, and a few minutes after you hang up it saves a
-Markdown note to `Documents/Meeting Notes/` with:
+MeetingScribe runs on your own computer. When a call starts in Microsoft Teams, Zoom or a meeting in your web browser
+(Google Meet, Teams or Zoom on the web, Webex, ...) it records it and asks you to tell everyone on the call. Once you
+confirm that you did, a few minutes after you hang up it saves a Markdown note to `Documents/Meeting Notes/` with:
 
 - a **summary** and **action items** with owners,
 - a **transcript** that says who said what, and asks you when it isn't sure who someone is,
@@ -229,8 +229,16 @@ short switches of a few words can stay in the surrounding language.
 
 **Consent and keeping meetings**, under **Settings**:
 
-- While recording, the Meetings page offers a notice to paste into the meeting chat. There is no bot, so nobody on the
-  call can see MeetingScribe, and telling them is up to you.
+- While recording, the Meetings page offers a notice to paste into the meeting chat, and an **Everyone was told** button.
+  MeetingScribe doesn't join the call, so people only know if you tell them.
+- Notes are only written once you confirm that everyone was told, during the call or after it. A recording nobody
+  confirms is deleted 24 hours after the call. From a terminal: `./ctl.sh consent --confirm` (latest meeting) or
+  `--session ID`.
+- The **consent record** lists every confirmation with the time, your user name and the computer, along with deleted
+  meetings and voices. Lines are never changed or removed, even when the meeting is deleted, and each one carries a hash
+  of the line before it, so an edited or deleted line is reported. It is in `consent-log.jsonl` in the app's data
+  folder; `./ctl.sh consent` prints it. It shows what you confirmed, not what was said on the call, and anyone who
+  can edit the file could rewrite the whole chain.
 - **Never record** lists words in meeting titles. A matching meeting isn't recorded, and a recording that already
   started is deleted as soon as the title appears.
 - **Delete whole meetings after** and **Delete only the audio after** take a number of days. Off by default. Deletion is
@@ -257,17 +265,21 @@ Suggestions come from three places: a similar saved voice, a name said aloud (th
 and the quote is checked against the transcript), and the highlighted name tile while that person talks (two looks
 at least 10 seconds apart must agree). You always make the final call.
 
-Naming a voice saves a clean 3 to 12 second clip of it. Matching never changes a saved voice, so a wrong match can't
-spread to later meetings. In the app, **Not this person** takes a wrong name off a meeting, and **People** shows
+Naming a voice puts the name in that meeting's note. Its voice is saved only if you tick **They agreed to having their
+voice saved** (`--agreed` in a terminal): a clean 3 to 12 second clip, with the agreement added to the consent record.
+A voice saved before agreements were recorded isn't used until you press **They agreed** on the **People** page. A
+voice not heard for three years is deleted. Matching never changes a saved voice, so a wrong match can't spread to
+later meetings. In the app, **Not this person** takes a wrong name off a meeting, and **People** shows
 every saved voice with a way to hear or forget it.
 
 ```bash
 ./ctl.sh listen                               # play ~10 s of each unnamed voice from the latest meeting
-./ctl.sh name "Speaker 2" "Priya Shah"        # name them: rewrites the note and saves the voice
+./ctl.sh name "Speaker 2" "Priya Shah" --agreed   # name them: rewrites the note, and saves the voice with their agreement
 ./ctl.sh name "Speaker 1" "Tom Berg" 2026-10-28   # a specific meeting
 ./ctl.sh reject "Priya Shah"                  # that name is wrong for that voice
 ./ctl.sh voices                               # list saved voices
 ./ctl.sh voices --forget "Priya Shah"         # delete one
+./ctl.sh voices --agreed "Priya Shah"         # they agreed to a voice saved before agreements were recorded
 ```
 
 Saved voices stay on the computer that made them.
@@ -507,7 +519,10 @@ it, and only start tasks you trust. With company AI, the code it reads is sent t
   you can check on a Mac by running `nettop -p $(pgrep -f "meeting_scribe.py process")` while a meeting is processed;
   on Windows, watch the python process in Resource Monitor's Network tab. There are no connections.
 - Saved voices are a short audio clip per named person, plus numbers made from it, in the `voices` folder. Both
-  are biometric data. Delete one any time in the app's **People** page, or with `voices --forget`.
+  are biometric data. One is saved only after you confirm that person agreed, and deleted after three years unheard.
+  Delete one any time in the app's **People** page, or with `voices --forget`.
+- Notes are written only for calls you confirm everyone was told about, and each confirmation is kept in the consent
+  record (`consent-log.jsonl`). It stays on this computer.
 - With `screen_names` on, the recorder looks at the meeting window up to 12 times a call. Each picture is read for
   names in memory and discarded; only the names are kept.
 

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import wave
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,10 +58,18 @@ def steps(page, work, failed):
     open_standup()
     page.wait_for_selector("text=Who was this?")
     sweep("meeting")
+    agree = page.locator("input[aria-label='They agreed to having their voice saved']")
+    if agree.count() != 1:
+        failed.append(f"meeting: {agree.count()} voice agreement boxes, expected 1 (only a voice with a clip can be saved)")
+    else:
+        agree.click()
+        if not agree.is_checked():
+            failed.append("meeting: the voice agreement box did not tick")
+        agree.click()
     page.locator("input[aria-label='Name for Speaker 3']").click()
     page.keyboard.type("Sam Lee")
     page.keyboard.press("Enter")
-    page.wait_for_selector("text=Who was this?", state="detached", timeout=20000)
+    page.wait_for_selector("input[aria-label='Name for Speaker 3']", state="detached", timeout=20000)
     if not any("Sam Lee" in p.read_text(encoding="utf-8") for p in (work / "sessions").glob("*/speakers.json")):
         failed.append("meeting: a name typed and confirmed with Enter was not saved")
 
@@ -75,6 +84,17 @@ def steps(page, work, failed):
     page.locator("button.link:has-text('Hand to AI')").first.click()
     page.wait_for_selector("text=Hand this to the AI")
     sweep("hand to AI")
+
+    nav("meetings")
+    page.wait_for_selector("text=Confirm everyone was told")
+    page.click("button.meeting:has-text('Client call')")
+    page.wait_for_selector("text=Was everyone in this meeting told")
+    page.click("button.primary:has-text('Everyone was told')")
+    page.wait_for_selector("text=Saved in the consent record")
+    held = work / "sessions" / HELD
+    told = [json.loads(ln) for ln in (work / "consent-log.jsonl").read_text(encoding="utf-8").splitlines()] if (work / "consent-log.jsonl").exists() else []
+    if not (held / "consent.json").exists() or [(e["event"], e["meeting"], e["during_call"]) for e in told] != [("told_everyone", HELD, False)]:
+        failed.append(f"consent: confirming a held meeting was not recorded: {told}")
 
     nav("upcoming")
     sweep("upcoming")
@@ -104,6 +124,10 @@ def steps(page, work, failed):
         nav(name)
         if name == "settings":  # its templates arrive after the rest of the page
             page.wait_for_selector("#templates details", state="attached", timeout=20000)
+            if page.locator("#consent-record >> text=Everyone was told: Client call").count() != 1:
+                failed.append("settings: the consent record does not show the confirmed meeting")
+            if any(w in page.inner_text("#consent-record").split() for w in ("null", "undefined")):
+                failed.append(f"settings: the consent record shows a stray value: {page.inner_text('#consent-record')!r}")
         sweep(name)
 
     page.click("button:has-text('Change…')")
@@ -140,13 +164,29 @@ def walk(work, url, engine):
     return failed + [f"page error: {p}" for p in problems]
 
 
+HELD = "2026-01-05_090000"
+
+
 def add_unnamed_voice(work):
     for p in (work / "sessions").glob("*/session.json"):
         if json.loads(p.read_text())["title"] == "Daily stand-up":
             speakers = json.loads((p.parent / "speakers.json").read_text())
             speakers["Speaker 3"] = {"known": False, "seconds": 30, "first": [1.0, "Hello there"]}
+            speakers["Speaker 4"] = {"known": False, "seconds": 30, "first": [9.0, "Morning"], "sample": "Speaker 4.wav"}
+            (p.parent / "voices").mkdir(exist_ok=True)
+            with wave.open(str(p.parent / "voices" / "Speaker 4.wav"), "wb") as w:
+                w.setnchannels(1), w.setsampwidth(2), w.setframerate(16000), w.writeframes(bytes(16000 * 2 * 4))
             (p.parent / "speakers.json").write_text(json.dumps(speakers))
             return p.parent.name
+
+
+def add_held_meeting(work):
+    """A finished call nobody has confirmed everyone was told about."""
+    d = work / "sessions" / HELD
+    d.mkdir()
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    (d / "session.json").write_text(json.dumps({"title": "Client call", "status": "needs_consent", "source": "Zoom",
+                                                "started_at": now, "ended_at": now, "duration_s": 1800}))
 
 
 def main():
@@ -154,6 +194,7 @@ def main():
     with tempfile.TemporaryDirectory() as t, tempfile.TemporaryDirectory() as shots:
         work = c.build_world(Path(t))
         add_unnamed_voice(work)
+        add_held_meeting(work)
         server = subprocess.Popen([c.backend_python(), str(ROOT / "video" / "capture_screens.py"), "--serve", t])
         try:
             time.sleep(c.BACKEND_START_S)

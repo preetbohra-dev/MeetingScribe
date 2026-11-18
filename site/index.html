@@ -198,7 +198,7 @@ footer a{color:var(--ink-2)}
   <div class="wrap hero">
     <p class="kicker">Teams, Zoom and Meet · Mac and Windows</p>
     <h1><span>Join the call. Hang up.</span> <span>The notes are written.</span></h1>
-    <p class="lede">MeetingScribe sits quietly in the background. When Teams, Zoom or a meeting in your browser picks up your microphone it starts recording, and a few minutes after you leave it saves a note with a summary, action items and a transcript that knows who said what. Everything runs on your own computer, unless you choose your company&rsquo;s AI. Connectors then send the meeting wherever your team works.</p>
+    <p class="lede">MeetingScribe runs on your own computer. When Teams, Zoom or a meeting in your browser picks up your microphone it starts recording and asks you to tell everyone on the call. Once you confirm you did, a few minutes after you leave it saves a note with a summary, action items and a transcript that knows who said what. Everything runs on your own computer, unless you choose your company&rsquo;s AI. Connectors then send the meeting wherever your team works.</p>
     <div class="ctas">
       <a class="btn primary" href="#film">Watch the demo</a>
       <a class="btn ghost" href="https://github.com/preetbohra-dev/MeetingScribe">Source on GitHub</a>
@@ -209,8 +209,8 @@ footer a{color:var(--ink-2)}
   <figure class="wrap film" id="film">
     <div class="frame">
       <video controls playsinline preload="metadata" poster="poster.jpg?v=7">
-        <source src="demo.mp4?v=9" type="video/mp4">
-        Your browser can't play this video. <a href="demo.mp4?v=9">Download it</a> instead.
+        <source src="demo.mp4?v=10" type="video/mp4">
+        Your browser can't play this video. <a href="demo.mp4?v=10">Download it</a> instead.
       </video>
     </div>
     <figcaption>About four and a half minutes, narrated, including what it still gets wrong. The people and meetings in it are made up.</figcaption>
@@ -272,6 +272,7 @@ footer a{color:var(--ink-2)}
         <ol>
           <li><b>Notices the call</b><span>The meeting app takes the mic, and recording starts within a second or two.</span></li>
           <li><b>Records two tracks</b><span>Your microphone is &ldquo;Me&rdquo;. The meeting app&rsquo;s own audio is everyone else, captured from that app alone, so your music and notifications stay out of it.</span></li>
+          <li><b>Asks you to tell people</b><span>It offers a notice to paste into the meeting chat, and a button to confirm everyone was told. No notes are written until you do, and a recording nobody confirms is deleted after a day.</span></li>
           <li><b>Notices you left</b><span>Ten seconds after the app lets go of the mic, recording stops. Being on mute doesn&rsquo;t end it.</span></li>
         </ol>
       </div>
@@ -293,7 +294,7 @@ footer a{color:var(--ink-2)}
         <p class="eyebrow">Speakers</p>
         <h2>It learns your colleagues&rsquo; voices.</h2>
         <p class="intro" style="margin-bottom:14px">Everyone on the other end arrives mixed into one stream, so they&rsquo;re told apart by how they sound. Not sure who &ldquo;Speaker 2&rdquo; was? Play a ten-second clip of them, then give them a name.</p>
-        <p>The note is rewritten with the right name, and from the next meeting on they&rsquo;re labelled automatically. Every confident match sharpens their voiceprint a little.</p>
+        <p>The note is rewritten with the right name. If they agree to it, their voice is saved, and from the next meeting on they&rsquo;re labelled automatically, as long as there&rsquo;s evidence they attended.</p>
       </div>
 <pre><code><span class="p">$</span> ./ctl.sh listen
 <span class="c">Speaker 2 · first heard at 00:03:12</span>
@@ -392,8 +393,8 @@ footer a{color:var(--ink-2)}
     <div class="facts rise">
       <div><h3>Audio</h3><p>Written to a local app folder while the call runs, and deleted as soon as the note is saved.</p></div>
       <div><h3>Models</h3><p>Whisper and Qwen run on your own hardware: MLX on a Mac, faster-whisper and llama.cpp on Windows. Ollama works too, if it&rsquo;s on your machine. With company AI, transcript text goes to that provider; audio and voiceprints never do.</p></div>
-      <div><h3>Voiceprints</h3><p>A few hundred numbers per person in a local file. They can&rsquo;t be turned back into audio, and you can delete any of them.</p></div>
-      <div><h3>Consent</h3><p>No bot means nobody on the call can see it, so telling them is up to you. Copy a ready-made notice into the chat, list meetings it must never record, and have old meetings or audio deleted automatically.</p></div>
+      <div><h3>Voiceprints</h3><p>Saved only for people who agreed to it, as a short clip and a few hundred numbers in a local file. You can delete any of them, and a voice not heard for three years is deleted for you.</p></div>
+      <div><h3>Consent</h3><p>Everyone on a call should know it&rsquo;s being recorded. MeetingScribe gives you a notice for the chat and writes no notes until you confirm everyone was told. Each confirmation goes into a dated consent record. You can also list meetings it must never record, and have old meetings or audio deleted automatically.</p></div>
       <div><h3>Check for yourself</h3><p>Watch <code>nettop</code> on a Mac, or Resource Monitor on Windows, while a meeting is being processed with a local model. There are no connections to see.</p></div>
     </div>
   </section>

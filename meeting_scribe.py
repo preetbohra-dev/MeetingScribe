@@ -39,6 +39,7 @@ import concurrent.futures
 import datetime as dt
 import difflib
 import getpass
+import hashlib
 import json
 import logging
 import logging.handlers
@@ -46,6 +47,7 @@ import math
 import re
 import shlex
 import shutil
+import socket
 import ssl
 import subprocess
 import tempfile
@@ -747,6 +749,93 @@ class Recording:
 
 
 # --------------------------------------------------------------------------
+# Consent record
+# --------------------------------------------------------------------------
+
+CONSENT_WAIT_H = 24  # an unconfirmed recording is deleted this long after its call ends
+VOICE_KEEP_DAYS = 3 * 365  # a saved voice not heard for this long is deleted (BIPA's outer limit)
+consent_lock = threading.Lock()
+
+
+def consent_log_path(cfg):
+    return cfg["work_dir"] / "consent-log.jsonl"
+
+
+def log_consent(cfg, event, **fields):
+    """Append one entry to the consent record and return it. Entries are never edited or
+    removed, deleting a meeting keeps them, and each carries the hash of the line before it,
+    so a changed or missing line shows up in check_consent_log()."""
+    path = consent_log_path(cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with consent_lock:
+        lines = path.read_bytes().splitlines() if path.exists() else []
+        entry = {"time": dt.datetime.now().astimezone().isoformat(timespec="seconds"), "event": event,
+                 "user": getpass.getuser(), "computer": socket.gethostname(), **fields,
+                 "prev": hashlib.sha256(lines[-1] if lines else b"").hexdigest()}
+        with open(path, "a", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return entry
+
+
+def check_consent_log(cfg):
+    """(entries, problem): problem is None when every line still chains to the one before it."""
+    path = consent_log_path(cfg)
+    lines = path.read_bytes().splitlines() if path.exists() else []
+    entries, prev = [], b""
+    for n, line in enumerate(lines, 1):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            return entries, f"line {n} is not readable"
+        if entry.get("prev") != hashlib.sha256(prev).hexdigest():
+            return entries, f"line {n} does not follow line {n - 1}: something was changed or removed"
+        entries.append(entry)
+        prev = line
+    return entries, None
+
+
+def confirm_consent(cfg, d):
+    """You confirm that everyone in this meeting was told it is being recorded. Kept with the
+    meeting (consent.json) and in the consent record. Returns the entry."""
+    done = d / "consent.json"
+    if done.exists():
+        return json.loads(done.read_text(encoding="utf-8"))
+    meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
+    entry = log_consent(cfg, "told_everyone", meeting=d.name, title=meta.get("title"), source=meta.get("source"),
+                        call_started=meta.get("started_at"), call_ended=meta.get("ended_at"),
+                        during_call=meta.get("status") == "recording", notice=cfg["consent_notice"])
+    done.write_text(json.dumps(entry, ensure_ascii=False), encoding="utf-8")
+    (cfg["work_dir"] / "consent-changed").touch()  # the recorder queues it if the call is over
+    return entry
+
+
+def sweep_unconfirmed(cfg, now=None):
+    """Delete recordings nobody confirmed within CONSENT_WAIT_H of the call ending."""
+    now = now or dt.datetime.now().astimezone()
+    for p in sorted((cfg["work_dir"] / "sessions").glob("*/session.json")):
+        meta = json.loads(p.read_text(encoding="utf-8"))
+        if meta.get("status") != "needs_consent" or (p.parent / "consent.json").exists():
+            continue
+        ended = dt.datetime.fromisoformat(meta.get("ended_at") or meta["started_at"])
+        if now - (ended if ended.tzinfo else ended.astimezone()) >= dt.timedelta(hours=CONSENT_WAIT_H):
+            log_consent(cfg, "deleted_unconfirmed", meeting=p.parent.name, title=meta.get("title"),
+                        call_started=meta.get("started_at"), call_ended=meta.get("ended_at"))
+            shutil.rmtree(p.parent)
+            log.info("deleted %s: nobody confirmed that everyone was told", p.parent.name)
+
+
+def sweep_old_voices(cfg, now=None):
+    """Delete saved voices not heard for VOICE_KEEP_DAYS."""
+    now = now or dt.datetime.now()
+    lib = VoiceLibrary(cfg)
+    for name, v in list(lib.voices.items()):
+        last = max(v.get("last_heard", ""), v.get("agreed_at") or "", v["saved_at"])
+        if now - dt.datetime.fromisoformat(last).replace(tzinfo=None) >= dt.timedelta(days=VOICE_KEEP_DAYS):
+            lib.forget(name)
+            log_consent(cfg, "voice_deleted", person=name, reason=f"not heard for {VOICE_KEEP_DAYS} days")
+
+
+# --------------------------------------------------------------------------
 # Daemon
 # --------------------------------------------------------------------------
 
@@ -764,6 +853,7 @@ class Daemon:
         self.cfg = cfg
         self.paused_flag = cfg["work_dir"] / "paused"
         self.reload_flag = cfg["work_dir"] / "reload"
+        self.consent_flag = cfg["work_dir"] / "consent-changed"
         self.sessions = cfg["work_dir"] / "sessions"
         self.sessions.mkdir(parents=True, exist_ok=True)
         self.probe = plat.AudioProbe()
@@ -796,11 +886,24 @@ class Daemon:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             if meta.get("status") == "recording":  # we crashed or the computer lost power mid-call
                 sizes = [p.stat().st_size for p in meta_path.parent.glob("*.pcm")]
-                meta["status"] = "recorded"
+                meta["status"] = "recorded" if (meta_path.parent / "consent.json").exists() else "needs_consent"
                 meta["duration_s"] = round(max(sizes, default=0) / 2 / TARGET_SR, 1)
+                meta.setdefault("ended_at", dt.datetime.now().astimezone().isoformat(timespec="seconds"))
                 meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
             if meta.get("status") == "recorded":
                 log.info("re-queueing unprocessed session %s", meta_path.parent.name)
+                self.queue.append(meta_path.parent)
+        self.release_consented()
+
+    def release_consented(self):
+        """Queue the finished calls you have since confirmed everyone was told about."""
+        self.consent_flag.unlink(missing_ok=True)
+        for meta_path in sorted(self.sessions.glob("*/session.json")):
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if meta.get("status") == "needs_consent" and (meta_path.parent / "consent.json").exists():
+                meta["status"] = "recorded"
+                meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+                log.info("consent confirmed; queueing %s", meta_path.parent.name)
                 self.queue.append(meta_path.parent)
 
     def find_call(self, states):
@@ -883,6 +986,8 @@ class Daemon:
         """One pass of the loop: normally tick(); while the app has paused us, finish what
         is in hand but start nothing new. Settings are re-read between calls."""
         self.start_chores()
+        if self.consent_flag.exists():
+            self.release_consented()
         if self.reload_flag.exists() and not self.rec:
             self.reload_flag.unlink(missing_ok=True)
             self.cfg = load_config()
@@ -903,6 +1008,8 @@ class Daemon:
              "state": "recording" if r else "paused" if self.paused_flag.exists() else "watching",
              "service": r.service if r else None, "title": r.meta["title"] if r else None,
              "started_at": r.meta["started_at"] if r else None,
+             "session": r.dir.name if r else None,
+             "consented": bool(r and (r.dir / "consent.json").exists()),
              "warnings": r.warnings if r else [],
              "processing": self.processing.name if self.processing else None,
              "queued": len(self.queue)}
@@ -921,7 +1028,8 @@ class Daemon:
         self.rec = Recording(self.cfg, self.sessions / sid, app, service, title)
         self.rec.start()
         self.last_signal = time.monotonic()
-        notify(self.cfg, f"Recording {service} meeting{': ' + title if title else ''}. Make sure everyone knows.")
+        notify(self.cfg, f"Recording {service} meeting{': ' + title if title else ''}. "
+                         "Tell everyone, then confirm it in MeetingScribe.")
 
     def stop_recording(self, discard=False):
         rec, self.rec, self.mic_since = self.rec, None, None
@@ -931,6 +1039,12 @@ class Daemon:
         if discard or dur < self.cfg["min_meeting_s"]:
             log.info("discarding this recording")
             shutil.rmtree(rec.dir)
+            return
+        if not (rec.dir / "consent.json").exists():
+            rec.meta["status"] = "needs_consent"
+            rec._save_meta()
+            notify(self.cfg, "Meeting ended. Its notes wait until you confirm in MeetingScribe that everyone was told "
+                             f"it was recorded. Unconfirmed, it is deleted in {CONSENT_WAIT_H} hours.")
             return
         notify(self.cfg, "Meeting ended. Transcribing and summarizing locally…")
         self.queue.append(rec.dir)
@@ -967,10 +1081,11 @@ class Daemon:
 
 def run_chores(cfg):
     """The recorder's background jobs. Neither may take the recorder down with it."""
-    try:
-        sweep_retention(cfg)
-    except Exception:
-        log.exception("could not clean up old meetings")
+    for sweep in (sweep_retention, sweep_unconfirmed, sweep_old_voices):
+        try:
+            sweep(cfg)
+        except Exception:
+            log.exception("could not clean up (%s)", sweep.__name__)
     try:
         calendar = briefs.Briefs(sys.modules[__name__], cfg)
         calendar.sync()
@@ -1390,8 +1505,9 @@ class VoiceLibrary:
                 return max(known, name, key=len)  # "Anna" learned as "Anna Jones" keeps the full name
         return name
 
-    def add(self, name, clip, embedding):
-        """Save clip (16 kHz float mono) as this person's voice, replacing any earlier one."""
+    def add(self, name, clip, embedding, agreed_at):
+        """Save clip (16 kHz float mono) as this person's voice, replacing any earlier one.
+        agreed_at is when you confirmed they agreed to it."""
         self.dir.mkdir(parents=True, exist_ok=True)
         for known in [k for k in self.voices if same_person(k, name)]:
             self.forget(known, save=False)
@@ -1399,7 +1515,25 @@ class VoiceLibrary:
         write_wav(path, clip[:MAX_CLIP_S * TARGET_SR])
         self.voices[name] = {"file": path.name, "embedding": np.asarray(embedding, float).tolist(),
                              "model": self.cfg["voice_model"], "seconds": round(len(clip) / TARGET_SR, 1),
-                             "saved_at": dt.datetime.now().isoformat(timespec="seconds")}
+                             "saved_at": dt.datetime.now().isoformat(timespec="seconds"), "agreed_at": agreed_at}
+
+    def agreed(self, name):
+        """You confirm a voice saved before agreements were recorded was saved with consent."""
+        v = self.voices.get(name)
+        if v is None:
+            return None
+        v["agreed_at"] = log_consent(self.cfg, "voice_agreed", person=name, saved_at=v["saved_at"])["time"]
+        self.save()
+        return v["agreed_at"]
+
+    def heard(self, names):
+        """These people were recognized in a meeting just now, which restarts their keep time."""
+        stamp = dt.datetime.now().isoformat(timespec="seconds")
+        for n in names:
+            if n in self.voices:
+                self.voices[n]["last_heard"] = stamp
+        if any(n in self.voices for n in names):
+            self.save()
 
     def forget(self, name, save=True):
         v = self.voices.pop(name, None)
@@ -1420,8 +1554,8 @@ class VoiceLibrary:
             self.save()
 
     def ranked(self, vec):
-        """[(name, similarity)], best first."""
-        return sorted(((n, float(np.dot(vec, v["embedding"]))) for n, v in self.voices.items()),
+        """[(name, similarity)], best first. A voice nobody confirmed agreement for is not used."""
+        return sorted(((n, float(np.dot(vec, v["embedding"]))) for n, v in self.voices.items() if v.get("agreed_at")),
                       key=lambda x: -x[1])
 
 
@@ -2233,6 +2367,9 @@ def process_session(cfg, session_dir):
     me, others = clean_lines(cfg, me), clean_lines(cfg, others)
     me = mark_echo(cfg, me, others)
     meta["id"] = session_dir.name
+    consent = read_json(session_dir / "consent.json")
+    if consent:
+        meta["consent"] = {k: consent[k] for k in ("time", "user", "during_call")}
 
     screen_path = session_dir / "screen.json"
     looks = json.loads(screen_path.read_text(encoding="utf-8")) if screen_path.exists() else []
@@ -2247,6 +2384,7 @@ def process_session(cfg, session_dir):
                 heard = " ".join(s["text"] for s in me + others)
                 names, speakers = identify(cfg, centroids, seconds, library,
                                            screen_names.roster(looks, cfg["my_name"]), heard)
+                library.heard([n for n, s in speakers.items() if s["known"]])
                 others = split_by_speaker(others, centers, labels, names)
                 speakers, others = prune_voices(cfg, speakers, others)
                 for label, name in screen_names.votes(looks, me + others, cfg["my_name"]).items():
@@ -2393,6 +2531,10 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None, strict=False)
           f"**Source:** {meta.get('source', 'Microsoft Teams')} · " + (
               f"recorded and transcribed on this {plat.DEVICE}, summarized by company AI  " if cfg["llm_backend"] == "cloud"
               else f"recorded, transcribed and summarized on this {plat.DEVICE}  ")]
+    if meta.get("consent"):
+        c = meta["consent"]
+        md.append(f"**Consent:** {c['user']} confirmed everyone was told it was recorded, at "
+                  f"{dt.datetime.fromisoformat(c['time']):%H:%M} {'during' if c['during_call'] else 'after'} the call  ")
     if speakers:
         md.append("**Participants:** " + ", ".join(
             [cfg["my_name"]] + [participant_label(n, s) for n, s in speakers.items()]) + "  ")
@@ -4012,6 +4154,12 @@ def cmd_process(cfg, args):
     plat.background_process()
     plat.lower_priority()
     d = Path(args.session).expanduser().resolve()
+    meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
+    if meta.get("status") in ("recorded", "needs_consent") and not (d / "consent.json").exists():
+        meta["status"] = "needs_consent"  # notes are only written once you confirm everyone was told
+        (d / "session.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        log.info("%s waits for consent to be confirmed", d.name)
+        return
     try:
         process_session(cfg, d)
     except Exception:
@@ -4062,11 +4210,11 @@ def cmd_test_capture(cfg, args):
     print("Raw audio in", d)
 
 
-def find_session(cfg, ref):
+def find_session(cfg, ref, done_only=True):
     sessions = sorted(p.parent for p in (cfg["work_dir"] / "sessions").glob("*/session.json")
-                      if json.loads(p.read_text(encoding="utf-8")).get("status") == "done")
+                      if not done_only or json.loads(p.read_text(encoding="utf-8")).get("status") == "done")
     if not sessions:
-        sys.exit("no processed meetings yet")
+        sys.exit("no processed meetings yet" if done_only else "no meetings yet")
     if ref in (None, "latest"):
         return sessions[-1]
     hits = [s for s in sessions if ref in s.name]
@@ -4108,9 +4256,9 @@ def session_speakers(d):
             json.loads((d / "session.json").read_text(encoding="utf-8")))
 
 
-def name_speaker(cfg, d, label, name):
-    """Put a name on a voice in one meeting, and save the voice if it has a clean clip.
-    Returns a sentence for the user."""
+def name_speaker(cfg, d, label, name, agreed=False):
+    """Put a name on a voice in one meeting, and save the voice if it has a clean clip and you
+    confirm (agreed) that the person agreed to it. Returns a sentence for the user."""
     speakers, meta = session_speakers(d)
     if label not in speakers:
         raise ValueError(f"{label!r} is not a voice in {d.name}; voices: {list(speakers)}")
@@ -4121,15 +4269,18 @@ def name_speaker(cfg, d, label, name):
         raise ValueError(f"{name!r} is the name used for your own side of the meeting.")
     lib = VoiceLibrary(cfg)
     name = lib.canonical(name)
+    for known in speakers:  # someone already named in this meeting, whose voice may not be saved
+        if known != label and speakers[known]["known"] and same_person(known, name):
+            name = max(known, name, key=len)
     entry = speakers.pop(label)
     clip_path = d / "voices" / entry.get("sample", "?")
     saved = False
-    if clip_path.exists():
-        clip = read_wav(clip_path)
-        if len(clip) >= MIN_CLIP_S * TARGET_SR:
-            lib.add(name, clip, embed_clip(VoiceEncoder(cfg), clip))
-            lib.save()
-            saved = True
+    clip = read_wav(clip_path) if agreed and clip_path.exists() else []
+    if len(clip) >= MIN_CLIP_S * TARGET_SR:
+        stamp = log_consent(cfg, "voice_agreed", person=name, meeting=d.name, title=meta.get("title"))["time"]
+        lib.add(name, clip, embed_clip(VoiceEncoder(cfg), clip), stamp)
+        lib.save()
+        saved = True
     entry.update(known=True, confirmed=True)
     entry.pop("suggest", None)
     if name in speakers:  # two clusters were really the same person
@@ -4139,6 +4290,8 @@ def name_speaker(cfg, d, label, name):
     relabel_note(cfg, d, meta, speakers, label, name)
     if saved:
         return f"'{label}' is now '{name}'. Their voice is saved, so they can be recognized in future meetings."
+    if not agreed:
+        return f"'{label}' is now '{name}' in this meeting. Their voice was not saved, because you didn't confirm they agreed."
     return f"'{label}' is now '{name}' in this meeting. There was too little clean speech to save their voice."
 
 
@@ -4172,7 +4325,7 @@ def reject_name(cfg, d, label):
 def cmd_name_speaker(cfg, args):
     """Rename a voice in one meeting's notes and save it under that name."""
     try:
-        print(name_speaker(cfg, find_session(cfg, args.session), args.label, args.name))
+        print(name_speaker(cfg, find_session(cfg, args.session), args.label, args.name, args.agreed))
     except ValueError as e:
         sys.exit(str(e))
 
@@ -4217,12 +4370,35 @@ def cmd_voices(cfg, args):
     if args.forget:
         if not lib.forget(args.forget):
             sys.exit(f"no saved voice named {args.forget!r}")
+        log_consent(cfg, "voice_deleted", person=args.forget, reason="you asked")
         print("forgot", args.forget)
         return
+    if args.agreed:
+        if not lib.agreed(args.agreed):
+            sys.exit(f"no saved voice named {args.agreed!r}")
+        print(f"recorded that {args.agreed} agreed; their voice is used again")
+        return
     if not lib.voices:
-        print(f"No saved voices yet. Name a voice with: {plat.CTL} name \"Speaker 1\" \"Full Name\"")
+        print(f"No saved voices yet. Name a voice with: {plat.CTL} name \"Speaker 1\" \"Full Name\" --agreed")
     for name, v in sorted(lib.voices.items()):
-        print(f"  {name:30} {v['seconds']} s saved on {v['saved_at'][:10]}")
+        agreed = f"agreed {v['agreed_at'][:10]}" if v.get("agreed_at") else "no agreement recorded, not used"
+        print(f"  {name:30} {v['seconds']} s saved on {v['saved_at'][:10]}, {agreed}")
+
+
+def cmd_consent(cfg, args):
+    """Confirm everyone was told about a recording, or show the consent record."""
+    if args.confirm:
+        d = find_session(cfg, args.session, done_only=False)
+        e = confirm_consent(cfg, d)
+        print(f"Recorded at {e['time']} that everyone in {d.name} was told.")
+        return
+    entries, problem = check_consent_log(cfg)
+    for e in entries:
+        what = e.get("title") or e.get("person") or e.get("setting") or ""
+        print(f"  {e['time']}  {e['event']:20} {e['user']:12} {what}")
+    print(f"{len(entries)} {'entry' if len(entries) == 1 else 'entries'} in {consent_log_path(cfg)}")
+    if problem:
+        sys.exit(f"The record has been changed: {problem}")
 
 
 def cmd_refilter(cfg, args):
@@ -4296,9 +4472,10 @@ def cmd_rewrite(cfg, args):
     print(out.name)
 
 
-def delete_session(cfg, d):
-    """Removes the recording, the note, and its files."""
+def delete_session(cfg, d, reason="you asked"):
+    """Removes the recording, the note, and its files. The consent record keeps its entries."""
     meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
+    log_consent(cfg, "meeting_deleted", meeting=d.name, title=meta.get("title"), reason=reason)
     note = Path(meta["notes"]) if meta.get("notes") else None
     if note and note.parent == cfg["output_dir"]:
         for suffix in (".md", ".json", ".wav"):
@@ -4337,7 +4514,7 @@ def sweep_retention(cfg, now=None):
         return 0, 0
     whole, audio = retention_due(cfg, cfg["retain_days"], cfg["retain_audio_days"], now)
     for d in whole:
-        delete_session(cfg, d)
+        delete_session(cfg, d, f"older than {cfg['retain_days']} days")
     for d, note in audio:
         if note and note.parent == cfg["output_dir"]:
             note.with_suffix(".wav").unlink(missing_ok=True)
@@ -4692,13 +4869,19 @@ def main():
     p.add_argument("label")
     p.add_argument("name")
     p.add_argument("--session", default="latest", help="session id (or part of it); default latest")
+    p.add_argument("--agreed", action="store_true", help="they agreed to having their voice saved; without it only the note changes")
     p.set_defaults(fn=cmd_name_speaker)
+    p = sub.add_parser("consent", help="confirm everyone was told about a recording, or show the consent record")
+    p.add_argument("--confirm", action="store_true", help="everyone in the meeting was told it was recorded")
+    p.add_argument("--session", default="latest", help="session id (or part of it); default latest")
+    p.set_defaults(fn=cmd_consent)
     p = sub.add_parser("listen", help="play clips of unrecognized voices in a meeting")
     p.add_argument("label", nargs="?")
     p.add_argument("--session", default="latest")
     p.set_defaults(fn=cmd_listen)
     p = sub.add_parser("voices", help="list stored voiceprints")
     p.add_argument("--forget", metavar="NAME")
+    p.add_argument("--agreed", metavar="NAME", help="record that this person agreed to their saved voice")
     p.set_defaults(fn=cmd_voices)
     p = sub.add_parser("refilter", help="drop non-work lines from already processed meetings")
     p.add_argument("--session", help="session id (or part of it); default every unfiltered meeting")
