@@ -10,7 +10,6 @@ import json
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -46,10 +45,10 @@ def status(d):
 
 def test_each_entry_is_dated_signed_and_chained(cfg):
     first = ms.log_consent(cfg, "told_everyone", meeting="a")
-    second = ms.log_consent(cfg, "voice_agreed", person="Priya")
+    second = ms.log_consent(cfg, "not_recorded", title="Priya 1:1")
     assert first["user"] and first["computer"] and dt.datetime.fromisoformat(first["time"]).tzinfo
     entries, problem = ms.check_consent_log(cfg)
-    assert problem is None and [e["event"] for e in entries] == ["told_everyone", "voice_agreed"]
+    assert problem is None and [e["event"] for e in entries] == ["told_everyone", "not_recorded"]
     assert second["prev"] != first["prev"]
 
 
@@ -312,66 +311,58 @@ def test_deleting_a_meeting_keeps_its_lines_in_the_record(cfg):
     assert not d.exists() and [e["event"] for e in entries] == ["told_everyone", "meeting_deleted"]
 
 
-# -- saved voices
+# -- voices: none are kept between meetings
 
 
-@pytest.fixture
-def voices(cfg, monkeypatch):
-    class Encoder:
-        def embed(self, windows):
-            return np.tile(np.eye(8)[0], (len(windows), 1))
-    monkeypatch.setattr(ms, "VoiceEncoder", lambda _cfg: Encoder())
-    d = cfg["work_dir"] / "sessions" / "2026-11-08_100000"
-    (d / "voices").mkdir(parents=True)
-    ms.write_wav(d / "voices" / "Speaker 1.wav", np.ones(16000 * 5, np.float32) * 0.1)
-    sp = {"Speaker 1": {"centroid": [1.0] + [0.0] * 7, "seconds": 60, "known": False, "first": [3.0, "hi"], "sample": "Speaker 1.wav"}}
-    (d / "speakers.json").write_text(json.dumps(sp))
-    (d / "transcript.json").write_text(json.dumps([{"start": 3.0, "end": 4.0, "speaker": "Speaker 1", "text": "hi"}]))
-    (d / "session.json").write_text(json.dumps({"title": "Sync", "source": "Zoom", "status": "done",
-                                                "started_at": "2026-11-08T10:00:00+05:30", "duration_s": 600}))
+def test_saved_voices_from_an_earlier_version_are_deleted(cfg):
+    lib = cfg["work_dir"] / "voices"
+    lib.mkdir()
+    (lib / "Priya.wav").write_bytes(b"x")
+    (lib / "index.json").write_text(json.dumps({"Priya": {"file": "Priya.wav"}, "Tom": {"file": "Tom.wav"}}))
+    (cfg["work_dir"] / "voices.json").write_text("{}")
+    (cfg["work_dir"] / "voices.archived-20261108.json").write_text("{}")
+    d = session(cfg, status="done")
+    (d / "speakers.json").write_text(json.dumps({"Priya": {"known": True, "centroid": [0.1, 0.2], "seconds": 30}}))
+    ms.remove_saved_voices(cfg)
+    assert not lib.exists() and not list(cfg["work_dir"].glob("voices*.json"))
+    assert json.loads((d / "speakers.json").read_text()) == {"Priya": {"known": True, "seconds": 30}}
+    events = ms.check_consent_log(cfg)[0]
+    assert [(e["event"], e["person"]) for e in events] == [("voice_deleted", "Priya"), ("voice_deleted", "Tom")]
+    ms.remove_saved_voices(cfg)  # nothing left: nothing more is recorded
+    assert len(ms.check_consent_log(cfg)[0]) == 2
+
+
+def test_the_recorder_removes_saved_voices_when_it_starts(cfg, monkeypatch):
+    removed = []
+    monkeypatch.setattr(ms, "remove_saved_voices", lambda c: removed.append(c))
+    monkeypatch.setattr(ms.plat, "AudioProbe", Probe)
+    monkeypatch.setattr(ms, "start_tray", lambda *a: None)
+    monkeypatch.setattr(ms.plat, "run_loop", lambda s: (_ for _ in ()).throw(KeyboardInterrupt))
+    d = ms.Daemon(cfg)
+    d.check_permissions = lambda: None
+    with pytest.raises(KeyboardInterrupt):
+        d.run()
+    assert removed == [cfg]
+
+
+def clips(cfg, sid, started, speakers):
+    d = session(cfg, sid, status="done", started_at=started)
+    (d / "transcript.json").write_text("[]")
+    (d / "voices").mkdir()
+    (d / "voices" / "Speaker 1.wav").write_bytes(b"x")
+    (d / "speakers.json").write_text(json.dumps(speakers))
     return d
 
 
-def test_a_voice_is_not_saved_without_agreement(cfg, voices):
-    msg = ms.name_speaker(cfg, voices, "Speaker 1", "Priya")
-    assert "didn't confirm they agreed" in msg and ms.VoiceLibrary(cfg).voices == {}
-    assert "Priya" in json.loads((voices / "speakers.json").read_text())
-    assert ms.check_consent_log(cfg)[0] == []
-
-
-def test_a_voice_saved_with_agreement_is_recorded(cfg, voices):
-    assert "Their voice is saved" in ms.name_speaker(cfg, voices, "Speaker 1", "Priya", agreed=True)
-    v = ms.VoiceLibrary(cfg).voices["Priya"]
-    e = ms.check_consent_log(cfg)[0][-1]
-    assert e["event"] == "voice_agreed" and e["person"] == "Priya" and v["agreed_at"] == e["time"]
-
-
-def test_a_voice_without_agreement_is_never_matched(cfg):
-    lib = ms.VoiceLibrary(cfg)
-    clip = np.ones(16000 * 4, np.float32) * 0.1
-    lib.add("Old", clip, np.eye(8)[0], None)
-    lib.add("New", clip, np.eye(8)[1], "2026-11-01T09:00:00")
-    assert [n for n, _ in lib.ranked(np.eye(8)[0])] == ["New"]
-    assert lib.agreed("Old") and [n for n, _ in ms.VoiceLibrary(cfg).ranked(np.eye(8)[0])][0] == "Old"
-    assert lib.agreed("Nobody") is None
-    assert ms.check_consent_log(cfg)[0][-1]["event"] == "voice_agreed"
-
-
-def test_voices_not_heard_for_three_years_are_deleted(cfg):
-    lib = ms.VoiceLibrary(cfg)
-    clip = np.ones(16000 * 4, np.float32) * 0.1
-    lib.add("Gone", clip, np.eye(8)[0], "2022-01-01T09:00:00")
-    lib.add("Still", clip, np.eye(8)[1], "2022-01-01T09:00:00")
-    lib.add("Recent", clip, np.eye(8)[2], "2026-01-01T09:00:00")
-    for v in lib.voices.values():
-        v["saved_at"] = "2022-01-01T09:00:00"
-    lib.voices["Recent"]["saved_at"] = "2026-01-01T09:00:00"
-    lib.save()
-    ms.VoiceLibrary(cfg).heard(["Still"])
-    ms.sweep_old_voices(cfg, dt.datetime(2026, 11, 17))
-    assert sorted(ms.VoiceLibrary(cfg).voices) == ["Recent", "Still"]
-    e = ms.check_consent_log(cfg)[0][-1]
-    assert e["event"] == "voice_deleted" and e["person"] == "Gone"
+def test_voice_clips_go_once_everyone_is_named_or_after_30_days(cfg):
+    now = dt.datetime(2026, 11, 17, 12, 0, tzinfo=dt.timezone.utc)
+    unnamed = {"Speaker 1": {"known": False, "sample": "Speaker 1.wav"}}
+    waiting = clips(cfg, "2026-11-10_100000", "2026-11-10T10:00:00+00:00", unnamed)
+    old = clips(cfg, "2026-10-01_100000", "2026-10-01T10:00:00+00:00", unnamed)
+    named = clips(cfg, "2026-11-16_100000", "2026-11-16T10:00:00+00:00", {"Priya": {"known": True, "sample": "Priya.wav"}})
+    ms.sweep_voice_clips(cfg, now)
+    assert (waiting / "voices").exists() and not (old / "voices").exists() and not (named / "voices").exists()
+    assert "sample" not in json.loads((old / "speakers.json").read_text())["Speaker 1"]
 
 
 # -- the app
@@ -399,24 +390,13 @@ def test_app_confirms_and_shows_the_record(api, cfg):
         api.confirm_consent("../x")
 
 
-def test_app_passes_agreement_only_when_ticked(api, cfg, monkeypatch):
+def test_app_names_a_voice_for_this_meeting_only(api, cfg, monkeypatch):
     session(cfg)
     sent = []
     monkeypatch.setattr(app, "run_command", lambda *a, **k: (sent.append(a), (True, "ok"))[1])
-    api.name_voice("2026-11-08_100000", "Speaker 1", "Priya", True)
-    api.name_voice("2026-11-08_100000", "Speaker 1", "Priya", False)
-    api.name_voice("2026-11-08_100000", "Speaker 1", "Priya", "yes")
-    assert ["--agreed" in a for a in sent] == [True, False, False]
-
-
-def test_app_people_show_agreement_and_forgetting_is_recorded(api, cfg):
-    lib = ms.VoiceLibrary(cfg)
-    lib.add("Old", np.ones(16000 * 4, np.float32) * 0.1, np.eye(8)[0], None)
-    lib.save()
-    assert api.people()[0]["agreed_at"] is None
-    assert api.person_agreed("Old") and api.people()[0]["agreed_at"]
-    assert api.forget_person("Old") is True and api.forget_person("Old") is False
-    assert [e["event"] for e in ms.check_consent_log(cfg)[0]] == ["voice_agreed", "voice_deleted"]
+    api.name_voice("2026-11-08_100000", "Speaker 1", "Priya")
+    assert sent == [("name-speaker", "Speaker 1", "Priya", "--session", "2026-11-08_100000")]
+    assert not any(hasattr(api, n) for n in ("people", "person_clip", "forget_person", "person_agreed"))
 
 
 # -- the banner

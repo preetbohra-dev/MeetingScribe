@@ -19,7 +19,7 @@ Unless you choose company AI (llm_backend = "cloud"), recording and processing n
 talk to a remote host. Model loading runs with HF_HUB_OFFLINE=1, and the Ollama backend
 refuses any non-loopback URL. The other network traffic is the `jira` command, only to the
 [jira].base_url you set, and what you choose to send with a connector (connectors.py). With company AI, transcript text goes to the provider
-you agreed to; audio, voiceprints and screen pictures never leave the computer. A task
+you agreed to; audio and screen pictures never leave the computer. A task
 you hand to the AI (task_agent.py) also sends code to that provider and pushes draft PRs.
 """
 
@@ -120,15 +120,10 @@ DEFAULTS = {
     # note. Set True to delete them instead.
     "drop_suspect_lines": False,
     "vocabulary": {},  # [vocabulary] table: words the transcriber gets wrong -> the right spelling
-    "speaker_id": True,  # split the Others track by voice and match known voiceprints
+    "speaker_id": True,  # tell the voices on the Others track apart, within one meeting; nothing about a voice is kept
     "voice_model": "Wespeaker/wespeaker-voxceleb-resnet34-LM",  # ONNX, same on both systems
     "speaker_cluster_threshold": 0.6,  # cosine distance; lower = more, finer speakers
     # Calibrated on 25 real voices through Opus: at 0.5 strangers took a saved person's name.
-    "speaker_match_threshold": 0.7,  # cosine similarity needed to reuse a saved name unasked
-    "speaker_match_margin": 0.1,  # ...and this far ahead of the next saved voice
-    "speaker_match_min_seconds": 20,  # ...with at least this much of the voice to go on
-    "speaker_suggest_threshold": 0.55,  # below the bar above but this close: offered as "maybe"
-    "speaker_require_attendance": True,  # a voice match alone never puts a name in a note
     # Tuned on labelled 3 and 6 minute meetings: 0.7 left one person split in two; 0.5-0.65
     # never did. A floor of 15 s lost quiet people from short meetings without removing errors.
     "speaker_merge_similarity": 0.6,  # clusters whose voices are this similar are one person
@@ -189,7 +184,7 @@ CLOUD_DEFAULTS = {
     "ca_bundle": "",
 }
 CLOUD_FIELDS = ("provider", "model", "base_url", "region", "project", "resource")
-AI_NOTICE = ("Meeting transcripts, including what other people said, will be sent as text to {}. Audio, voiceprints and "
+AI_NOTICE = ("Meeting transcripts, including what other people said, will be sent as text to {}. Audio and "
              "screen pictures stay on this computer. You are responsible for your company's approval of this.")
 
 log = logging.getLogger("meetingscribe")
@@ -200,8 +195,7 @@ DISCLAIMER = """MeetingScribe: terms of use
 MeetingScribe is provided "as is", without warranty of any kind. By using it you accept that:
 
 * You alone are responsible for how you use it: for telling everyone in a meeting that it is
-  being recorded and getting their consent where required, for consent to keep short clips
-  of named people's voices and voiceprints made from them (biometric data), for what you push to Jira, and for following every law,
+  being recorded and getting their consent where required, for what you push to Jira, and for following every law,
   regulation and company policy that applies to you and the people you record (for example
   call-recording consent laws, GDPR, BIPA and your employer's rules).
 * The developer, and the developer's employer, are not responsible or liable for your use of
@@ -753,7 +747,7 @@ class Recording:
 # --------------------------------------------------------------------------
 
 CONSENT_WAIT_H = 24  # an unconfirmed recording is deleted this long after its call ends
-VOICE_KEEP_DAYS = 3 * 365  # a saved voice not heard for this long is deleted (BIPA's outer limit)
+CLIP_KEEP_DAYS = 30  # a meeting's clips of unnamed voices are deleted after this long, named or not
 consent_lock = threading.Lock()
 
 
@@ -854,15 +848,47 @@ def sweep_unconfirmed(cfg, now=None):
             log.info("deleted %s: nobody confirmed that everyone was told", p.parent.name)
 
 
-def sweep_old_voices(cfg, now=None):
-    """Delete saved voices not heard for VOICE_KEEP_DAYS."""
-    now = now or dt.datetime.now()
-    lib = VoiceLibrary(cfg)
-    for name, v in list(lib.voices.items()):
-        last = max(v.get("last_heard", ""), v.get("agreed_at") or "", v["saved_at"])
-        if now - dt.datetime.fromisoformat(last).replace(tzinfo=None) >= dt.timedelta(days=VOICE_KEEP_DAYS):
-            lib.forget(name)
-            log_consent(cfg, "voice_deleted", person=name, reason=f"not heard for {VOICE_KEEP_DAYS} days")
+def drop_voice_clips(d, speakers):
+    """Delete a meeting's voice clips, and the note of them in speakers."""
+    shutil.rmtree(d / "voices", ignore_errors=True)
+    for s in speakers.values():
+        s.pop("sample", None)
+        s.pop("centroid", None)
+    (d / "speakers.json").write_text(json.dumps(speakers), encoding="utf-8")
+
+
+def sweep_voice_clips(cfg, now=None):
+    """Clips of voices are kept only to let you hear who someone was: until every voice in the
+    meeting is named, and never longer than CLIP_KEEP_DAYS."""
+    now = now or dt.datetime.now().astimezone()
+    for d, meta in done_sessions(cfg):
+        if not (d / "voices").exists():
+            continue
+        speakers = read_json(d / "speakers.json") or {}
+        if older_than(meta, CLIP_KEEP_DAYS, now) or all(s.get("known") for s in speakers.values()):
+            drop_voice_clips(d, speakers)
+
+
+def remove_saved_voices(cfg):
+    """MeetingScribe no longer keeps anyone's voice between meetings. Deletes the saved voice
+    library an earlier version made (and its older archives), and the voice fingerprints
+    earlier versions left in each meeting. Each deleted voice goes into the consent record."""
+    lib = cfg["work_dir"] / "voices"
+    index = read_json(lib / "index.json") or {}
+    for name in sorted(index):
+        log_consent(cfg, "voice_deleted", person=name, reason="MeetingScribe no longer saves voices")
+    if lib.exists():
+        shutil.rmtree(lib, ignore_errors=True)
+    for old in [cfg["work_dir"] / "voices.json", *cfg["work_dir"].glob("voices.archived-*.json")]:
+        old.unlink(missing_ok=True)
+    for p in (cfg["work_dir"] / "sessions").glob("*/speakers.json"):
+        speakers = read_json(p) or {}
+        if any("centroid" in s for s in speakers.values()):
+            for s in speakers.values():
+                s.pop("centroid", None)
+            p.write_text(json.dumps(speakers), encoding="utf-8")
+    if index:
+        log.info("deleted %d saved voice(s): MeetingScribe no longer saves voices", len(index))
 
 
 # --------------------------------------------------------------------------
@@ -1150,6 +1176,10 @@ class Daemon:
     def run(self):
         threading.Thread(target=self.check_permissions, daemon=True).start()  # a permission prompt can wait for a long time, and the app must still open
         self.recover()
+        try:
+            remove_saved_voices(self.cfg)
+        except Exception:
+            log.exception("could not remove saved voices")
         log.info("daemon started; watching %s", ", ".join(a["name"] for a in self.apps))
         start_tray(self.cfg, self)
         try:
@@ -1168,7 +1198,7 @@ class Daemon:
 
 def run_chores(cfg):
     """The recorder's background jobs. Neither may take the recorder down with it."""
-    for sweep in (sweep_retention, sweep_unconfirmed, sweep_old_voices):
+    for sweep in (sweep_retention, sweep_unconfirmed, sweep_voice_clips):
         try:
             sweep(cfg)
         except Exception:
@@ -1490,11 +1520,11 @@ def transcribe_track(cfg, audio, speaker):
 
 
 # --------------------------------------------------------------------------
-# Speaker identification: voice embeddings -> clusters -> voiceprint library
+# Telling voices apart: voice embeddings -> clusters, within one meeting. Nothing is kept.
 # --------------------------------------------------------------------------
 
 EMBED_WIN_S, EMBED_HOP_S = 2.0, 1.0
-# A window needs this much actual speech to shape a voice or a voiceprint. Shorter
+# A window needs this much actual speech to shape a voice. Shorter
 # ones ("okay", "mm-hmm", a breath) mostly fingerprint the Teams codec and room
 # noise, so they look alike across people: they join the closest voice afterwards.
 SOLID_VOICED_S = 1.2
@@ -1563,99 +1593,6 @@ def same_person(a, b):
     return bool(x) and bool(y) and x[0] == y[0] and (len(x) == 1 or len(y) == 1 or x == y)
 
 
-MIN_CLIP_S, MAX_CLIP_S = 3, 12  # a saved voice needs this much clean speech, and no more helps
-
-
-class VoiceLibrary:
-    """Saved voices in work_dir/voices/: a short WAV of each person from a meeting where you
-    confirmed their name, and index.json with {name: {"file", "embedding", "model", ...}}.
-    An entry changes only when you name someone. Matches never refine it, because a wrong
-    match would otherwise be averaged in and spread to every later meeting."""
-
-    def __init__(self, cfg):
-        self.cfg, self.dir = cfg, cfg["work_dir"] / "voices"
-        self.path = self.dir / "index.json"
-        archive_old_voiceprints(cfg)
-        self.voices = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {}
-
-    def save(self):
-        self.dir.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.voices), encoding="utf-8")
-        tmp.replace(self.path)
-
-    def canonical(self, name):
-        """The saved spelling of this person, or name itself if there is none."""
-        name = " ".join(name.split())
-        for known in self.voices:
-            if same_person(known, name):
-                return max(known, name, key=len)  # "Anna" learned as "Anna Jones" keeps the full name
-        return name
-
-    def add(self, name, clip, embedding, agreed_at):
-        """Save clip (16 kHz float mono) as this person's voice, replacing any earlier one.
-        agreed_at is when you confirmed they agreed to it."""
-        self.dir.mkdir(parents=True, exist_ok=True)
-        for known in [k for k in self.voices if same_person(k, name)]:
-            self.forget(known, save=False)
-        path = self.dir / f"{safe_filename(name)}.wav"
-        write_wav(path, clip[:MAX_CLIP_S * TARGET_SR])
-        self.voices[name] = {"file": path.name, "embedding": np.asarray(embedding, float).tolist(),
-                             "model": self.cfg["voice_model"], "seconds": round(len(clip) / TARGET_SR, 1),
-                             "saved_at": dt.datetime.now().isoformat(timespec="seconds"), "agreed_at": agreed_at}
-
-    def agreed(self, name):
-        """You confirm a voice saved before agreements were recorded was saved with consent."""
-        v = self.voices.get(name)
-        if v is None:
-            return None
-        v["agreed_at"] = log_consent(self.cfg, "voice_agreed", person=name, saved_at=v["saved_at"])["time"]
-        self.save()
-        return v["agreed_at"]
-
-    def heard(self, names):
-        """These people were recognized in a meeting just now, which restarts their keep time."""
-        stamp = dt.datetime.now().isoformat(timespec="seconds")
-        for n in names:
-            if n in self.voices:
-                self.voices[n]["last_heard"] = stamp
-        if any(n in self.voices for n in names):
-            self.save()
-
-    def forget(self, name, save=True):
-        v = self.voices.pop(name, None)
-        if v is None:
-            return False
-        (self.dir / v["file"]).unlink(missing_ok=True)
-        if save:
-            self.save()
-        return True
-
-    def sync(self, encoder):
-        """Recompute any embedding made by a different voice model from its saved clip."""
-        stale = [n for n, v in self.voices.items() if v["model"] != self.cfg["voice_model"]]
-        for name in stale:
-            self.voices[name]["embedding"] = embed_clip(encoder, read_wav(self.dir / self.voices[name]["file"])).tolist()
-            self.voices[name]["model"] = self.cfg["voice_model"]
-        if stale:
-            self.save()
-
-    def ranked(self, vec):
-        """[(name, similarity)], best first. A voice nobody confirmed agreement for is not used."""
-        return sorted(((n, float(np.dot(vec, v["embedding"]))) for n, v in self.voices.items() if v.get("agreed_at")),
-                      key=lambda x: -x[1])
-
-
-def archive_old_voiceprints(cfg):
-    """voices.json is the old averaged-voiceprint library, which could absorb wrong matches.
-    It is kept under a new name, unused, so everyone gets named afresh."""
-    old = cfg["work_dir"] / "voices.json"
-    if old.exists():
-        new = cfg["work_dir"] / f"voices.archived-{dt.date.today():%Y%m%d}.json"
-        old.replace(new)
-        log.warning("old voiceprints moved to %s; people need naming again", new.name)
-
-
 def write_wav(path, x):
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
@@ -1667,14 +1604,6 @@ def write_wav(path, x):
 def read_wav(path):
     with wave.open(str(path), "rb") as w:
         return np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768
-
-
-def embed_clip(encoder, clip):
-    """One unit vector for a clip: the mean of its 2 s windows, one second apart."""
-    w, hop = int(EMBED_WIN_S * TARGET_SR), int(EMBED_HOP_S * TARGET_SR)
-    clip = np.pad(clip, (0, max(0, w - len(clip))))
-    e = encoder.embed([clip[i:i + w] for i in range(0, len(clip) - w + 1, hop)]).mean(axis=0)
-    return e / np.linalg.norm(e)
 
 
 def average_linkage_clusters(emb, t):
@@ -1757,7 +1686,7 @@ def diarize(cfg, audio, encoder):
         labels[~solid] = np.argmax(emb[~solid] @ cents.T, axis=1)
     centroids, seconds = {}, {}
     for k in sorted(set(labels.tolist())):
-        c = se[sl == k].mean(axis=0)  # voiceprints come from solid speech only
+        c = se[sl == k].mean(axis=0)  # from solid speech only
         centroids[k] = c / np.linalg.norm(c)
         seconds[k] = float((labels == k).sum() * EMBED_HOP_S)
     return np.array(centers), labels, centroids, seconds
@@ -1799,43 +1728,14 @@ def tidy_clusters(cfg, emb, labels):
     return out
 
 
-def attended(name, roster, heard):
-    """Evidence that this person was in the meeting: a matching first name among the names
-    seen on screen, or their first name said aloud."""
-    first = name.split()[0].casefold()
-    return (any(r.split()[0].casefold() == first for r in roster if r.split())
-            or re.search(rf"\b{re.escape(first)}\b", heard.casefold()) is not None)
-
-
-def identify(cfg, centroids, seconds, library, roster=(), heard=""):
-    """Map cluster ids to labels. A voice gets a saved person's name only when the match is
-    beyond doubt: high similarity, clear of the runner-up, enough speech to judge, and
-    evidence that the person attended. Anything less stays "Speaker N" and the name becomes
-    a suggestion for you to confirm. A second cluster that clearly is someone already placed
-    joins them, so one person cannot appear twice."""
-    names, info, offered, n_unknown = {}, {}, set(), 0
-    for k in sorted(centroids, key=lambda k: -seconds[k]):
-        ranked = library.ranked(centroids[k])
-        best, sim = ranked[0] if ranked else (None, -1.0)
-        clear = len(ranked) < 2 or sim - ranked[1][1] >= cfg["speaker_match_margin"]
-        strong = best is not None and sim >= cfg["speaker_match_threshold"] and clear
-        if strong and best in info:
-            names[k] = best
-            info[best]["seconds"] += round(seconds[k])
-            continue
-        if (strong and seconds[k] >= cfg["speaker_match_min_seconds"]
-                and (not cfg["speaker_require_attendance"] or attended(best, roster, heard))):
-            names[k] = best
-            info[best] = {"centroid": centroids[k].tolist(), "seconds": round(seconds[k]),
-                          "known": True, "similarity": round(sim, 3)}
-            continue
-        n_unknown += 1
-        names[k] = f"Speaker {n_unknown}"
-        info[names[k]] = {"centroid": centroids[k].tolist(), "seconds": round(seconds[k]),
-                          "known": False, "similarity": round(sim, 3) if best else None}
-        if best and sim >= cfg["speaker_suggest_threshold"] and best not in offered and best not in info:
-            offered.add(best)
-            info[names[k]]["suggest"] = {"name": best, "why": ["voice"], "score": round(sim, 3)}
+def identify(centroids, seconds):
+    """Map cluster ids to "Speaker N", the most talkative first. Voices are only told apart
+    within this meeting: who someone is comes from you, or from a name seen on screen or said
+    aloud, and is only a suggestion until you confirm it."""
+    names, info = {}, {}
+    for n, k in enumerate(sorted(centroids, key=lambda k: -seconds[k]), 1):
+        names[k] = f"Speaker {n}"
+        info[names[k]] = {"centroid": centroids[k].tolist(), "seconds": round(seconds[k]), "known": False}
     return names, info
 
 
@@ -2464,19 +2364,14 @@ def process_session(cfg, session_dir):
     if cfg["speaker_id"] and others:
         try:
             log.info("identifying speakers on the %s track", cfg["others_name"])
-            encoder, library = VoiceEncoder(cfg), VoiceLibrary(cfg)
-            library.sync(encoder)
-            centers, labels, centroids, seconds = diarize(cfg, sysa, encoder)
+            centers, labels, centroids, seconds = diarize(cfg, sysa, VoiceEncoder(cfg))
             if len(centers):
-                heard = " ".join(s["text"] for s in me + others)
-                names, speakers = identify(cfg, centroids, seconds, library,
-                                           screen_names.roster(looks, cfg["my_name"]), heard)
-                library.heard([n for n, s in speakers.items() if s["known"]])
+                names, speakers = identify(centroids, seconds)
                 others = split_by_speaker(others, centers, labels, names)
                 speakers, others = prune_voices(cfg, speakers, others)
                 for label, name in screen_names.votes(looks, me + others, cfg["my_name"]).items():
                     offer_name(speakers, label, name, "screen")
-                log.info("speakers: %s", {n: (s["seconds"], s["similarity"], s.get("suggest", {}).get("name"))
+                log.info("speakers: %s", {n: (s["seconds"], s.get("suggest", {}).get("name"))
                                           for n, s in speakers.items()})
         except Exception:
             log.exception("speaker identification failed; falling back to '%s'",
@@ -2510,6 +2405,8 @@ def process_session(cfg, session_dir):
             save_voice_samples(session_dir, sysa, segments, speakers)
         except Exception:
             log.exception("could not save voice samples")
+    for s in speakers.values():
+        s.pop("centroid", None)  # a voice's fingerprint is never kept
     (session_dir / "speakers.json").write_text(json.dumps(speakers), encoding="utf-8")
 
     turns = merge_turns(segments)
@@ -4346,9 +4243,9 @@ def session_speakers(d):
             json.loads((d / "session.json").read_text(encoding="utf-8")))
 
 
-def name_speaker(cfg, d, label, name, agreed=False):
-    """Put a name on a voice in one meeting, and save the voice if it has a clean clip and you
-    confirm (agreed) that the person agreed to it. Returns a sentence for the user."""
+def name_speaker(cfg, d, label, name):
+    """Put a name on a voice in one meeting. Nothing about the voice is kept for later meetings.
+    Once every voice is named, the meeting's voice clips are deleted. Returns a sentence for the user."""
     speakers, meta = session_speakers(d)
     if label not in speakers:
         raise ValueError(f"{label!r} is not a voice in {d.name}; voices: {list(speakers)}")
@@ -4357,32 +4254,22 @@ def name_speaker(cfg, d, label, name, agreed=False):
         raise ValueError("That is not a name.")
     if same_person(name, cfg["my_name"]):
         raise ValueError(f"{name!r} is the name used for your own side of the meeting.")
-    lib = VoiceLibrary(cfg)
-    name = lib.canonical(name)
-    for known in speakers:  # someone already named in this meeting, whose voice may not be saved
+    for known in speakers:  # someone already named in this meeting
         if known != label and speakers[known]["known"] and same_person(known, name):
             name = max(known, name, key=len)
     entry = speakers.pop(label)
-    clip_path = d / "voices" / entry.get("sample", "?")
-    saved = False
-    clip = read_wav(clip_path) if agreed and clip_path.exists() else []
-    if len(clip) >= MIN_CLIP_S * TARGET_SR:
-        stamp = log_consent(cfg, "voice_agreed", person=name, meeting=d.name, title=meta.get("title"))["time"]
-        lib.add(name, clip, embed_clip(VoiceEncoder(cfg), clip), stamp)
-        lib.save()
-        saved = True
     entry.update(known=True, confirmed=True)
     entry.pop("suggest", None)
     if name in speakers:  # two clusters were really the same person
         entry["seconds"] += speakers[name]["seconds"]
     speakers[name] = entry
+    for s in speakers.values():
+        s.pop("centroid", None)  # left by an earlier version
     (d / "speakers.json").write_text(json.dumps(speakers), encoding="utf-8")
     relabel_note(cfg, d, meta, speakers, label, name)
-    if saved:
-        return f"'{label}' is now '{name}'. Their voice is saved, so they can be recognized in future meetings."
-    if not agreed:
-        return f"'{label}' is now '{name}' in this meeting. Their voice was not saved, because you didn't confirm they agreed."
-    return f"'{label}' is now '{name}' in this meeting. There was too little clean speech to save their voice."
+    if all(s["known"] for s in speakers.values()):
+        drop_voice_clips(d, speakers)
+    return f"'{label}' is now '{name}' in this meeting."
 
 
 def reject_name(cfg, d, label):
@@ -4415,7 +4302,7 @@ def reject_name(cfg, d, label):
 def cmd_name_speaker(cfg, args):
     """Rename a voice in one meeting's notes and save it under that name."""
     try:
-        print(name_speaker(cfg, find_session(cfg, args.session), args.label, args.name, args.agreed))
+        print(name_speaker(cfg, find_session(cfg, args.session), args.label, args.name))
     except ValueError as e:
         sys.exit(str(e))
 
@@ -4453,26 +4340,6 @@ def cmd_listen(cfg, args):
         except KeyboardInterrupt:
             print("   (skipped)")
         print(f'   name it:  {plat.CTL} name "{n}" "Full Name"')
-
-
-def cmd_voices(cfg, args):
-    lib = VoiceLibrary(cfg)
-    if args.forget:
-        if not lib.forget(args.forget):
-            sys.exit(f"no saved voice named {args.forget!r}")
-        log_consent(cfg, "voice_deleted", person=args.forget, reason="you asked")
-        print("forgot", args.forget)
-        return
-    if args.agreed:
-        if not lib.agreed(args.agreed):
-            sys.exit(f"no saved voice named {args.agreed!r}")
-        print(f"recorded that {args.agreed} agreed; their voice is used again")
-        return
-    if not lib.voices:
-        print(f"No saved voices yet. Name a voice with: {plat.CTL} name \"Speaker 1\" \"Full Name\" --agreed")
-    for name, v in sorted(lib.voices.items()):
-        agreed = f"agreed {v['agreed_at'][:10]}" if v.get("agreed_at") else "no agreement recorded, not used"
-        print(f"  {name:30} {v['seconds']} s saved on {v['saved_at'][:10]}, {agreed}")
 
 
 def cmd_banner(cfg, args):
@@ -4964,7 +4831,6 @@ def main():
     p.add_argument("label")
     p.add_argument("name")
     p.add_argument("--session", default="latest", help="session id (or part of it); default latest")
-    p.add_argument("--agreed", action="store_true", help="they agreed to having their voice saved; without it only the note changes")
     p.set_defaults(fn=cmd_name_speaker)
     sub.add_parser("banner", help="the on-screen notice shown while a call is asked about or recorded").set_defaults(fn=cmd_banner)
     p = sub.add_parser("consent", help="confirm everyone was told about a recording, or show the consent record")
@@ -4975,10 +4841,6 @@ def main():
     p.add_argument("label", nargs="?")
     p.add_argument("--session", default="latest")
     p.set_defaults(fn=cmd_listen)
-    p = sub.add_parser("voices", help="list stored voiceprints")
-    p.add_argument("--forget", metavar="NAME")
-    p.add_argument("--agreed", metavar="NAME", help="record that this person agreed to their saved voice")
-    p.set_defaults(fn=cmd_voices)
     p = sub.add_parser("refilter", help="drop non-work lines from already processed meetings")
     p.add_argument("--session", help="session id (or part of it); default every unfiltered meeting")
     p.add_argument("--force", action="store_true", help="also re-filter meetings already filtered")

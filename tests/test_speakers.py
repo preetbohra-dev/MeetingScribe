@@ -44,92 +44,22 @@ def cfg(tmp_path, monkeypatch):
     return c
 
 
-def library(cfg, **people):
-    """A saved-voice library; people maps a name to the index of its embedding axis."""
-    lib = ms.VoiceLibrary(cfg)
-    clip = np.ones(16000 * 4, np.float32) * 0.1
-    for name, i in people.items():
-        lib.add(name, clip, unit(i), "2026-11-01T09:00:00+05:30")
-    lib.save()
-    return ms.VoiceLibrary(cfg)
+# -- telling voices apart: within one meeting, never by a saved voice
 
 
-# -- deciding what a voice is called
+def test_every_voice_starts_unnamed_most_talkative_first():
+    names, info = ms.identify({0: unit(0), 1: unit(1), 2: unit(2)}, {0: 30, 1: 120, 2: 60})
+    assert names == {1: "Speaker 1", 2: "Speaker 2", 0: "Speaker 3"}
+    assert all(i["known"] is False and "suggest" not in i for i in info.values())
 
 
-def test_stranger_below_the_bar_is_not_named(cfg):
-    lib = library(cfg, Priya=0)
-    names, info = ms.identify(cfg, {0: blend(0, 9, 0.62)}, {0: 120}, lib, heard="thanks priya")
-    assert names[0] == "Speaker 1"
-    assert info["Speaker 1"]["known"] is False
-
-
-def test_old_threshold_case_stays_unnamed(cfg):
-    """0.51 was enough under the old threshold, and is how strangers got names."""
-    lib = library(cfg, Priya=0)
-    _, info = ms.identify(cfg, {0: blend(0, 9, 0.51)}, {0: 120}, lib, heard="priya")
-    assert "Priya" not in info
-
-
-def test_strong_match_with_attendance_is_named(cfg):
-    lib = library(cfg, Priya=0)
-    names, info = ms.identify(cfg, {0: blend(0, 9, 0.85)}, {0: 120}, lib, roster=["Priya Shah"])
-    assert names[0] == "Priya" and info["Priya"]["known"] is True
-
-
-def test_strong_match_without_attendance_is_only_a_suggestion(cfg):
-    lib = library(cfg, Priya=0)
-    names, info = ms.identify(cfg, {0: blend(0, 9, 0.9)}, {0: 120}, lib, roster=["Tom Berg"], heard="nothing here")
-    assert names[0] == "Speaker 1"
-    assert info["Speaker 1"]["suggest"]["name"] == "Priya"
-
-
-def test_attendance_requirement_can_be_switched_off(cfg):
-    cfg["speaker_require_attendance"] = False
-    lib = library(cfg, Priya=0)
-    names, _ = ms.identify(cfg, {0: blend(0, 9, 0.9)}, {0: 120}, lib)
-    assert names[0] == "Priya"
-
-
-def test_name_said_aloud_counts_as_attendance(cfg):
-    lib = library(cfg, Priya=0)
-    names, _ = ms.identify(cfg, {0: blend(0, 9, 0.9)}, {0: 120}, lib, heard="Thanks Priya, that helps")
-    assert names[0] == "Priya"
-
-
-def test_two_close_candidates_are_not_decided(cfg):
-    lib = library(cfg, Priya=0, Tom=1)
-    v = 0.74 * unit(0) + 0.67 * unit(1)
-    v /= np.linalg.norm(v)
-    names, info = ms.identify(cfg, {0: v}, {0: 120}, lib, heard="priya tom")
-    assert names[0] == "Speaker 1"
-    assert info["Speaker 1"]["suggest"]["name"] == "Priya"
-
-
-def test_too_little_speech_is_not_decided(cfg):
-    lib = library(cfg, Priya=0)
-    names, _ = ms.identify(cfg, {0: blend(0, 9, 0.9)}, {0: 8}, lib, heard="priya")
-    assert names[0] == "Speaker 1"
-
-
-def test_two_clusters_of_one_person_become_one(cfg):
-    lib = library(cfg, Priya=0)
-    names, info = ms.identify(cfg, {0: blend(0, 9, 0.9), 1: blend(0, 8, 0.85)}, {0: 100, 1: 30}, lib, heard="priya")
-    assert names == {0: "Priya", 1: "Priya"}
-    assert len(info) == 1 and info["Priya"]["seconds"] == 130
-
-
-def test_matching_never_changes_a_saved_voice(cfg):
-    lib = library(cfg, Priya=0)
-    before = json.dumps(lib.voices)
-    ms.identify(cfg, {0: blend(0, 9, 0.95)}, {0: 120}, lib, heard="priya")
-    assert json.dumps(ms.VoiceLibrary(cfg).voices) == before
-
-
-def test_a_name_is_suggested_once(cfg):
-    lib = library(cfg, Priya=0)
-    _, info = ms.identify(cfg, {0: blend(0, 9, 0.6), 1: blend(0, 8, 0.58)}, {0: 100, 1: 90}, lib)
-    assert [i.get("suggest", {}).get("name") for i in info.values()].count("Priya") == 1
+def test_nothing_about_a_voice_is_kept_after_processing(cfg, tmp_path):
+    """No library of voices exists to match against, and a meeting keeps no voice fingerprint."""
+    assert not hasattr(ms, "VoiceLibrary") and not hasattr(ms, "embed_clip")
+    d, _ = meeting(cfg)
+    ms.name_speaker(cfg, d, "Speaker 1", "Priya Shah")
+    assert not (cfg["work_dir"] / "voices").exists()
+    assert all("centroid" not in s for s in json.loads((d / "speakers.json").read_text()).values())
 
 
 # -- voices that are not people
@@ -172,44 +102,6 @@ def test_looks_like_name(text, want):
     assert ms.looks_like_name(text) is want
 
 
-def test_a_person_is_saved_once_under_the_fullest_name(cfg):
-    lib = library(cfg, **{"Anna Jones": 0})
-    assert lib.canonical("anna") == "Anna Jones"
-    assert ms.VoiceLibrary(cfg).canonical("Tom") == "Tom"
-
-
-def test_old_voiceprints_are_archived_not_used_or_deleted(cfg):
-    (cfg["work_dir"] / "voices.json").write_text(json.dumps({"Priya": {"embedding": unit(0).tolist(), "n": 3}}))
-    lib = ms.VoiceLibrary(cfg)
-    assert lib.voices == {}
-    assert not (cfg["work_dir"] / "voices.json").exists()
-    assert len(list(cfg["work_dir"].glob("voices.archived-*.json"))) == 1
-
-
-def test_forgetting_removes_the_audio_too(cfg):
-    lib = library(cfg, Priya=0)
-    wav = lib.dir / lib.voices["Priya"]["file"]
-    assert wav.exists()
-    assert lib.forget("Priya") is True
-    assert not wav.exists()
-    assert ms.VoiceLibrary(cfg).voices == {}
-    assert lib.forget("Priya") is False
-
-
-def test_clip_is_capped(cfg):
-    lib = ms.VoiceLibrary(cfg)
-    lib.add("Long", np.ones(16000 * 40, np.float32) * 0.1, unit(0), "2026-11-01T09:00:00+05:30")
-    assert len(ms.read_wav(lib.dir / lib.voices["Long"]["file"])) == 16000 * ms.MAX_CLIP_S
-
-
-def test_library_recomputes_embeddings_when_the_model_changes(cfg):
-    lib = library(cfg, Priya=0)
-    lib.voices["Priya"]["model"] = "something-older"
-    lib.sync(FakeEncoder())
-    assert lib.voices["Priya"]["model"] == cfg["voice_model"]
-    assert np.allclose(lib.voices["Priya"]["embedding"], unit(5))
-
-
 # -- naming and un-naming in a finished meeting
 
 
@@ -241,15 +133,15 @@ class FakeLLM:
         return self.answer
 
 
-def test_naming_updates_everything_and_saves_the_voice(cfg):
+def test_naming_updates_this_meeting_only(cfg):
     d, note = meeting(cfg)
-    msg = ms.name_speaker(cfg, d, "Speaker 1", "  Priya   Shah ", agreed=True)
-    assert "saved" in msg
+    msg = ms.name_speaker(cfg, d, "Speaker 1", "  Priya   Shah ")
+    assert msg == "'Speaker 1' is now 'Priya Shah' in this meeting."
     text = note.read_text(encoding="utf-8")
     assert "**Participants:** Me, Speaker 2 (unrecognized), Priya Shah" in text
     assert "Speaker 1" not in text and "Priya Shah reported progress" in text
     assert [t["speaker"] for t in json.loads((d / "transcript.json").read_text())][1] == "Priya Shah"
-    assert "Priya Shah" in ms.VoiceLibrary(cfg).voices
+    assert (d / "voices").exists()  # Speaker 2 is still unnamed, so the clips stay for now
     side = json.loads(note.with_suffix(".json").read_text(encoding="utf-8"))
     assert "Priya Shah" in side["participants"] and side["unconfirmed_speakers"] == ["Speaker 2"]
 
@@ -261,10 +153,12 @@ def test_naming_the_last_voice_clears_the_table(cfg):
     assert ms.VOICES_BEGIN not in note.read_text(encoding="utf-8")
 
 
-def test_short_clip_names_the_meeting_but_saves_no_voice(cfg):
-    d, _ = meeting(cfg, clip_s=1)
-    assert "too little clean speech" in ms.name_speaker(cfg, d, "Speaker 1", "Tom", agreed=True)
-    assert ms.VoiceLibrary(cfg).voices == {}
+def test_naming_the_last_voice_deletes_the_clips(cfg):
+    d, _ = meeting(cfg)
+    ms.name_speaker(cfg, d, "Speaker 1", "Tom")
+    ms.name_speaker(cfg, d, "Speaker 2", "Priya")
+    sp = json.loads((d / "speakers.json").read_text())
+    assert not (d / "voices").exists() and all("sample" not in s and "centroid" not in s for s in sp.values())
 
 
 def test_same_person_given_twice_merges(cfg):

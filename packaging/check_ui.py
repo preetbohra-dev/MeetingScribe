@@ -58,20 +58,16 @@ def steps(page, work, failed):
     open_standup()
     page.wait_for_selector("text=Who was this?")
     sweep("meeting")
-    agree = page.locator("input[aria-label='They agreed to having their voice saved']")
-    if agree.count() != 1:
-        failed.append(f"meeting: {agree.count()} voice agreement boxes, expected 1 (only a voice with a clip can be saved)")
-    else:
-        agree.click()
-        if not agree.is_checked():
-            failed.append("meeting: the voice agreement box did not tick")
-        agree.click()
+    if page.locator("text=voice saved").count() or page.locator("#nav-people").count():
+        failed.append("meeting: the page still offers to save someone's voice")
     page.locator("input[aria-label='Name for Speaker 3']").click()
     page.keyboard.type("Sam Lee")
     page.keyboard.press("Enter")
     page.wait_for_selector("input[aria-label='Name for Speaker 3']", state="detached", timeout=20000)
     if not any("Sam Lee" in p.read_text(encoding="utf-8") for p in (work / "sessions").glob("*/speakers.json")):
         failed.append("meeting: a name typed and confirmed with Enter was not saved")
+    if (work / "voices").exists():
+        failed.append("meeting: naming someone saved their voice")
 
     page.click("button:has-text('Send recap and follow-ups')")
     page.wait_for_selector("text=Follow-ups")
@@ -131,7 +127,7 @@ def steps(page, work, failed):
     page.wait_for_selector("input[aria-label='Jira site']")
     sweep("Jira sign-in")
 
-    for name in ("actions", "people", "tasks", "settings"):
+    for name in ("actions", "tasks", "settings"):
         nav(name)
         if name == "settings":  # its templates arrive after the rest of the page
             page.wait_for_selector("#templates details", state="attached", timeout=20000)

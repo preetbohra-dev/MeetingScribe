@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   MeetingScribe control, the Windows twin of ctl.sh. Run it as .\ctl from the repository:
-  .\ctl app | start | stop | restart | status | logs | name | reject | listen | voices | consent | search | ask | actions | brief | refilter | jira | ai | terms
+  .\ctl app | start | stop | restart | status | logs | name | reject | listen | consent | search | ask | actions | brief | refilter | jira | ai | terms
 #>
 
 param([Parameter(Position = 0)][string]$Command = 'status',
@@ -54,20 +54,18 @@ switch ($Command) {
     Invoke-Scribe reject-name $Rest[0] --session $session
   }
   'logs' { Get-Content (Join-Path $Logs 'daemon.log'), (Join-Path $Logs 'process.log') -Tail 50 -Wait -ErrorAction SilentlyContinue }
-  'name' {  # .\ctl name "Speaker 2" "Priya Shah" [session] [--agreed]
-    $extra = @($Rest | Select-Object -Skip 2)
-    $agreed = @($extra | Where-Object { $_ -eq '--agreed' })
-    $session = @($extra | Where-Object { $_ -ne '--agreed' }) + 'latest' | Select-Object -First 1
-    Invoke-Scribe name-speaker $Rest[0] $Rest[1] --session $session @agreed
+  'name' {  # .\ctl name "Speaker 2" "Priya Shah" [session]
+    $session = if ($Rest.Count -ge 3) { $Rest[2] } else { 'latest' }
+    Invoke-Scribe name-speaker $Rest[0] $Rest[1] --session $session
   }
   'listen' {  # .\ctl listen ["Speaker 2"] [session]
     $label = @($Rest | Select-Object -First 1)
     $session = if ($Rest.Count -ge 2) { $Rest[1] } else { 'latest' }
     Invoke-Scribe listen @label --session $session
   }
-  { $_ -in 'voices', 'consent', 'search', 'ask', 'actions', 'brief', 'refilter', 'terms', 'jira', 'ai', 'process', 'download-models' } { Invoke-Scribe $Command @Rest }
+  { $_ -in 'consent', 'search', 'ask', 'actions', 'brief', 'refilter', 'terms', 'jira', 'ai', 'process', 'download-models' } { Invoke-Scribe $Command @Rest }
   default {
-    'usage: .\ctl app|start|stop|restart|status|logs|name|reject|listen|voices|consent|search|ask|actions|brief|refilter|jira|ai|terms|process|download-models'
+    'usage: .\ctl app|start|stop|restart|status|logs|name|reject|listen|consent|search|ask|actions|brief|refilter|jira|ai|terms|process|download-models'
     exit 1
   }
 }

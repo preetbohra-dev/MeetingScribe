@@ -209,8 +209,8 @@ footer a{color:var(--ink-2)}
   <figure class="wrap film" id="film">
     <div class="frame">
       <video controls playsinline preload="metadata" poster="poster.jpg?v=7">
-        <source src="demo.mp4?v=11" type="video/mp4">
-        Your browser can't play this video. <a href="demo.mp4?v=11">Download it</a> instead.
+        <source src="demo.mp4?v=12" type="video/mp4">
+        Your browser can't play this video. <a href="demo.mp4?v=12">Download it</a> instead.
       </video>
     </div>
     <figcaption>About four and a half minutes, narrated, including what it still gets wrong. The people and meetings in it are made up.</figcaption>
@@ -254,7 +254,7 @@ footer a{color:var(--ink-2)}
       <div class="margin">
         <p><b>Named after the meeting</b>The title comes from the meeting window or tab, so you can find it again.</p>
         <p><b>Small talk is counted, not kept</b>Weekend plans and the weather never make it into the note. You only see how many lines were dropped.</p>
-        <p><b>Voices it doesn't know yet</b>New people get a label. Name them once and they're recognised from then on.</p>
+        <p><b>Voices it doesn't know yet</b>New people get a label. Name them once and the note is rewritten.</p>
         <p><b>Nothing is quietly deleted</b>Lines that might be an echo or a mis-hearing are tagged, not removed.</p>
       </div>
     </div>
@@ -280,7 +280,7 @@ footer a{color:var(--ink-2)}
         <h3>After you hang up</h3>
         <ol>
           <li><b>Transcribes</b><span>Whisper large-v3-turbo on each track, with long silences cut first so it doesn&rsquo;t invent text.</span></li>
-          <li><b>Works out who spoke</b><span>Every second of remote audio gets a voice fingerprint. Similar ones are grouped and matched against people it has heard before.</span></li>
+          <li><b>Works out who spoke</b><span>Stretches of remote audio that sound alike are grouped into one speaker, for this meeting only. Nothing about anyone&rsquo;s voice is kept afterwards.</span></li>
           <li><b>Keeps the work</b><span>Qwen 2.5 reads the transcript and drops the personal chat, then writes the summary and action items.</span></li>
           <li><b>Saves the note</b><span>You get a notification. Raw audio is deleted once the note is safely written.</span></li>
         </ol>
@@ -292,17 +292,16 @@ footer a{color:var(--ink-2)}
     <div class="split rise">
       <div>
         <p class="eyebrow">Speakers</p>
-        <h2>It learns your colleagues&rsquo; voices.</h2>
+        <h2>It tells the voices apart.</h2>
         <p class="intro" style="margin-bottom:14px">Everyone on the other end arrives mixed into one stream, so they&rsquo;re told apart by how they sound. Not sure who &ldquo;Speaker 2&rdquo; was? Play a ten-second clip of them, then give them a name.</p>
-        <p>The note is rewritten with the right name. If they agree to it, their voice is saved, and from the next meeting on they&rsquo;re labelled automatically, as long as there&rsquo;s evidence they attended.</p>
+        <p>The note is rewritten with the right name. Nobody&rsquo;s voice is saved or recognized from one meeting to the next, and the clips are deleted once everyone is named.</p>
       </div>
 <pre><code><span class="p">$</span> ./ctl.sh listen
 <span class="c">Speaker 2 · first heard at 00:03:12</span>
 <span class="c">"Can we push the cutover to Monday?"</span>
 
 <span class="p">$</span> ./ctl.sh name "Speaker 2" "Priya Shah"
-<span class="c">Rewrote 2026-10-28 1400 - Migration sync.md</span>
-<span class="c">Saved Priya Shah's voiceprint</span></code></pre>
+<span class="c">'Speaker 2' is now 'Priya Shah' in this meeting.</span></code></pre>
     </div>
   </section>
 
@@ -392,8 +391,8 @@ footer a{color:var(--ink-2)}
     </div>
     <div class="facts rise">
       <div><h3>Audio</h3><p>Written to a local app folder while the call runs, and deleted as soon as the note is saved.</p></div>
-      <div><h3>Models</h3><p>Whisper and Qwen run on your own hardware: MLX on a Mac, faster-whisper and llama.cpp on Windows. Ollama works too, if it&rsquo;s on your machine. With company AI, transcript text goes to that provider; audio and voiceprints never do.</p></div>
-      <div><h3>Voiceprints</h3><p>Saved only for people who agreed to it, as a short clip and a few hundred numbers in a local file. You can delete any of them, and a voice not heard for three years is deleted for you.</p></div>
+      <div><h3>Models</h3><p>Whisper and Qwen run on your own hardware: MLX on a Mac, faster-whisper and llama.cpp on Windows. Ollama works too, if it&rsquo;s on your machine. With company AI, transcript text goes to that provider; audio never does.</p></div>
+      <div><h3>Voices</h3><p>Told apart within one meeting, then forgotten. No voiceprint is kept and nobody&rsquo;s voice is saved for later meetings. Short clips of unnamed voices go once everyone is named, or after 30 days.</p></div>
       <div><h3>Consent</h3><p>Everyone on a call should know it&rsquo;s being recorded. MeetingScribe records nothing until you confirm everyone agreed, and a notice stays on your screen for as long as it records. Each confirmation goes into a dated consent record. You can also list meetings it must never record, and have old meetings or audio deleted automatically.</p></div>
       <div><h3>Check for yourself</h3><p>Watch <code>nettop</code> on a Mac, or Resource Monitor on Windows, while a meeting is being processed with a local model. There are no connections to see.</p></div>
     </div>
@@ -430,7 +429,7 @@ footer a{color:var(--ink-2)}
 </div>
 
 <div class="wrap">
-  <p class="fine">Recording a meeting usually needs everyone&rsquo;s agreement, and voiceprints count as biometric data in many places. Tell people you&rsquo;re using it and check your company&rsquo;s policy. MeetingScribe is provided as is, under the GPL-3.0 licence, and isn&rsquo;t an official tool of any company.</p>
+  <p class="fine">Recording a meeting usually needs everyone&rsquo;s agreement. Tell people you&rsquo;re using it and check your company&rsquo;s policy. MeetingScribe is provided as is, under the GPL-3.0 licence, and isn&rsquo;t an official tool of any company.</p>
 </div>
 
 <footer>

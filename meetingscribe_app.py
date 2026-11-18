@@ -316,9 +316,9 @@ class Api:
             return None
         return "data:audio/wav;base64," + base64.b64encode(path.read_bytes()).decode()
 
-    def name_voice(self, sid, label, name, agreed=False):
+    def name_voice(self, sid, label, name):
         self._session(sid)
-        ok, msg = run_command("name-speaker", label, name, "--session", sid, *(["--agreed"] if agreed is True else []))
+        ok, msg = run_command("name-speaker", label, name, "--session", sid)
         return {"ok": ok, "message": msg}
 
     def reject_voice(self, sid, label):
@@ -487,27 +487,6 @@ class Api:
     def mcp_set(self, on):
         ms.save_settings({"mcp_enabled": on is True})
         return self.mcp_state()
-
-    # -- people
-
-    def people(self):
-        lib = ms.VoiceLibrary(self.cfg)
-        return [{"name": n, "seconds": v["seconds"], "saved_at": v["saved_at"], "agreed_at": v.get("agreed_at")}
-                for n, v in sorted(lib.voices.items())]
-
-    def person_clip(self, name):
-        lib = ms.VoiceLibrary(self.cfg)
-        v = lib.voices.get(name)
-        return self._data_url(lib.dir / v["file"]) if v else None
-
-    def forget_person(self, name):
-        if not ms.VoiceLibrary(self.cfg).forget(name):
-            return False
-        ms.log_consent(self.cfg, "voice_deleted", person=name, reason="you asked")
-        return True
-
-    def person_agreed(self, name):
-        return ms.VoiceLibrary(self.cfg).agreed(name)
 
     # -- Slack, Teams, Gmail and Outlook. A webhook link goes to the keychain and never comes back.
 
