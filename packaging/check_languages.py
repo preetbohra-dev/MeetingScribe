@@ -34,6 +34,7 @@ def main():
         (d / "session.json").write_text(json.dumps({"status": "recorded", "title": "Language check", "source": "Zoom", "app": "zoom", "started_at": "2026-11-08T10:00:00+00:00", "duration_s": 52}), encoding="utf-8")
         if download:
             subprocess.run([*program, "download-models"], env=env, check=True, timeout=2400)
+        subprocess.run([*program, "consent", "--confirm", "--session", d.name], env=env, check=True, timeout=120)
         run = subprocess.run([*program, "process", str(d)], env=env, timeout=1800, capture_output=True)
         meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
         if run.returncode or meta["status"] != "done":

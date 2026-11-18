@@ -42,6 +42,7 @@ d.mkdir(parents=True)
 (d / "session.json").write_text(json.dumps({"status": "recorded", "title": "Zoom meeting", "source": "Zoom", "app": "zoom",
                                             "started_at": "2026-11-08T10:00:00+00:00", "duration_s": 40}))
 subprocess.run([app, "download-models"], env=env, check=True, timeout=1800)
+subprocess.run([app, "consent", "--confirm", "--session", d.name], env=env, check=True, timeout=120)
 run = subprocess.run([app, "process", str(d)], env=env, timeout=1800)
 print((base / "logs" / "process.log").read_text(errors="replace")[-3000:])
 assert run.returncode == 0, run.returncode
@@ -51,6 +52,7 @@ note = Path(meta["notes"]).read_text()
 print(note)
 assert "could not be written" not in note, "the AI model did not run"
 assert "migration" in note.lower() and "## Transcript" in note
+assert "**Consent:**" in note, "the consent confirmation is missing from the note"
 assert Path(meta["notes"]).with_suffix(".json").exists()
 print("the call was named:", meta["title"])
 assert meta["title"] in Path(meta["notes"]).stem
