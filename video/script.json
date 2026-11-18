@@ -42,7 +42,7 @@
       "lines": [
         "When the call ends, everything runs right on your computer.",
         "Whisper transcribes both tracks.",
-        "A voice model tells the speakers apart, and names only the people it is sure about.",
+        "A voice model tells the speakers apart, for this meeting only. Nothing about anyone's voice is kept.",
         "A local language model drops the small talk, then writes the summary and the action items."
       ]
     },
@@ -67,7 +67,7 @@
       "min": 10.5,
       "lines": [
         "An unknown voice? Hear a clip, and name it once.",
-        "If that person agrees, their voice is saved, and from then on they are recognised, as long as there is evidence they attended."
+        "The note is rewritten with their name. Nobody's voice is saved, and the clips are deleted once everyone is named."
       ]
     },
     {

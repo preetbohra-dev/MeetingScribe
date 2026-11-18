@@ -64,7 +64,7 @@ window.TIMELINE = {
   {
    "id": "pipeline",
    "start": 39.864,
-   "dur": 18.243,
+   "dur": 19.501,
    "lines": [
     {
      "t": 0.7,
@@ -78,11 +78,11 @@ window.TIMELINE = {
     },
     {
      "t": 6.617,
-     "dur": 4.715,
-     "text": "A voice model tells the speakers apart, and names only the people it is sure about."
+     "dur": 5.973,
+     "text": "A voice model tells the speakers apart, for this meeting only. Nothing about anyone's voice is kept."
     },
     {
-     "t": 11.752,
+     "t": 13.011,
      "dur": 5.291,
      "text": "A local language model drops the small talk, then writes the summary and the action items."
     }
@@ -90,7 +90,7 @@ window.TIMELINE = {
   },
   {
    "id": "note",
-   "start": 58.107,
+   "start": 59.365,
    "dur": 11,
    "lines": [
     {
@@ -107,7 +107,7 @@ window.TIMELINE = {
   },
   {
    "id": "languages",
-   "start": 69.107,
+   "start": 70.365,
    "dur": 12.432,
    "lines": [
     {
@@ -124,8 +124,8 @@ window.TIMELINE = {
   },
   {
    "id": "voices",
-   "start": 81.539,
-   "dur": 12.304,
+   "start": 82.797,
+   "dur": 11.792,
    "lines": [
     {
      "t": 0.7,
@@ -134,14 +134,14 @@ window.TIMELINE = {
     },
     {
      "t": 3.893,
-     "dur": 7.211,
-     "text": "If that person agrees, their voice is saved, and from then on they are recognised, as long as there is evidence they attended."
+     "dur": 6.699,
+     "text": "The note is rewritten with their name. Nobody's voice is saved, and the clips are deleted once everyone is named."
     }
    ]
   },
   {
    "id": "templates",
-   "start": 93.843,
+   "start": 94.589,
    "dur": 15.412,
    "lines": [
     {
@@ -163,7 +163,7 @@ window.TIMELINE = {
   },
   {
    "id": "actions",
-   "start": 109.255,
+   "start": 110.001,
    "dur": 15.476,
    "lines": [
     {
@@ -185,7 +185,7 @@ window.TIMELINE = {
   },
   {
    "id": "upcoming",
-   "start": 124.731,
+   "start": 125.477,
    "dur": 13,
    "lines": [
     {
@@ -207,7 +207,7 @@ window.TIMELINE = {
   },
   {
    "id": "connectors",
-   "start": 137.731,
+   "start": 138.477,
    "dur": 14.288,
    "lines": [
     {
@@ -224,7 +224,7 @@ window.TIMELINE = {
   },
   {
    "id": "sendout",
-   "start": 152.019,
+   "start": 152.765,
    "dur": 17,
    "lines": [
     {
@@ -246,7 +246,7 @@ window.TIMELINE = {
   },
   {
    "id": "handoff",
-   "start": 169.019,
+   "start": 169.765,
    "dur": 18.825,
    "lines": [
     {
@@ -268,7 +268,7 @@ window.TIMELINE = {
   },
   {
    "id": "assistants",
-   "start": 187.844,
+   "start": 188.591,
    "dur": 16.137,
    "lines": [
     {
@@ -290,7 +290,7 @@ window.TIMELINE = {
   },
   {
    "id": "consent",
-   "start": 203.981,
+   "start": 204.728,
    "dur": 26.477,
    "lines": [
     {
@@ -317,7 +317,7 @@ window.TIMELINE = {
   },
   {
    "id": "privacy",
-   "start": 230.459,
+   "start": 231.205,
    "dur": 12.048,
    "lines": [
     {
@@ -334,7 +334,7 @@ window.TIMELINE = {
   },
   {
    "id": "early",
-   "start": 242.507,
+   "start": 243.253,
    "dur": 36.519,
    "lines": [
     {
@@ -366,7 +366,7 @@ window.TIMELINE = {
   },
   {
    "id": "outro",
-   "start": 279.025,
+   "start": 279.772,
    "dur": 10.171,
    "lines": [
     {
@@ -382,5 +382,5 @@ window.TIMELINE = {
    ]
   }
  ],
- "total": 289.196
+ "total": 289.943
 };

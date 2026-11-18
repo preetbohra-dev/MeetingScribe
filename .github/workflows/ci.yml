@@ -61,6 +61,6 @@ jobs:
         run: |
           python -c "import meeting_scribe as m; assert m.DEFAULTS['asr_backend'] == 'faster-whisper'; import llama_cpp, faster_whisper, onnxruntime, comtypes"
           python meeting_scribe.py --help
-          python meeting_scribe.py voices
+          python meeting_scribe.py consent
       - name: Tests
         run: python -m pytest tests -q

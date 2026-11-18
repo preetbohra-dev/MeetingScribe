@@ -53,7 +53,7 @@ that takes on an action item. Use the ones you have and ignore the rest. Nothing
  ───────────────                          ─────────────────
  The app takes the mic ─► start         1. cut long silences
    your mic       → mic.pcm   ("Me")      2. transcribe each track (Whisper large-v3-turbo)
-   the app's audio → system.pcm (others)  3. fingerprint voices and match known people
+   the app's audio → system.pcm (others)  3. tell the voices apart (nothing about them is kept)
  The app lets go of the mic ─► stop       4. merge both tracks by time, tag likely echoes
                                           5. drop small talk (Qwen 2.5)
                                           6. write summary + action items, save the note
@@ -141,7 +141,7 @@ Windows. The model download is the only step that uses the network; after it eve
 | Launcher | `~/Applications/MeetingScribe.app`, so macOS permissions go to *MeetingScribe* rather than Terminal | — |
 | Background start | Launch agent `~/Library/LaunchAgents/local.meetingscribe.plist` | Scheduled task *MeetingScribe* (at logon, rechecked every 5 minutes) |
 | Logs | `~/Library/Logs/MeetingScribe/` | `%LOCALAPPDATA%\MeetingScribe\Logs\` |
-| Recordings and saved voices | `~/Library/Application Support/MeetingScribe/` | `%LOCALAPPDATA%\MeetingScribe\` |
+| Recordings | `~/Library/Application Support/MeetingScribe/` | `%LOCALAPPDATA%\MeetingScribe\` |
 
 `daemon.log` covers detecting and recording, `process.log` transcription and notes. `./uninstall.sh` or
 `.\uninstall` removes the background part and keeps your notes.
@@ -240,7 +240,7 @@ short switches of a few words can stay in the surrounding language.
   **Everyone was told** and is deleted 24 hours after the call if nobody confirms. From a terminal:
   `./ctl.sh consent --confirm` (latest meeting) or `--session ID`.
 - The **consent record** lists every confirmation with the time, your user name and the computer, when each
-  recording started, calls you chose not to record, and deleted meetings and voices. Lines are never changed or removed, even when the meeting is deleted, and each one carries a hash
+  recording started, calls you chose not to record, and deleted meetings. Lines are never changed or removed, even when the meeting is deleted, and each one carries a hash
   of the line before it, so an edited or deleted line is reported. It is in `consent-log.jsonl` in the app's data
   folder; `./ctl.sh consent` prints it. It shows what you confirmed, not what was said on the call, and anyone who
   can edit the file could rewrite the whole chain.
@@ -254,40 +254,28 @@ note. Not yet tried on a real Google or Outlook calendar, which has only been te
 
 ## Speakers
 
-Everyone on the remote side arrives in one audio stream, so MeetingScribe tells them apart by voice. Each second of
-speech gets a voice fingerprint, and similar fingerprints are grouped into one speaker. A group that said almost
-nothing is treated as a stray sound, not a person.
+Everyone on the remote side arrives in one audio stream, so MeetingScribe tells them apart by voice, within that one
+meeting. While a meeting is processed, short stretches of speech are compared and similar ones are grouped into one
+speaker. A group that said almost nothing is treated as a stray sound, not a person. **Nothing about anyone's voice is
+kept:** the comparison is thrown away once the meeting is processed, and no voice is saved to recognize someone in a
+later meeting. A voice saved by an earlier version is deleted when the recorder starts, with a line in the consent
+record for each.
 
-**A name only goes into a note when there's good reason.** New voices are *Speaker 1*, *Speaker 2* and so on. A saved
-person is named by itself only if all of these hold:
+Voices start as *Speaker 1*, *Speaker 2* and so on, and you name them. A name is only ever suggested, shown as
+"Speaker 2 (maybe Priya?)" in the note and as **Is this Priya?** in the app. Suggestions come from a name said aloud
+(the local model must quote the line, and the quote is checked against the transcript) and from the highlighted name
+tile while that person talks (two looks at least 10 seconds apart must agree). You always make the final call.
 
-- their voice is a very close match (similarity 0.7 or more) and clearly closer than anyone else's,
-- there are at least 20 seconds of it, and
-- there's evidence they attended: their name was on screen, or was said aloud in the meeting.
-
-Otherwise the name is only a question, shown as "Speaker 2 (maybe Priya?)" in the note and as **Is this Priya?** in the app.
-Suggestions come from three places: a similar saved voice, a name said aloud (the local model must quote the line,
-and the quote is checked against the transcript), and the highlighted name tile while that person talks (two looks
-at least 10 seconds apart must agree). You always make the final call.
-
-Naming a voice puts the name in that meeting's note. Its voice is saved only if you tick **They agreed to having their
-voice saved** (`--agreed` in a terminal): a clean 3 to 12 second clip, with the agreement added to the consent record.
-A voice saved before agreements were recorded isn't used until you press **They agreed** on the **People** page. A
-voice not heard for three years is deleted. Matching never changes a saved voice, so a wrong match can't spread to
-later meetings. In the app, **Not this person** takes a wrong name off a meeting, and **People** shows
-every saved voice with a way to hear or forget it.
+To help you tell who someone was, each meeting keeps a clip of about 10 seconds of each unnamed voice. The clips are
+deleted once every voice in the meeting is named, and after 30 days either way. In the app, **Not this person** takes a
+wrong name off a meeting.
 
 ```bash
 ./ctl.sh listen                               # play ~10 s of each unnamed voice from the latest meeting
-./ctl.sh name "Speaker 2" "Priya Shah" --agreed   # name them: rewrites the note, and saves the voice with their agreement
+./ctl.sh name "Speaker 2" "Priya Shah"        # name them in that meeting's note
 ./ctl.sh name "Speaker 1" "Tom Berg" 2026-10-28   # a specific meeting
 ./ctl.sh reject "Priya Shah"                  # that name is wrong for that voice
-./ctl.sh voices                               # list saved voices
-./ctl.sh voices --forget "Priya Shah"         # delete one
-./ctl.sh voices --agreed "Priya Shah"         # they agreed to a voice saved before agreements were recorded
 ```
-
-Saved voices stay on the computer that made them.
 
 - **One person split in two?** Give both labels the same name and they merge. "Anna" and "Anna Jones" count as one person.
 - **Two people merged into one?** Lower `speaker_cluster_threshold` (default 0.6).
@@ -433,7 +421,6 @@ Edit `config.toml`, then `./ctl.sh restart`. Every key is optional. The ones you
 | `ollama_model` | An Ollama model, or `"running"` for whichever one is loaded, with `ollama_fallback_model` for when none is |
 | `config.local.toml` | Optional file next to `config.toml`; its keys win, and it stays out of git |
 | `speaker_*`, `max_speakers` | Speaker tuning, see [Speakers](#speakers) |
-| `speaker_require_attendance` | `false` lets a strong voice match name someone with no other evidence |
 | `screen_names` | `true` reads name tiles from the meeting window (the app asks at setup) |
 | `[vocabulary]` | Spelling fixes, e.g. `"app sumo" = "AppSumo"` |
 | `never_record` | Words in meeting titles that must not be recorded, e.g. `["HR", "doctor"]` |
@@ -513,7 +500,7 @@ it, and only start tasks you trust. With company AI, the code it reads is sent t
 - Whisper runs on your computer through MLX or faster-whisper. So does the LLM, through MLX or llama.cpp (or Ollama
   on 127.0.0.1), unless you choose your company's AI.
 - With your company's AI, transcript text, including what other people said, is sent to the provider you agreed to.
-  So are the notes and names used for `ask` and Jira drafts. Audio, voiceprints and screen pictures are never sent.
+  So are the notes and names used for `ask` and Jira drafts. Audio and screen pictures are never sent.
   Nothing is sent until you have agreed to that provider, even if `config.toml` is edited by hand. Your company's
   agreement with the provider decides how the text is kept.
 - A connector sends only the text you approved, to the channel or mailbox you chose. Once delivered, that service's
@@ -523,9 +510,9 @@ it, and only start tasks you trust. With company AI, the code it reads is sent t
 - Offline flags are set before any ML library loads, and no saved Hugging Face token is ever sent. With a local LLM,
   you can check on a Mac by running `nettop -p $(pgrep -f "meeting_scribe.py process")` while a meeting is processed;
   on Windows, watch the python process in Resource Monitor's Network tab. There are no connections.
-- Saved voices are a short audio clip per named person, plus numbers made from it, in the `voices` folder. Both
-  are biometric data. One is saved only after you confirm that person agreed, and deleted after three years unheard.
-  Delete one any time in the app's **People** page, or with `voices --forget`.
+- No voice is saved between meetings, and no voice fingerprint is kept after a meeting is processed. Each meeting
+  keeps a roughly 10-second clip of each unnamed voice, so you can hear who it was, until every voice is named or 30
+  days pass.
 - Notes are written only for calls you confirm everyone was told about, and each confirmation is kept in the consent
   record (`consent-log.jsonl`). It stays on this computer.
 - With `screen_names` on, the recorder looks at the meeting window up to 12 times a call. Each picture is read for

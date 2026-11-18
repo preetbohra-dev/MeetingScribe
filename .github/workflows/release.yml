@@ -26,9 +26,9 @@ jobs:
       - name: The packaged program runs
         shell: pwsh
         run: |
-          $o = & dist\MeetingScribe\MeetingScribe.exe voices | Out-String
+          $o = & dist\MeetingScribe\MeetingScribe.exe consent | Out-String
           if ($LASTEXITCODE) { throw "exit $LASTEXITCODE" }
-          if ($o -notmatch 'No saved voices') { throw "unexpected output: $o" }
+          if ($o -notmatch '0 entries in') { throw "unexpected output: $o" }
       - name: The packaged program answers an AI assistant
         run: python packaging/check_mcp.py dist/MeetingScribe/MeetingScribe.exe
       - name: Every page and box works in the app's browser engine
@@ -65,7 +65,7 @@ jobs:
           python -m pip install -r requirements.txt pyinstaller
           pyinstaller --noconfirm packaging/MeetingScribe.spec
       - name: The packaged program runs
-        run: dist/MeetingScribe.app/Contents/MacOS/MeetingScribe voices | grep "No saved voices"
+        run: dist/MeetingScribe.app/Contents/MacOS/MeetingScribe consent | grep "0 entries in"
       - name: The packaged program answers an AI assistant
         run: python packaging/check_mcp.py dist/MeetingScribe.app/Contents/MacOS/MeetingScribe
       - name: The packaged app writes a note from a spoken meeting

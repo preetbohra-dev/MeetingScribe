@@ -282,6 +282,8 @@ def test_whole_pipeline(cfg, monkeypatch):
     assert "Speaker 1 (maybe Priya?)" in text  # said aloud, so asked, never asserted
     sp = json.loads((d / "speakers.json").read_text())
     assert sp["Speaker 1"]["suggest"]["why"] == ["said"]
+    assert all("centroid" not in s for s in sp.values())  # no voice fingerprint is kept
+    assert not (cfg["work_dir"] / "voices").exists()  # and no voice is saved for later meetings
     assert Path(meta["notes"]).with_suffix(".json").exists()
 
 

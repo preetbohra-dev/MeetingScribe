@@ -91,7 +91,7 @@ select[multiple] { min-height: 86px; }
 // Everything from a meeting is untrusted text, so the page is built from elements and
 // textContent only. Nothing from a transcript ever reaches innerHTML.
 const LOGO = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#e5483a"/><path d="M16 28v8M24 22v20M32 15v34M40 24v16M48 29v6" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/></svg>';
-const WHY = {screen: "seen on screen", said: "name said aloud", voice: "sounds like them"};
+const WHY = {screen: "seen on screen", said: "name said aloud"};
 const $app = document.getElementById("app");
 let api, view = "meetings", openId = null, statusNow = {}, lastList = "", polling = null;
 
@@ -245,7 +245,7 @@ function showDownload(s) {
 
 // -- main frame --------------------------------------------------------------
 function showMain() {
-  const items = [["meetings", "Meetings"], ["upcoming", "Upcoming"], ["actions", "Action items"], ["search", "Search and ask"], ["people", "People"], ["connectors", "Connectors"], ["tasks", "Tasks"], ["settings", "Settings"]];
+  const items = [["meetings", "Meetings"], ["upcoming", "Upcoming"], ["actions", "Action items"], ["search", "Search and ask"], ["connectors", "Connectors"], ["tasks", "Tasks"], ["settings", "Settings"]];
   const navEl = h("nav", null);
   const brand = h("div", {class: "brand"}); brand.innerHTML = LOGO; brand.append("MeetingScribe");
   navEl.append(brand);
@@ -284,7 +284,7 @@ function render() {
   if (openId && view === "jira") return renderReview(main);
   if (openId && view === "send") return renderSend(main);
   if (openId && view !== "tasks") return renderMeeting(main);
-  ({meetings: renderList, search: renderSearch, people: renderPeople, upcoming: renderUpcoming, actions: renderActions, connectors: renderConnectors, jira: renderJira, tasks: renderTasks, settings: renderSettings})[view](main);
+  ({meetings: renderList, search: renderSearch, upcoming: renderUpcoming, actions: renderActions, connectors: renderConnectors, jira: renderJira, tasks: renderTasks, settings: renderSettings})[view](main);
 }
 async function renderList(main) {
   lastList = "";
@@ -421,11 +421,10 @@ function styleBox(m) {
 }
 function voiceCard(m, v) {
   const input = h("input", {type: "text", placeholder: "Their name", "aria-label": "Name for " + v.label, onkeydown: onEnter(() => save(input.value))});
-  const agree = h("input", {type: "checkbox", "aria-label": "They agreed to having their voice saved"});
   async function save(name) {
     if (!name.trim()) return input.focus();
     card.querySelectorAll("button").forEach(b => b.disabled = true);
-    const r = await call("name_voice", m.id, v.label, name, agree.checked);
+    const r = await call("name_voice", m.id, v.label, name);
     toast(r.message); render();
   }
   const card = h("div", {class: "panel"},
@@ -435,8 +434,7 @@ function voiceCard(m, v) {
       h("span", {class: "grow"}, "Is this ", h("b", null, v.suggest.name), "? ", h("span", {class: "soft small"}, "(" + v.suggest.why.map(w => WHY[w] || w).join(", ") + ")")),
       h("button", {class: "primary", onclick: () => save(v.suggest.name)}, "Yes"),
       h("button", {onclick: async () => { const r = await call("reject_voice", m.id, v.label); toast(r.message); render(); }}, "No")) : null,
-    h("div", {class: "row"}, input, h("button", {onclick: () => save(input.value)}, "Save name")),
-    v.has_clip ? h("label", {class: "check small", style: "margin-top:8px"}, agree, h("span", null, "They agreed to having their voice saved, so they're recognized next time. Without this, only this note gets their name.")) : null);
+    h("div", {class: "row"}, input, h("button", {onclick: () => save(input.value)}, "Save name")));
   return card;
 }
 function playButton(getUrl) {
@@ -538,17 +536,6 @@ async function renderUpcoming(main) {
   }
   main.replaceChildren(col);
 }
-async function renderPeople(main) {
-  const people = await call("people");
-  main.replaceChildren(h("div", {class: "column"}, h("h1", null, "People"),
-    h("p", {class: "soft"}, "Voices you have named, with the person's agreement. Each is a short clip kept only on this computer, and used to recognize that person in later meetings. A person is only named by itself when they were clearly in the meeting. A voice not heard for three years is deleted."),
-    people.length ? people.map(p => h("div", {class: "panel row wrap"}, h("span", {class: "grow"}, p.name,
-        h("span", {class: "soft small"}, p.agreed_at ? "  saved " + when(p.saved_at) : "  no agreement recorded, so it isn't used")),
-      p.agreed_at ? null : h("button", {onclick: async () => { await call("person_agreed", p.name); toast("Saved in the consent record."); render(); }}, "They agreed"),
-      playButton(() => call("person_clip", p.name)),
-      h("button", {onclick: async () => { await call("forget_person", p.name); toast("Forgot " + p.name + "."); render(); }}, "Forget")))
-    : h("div", {class: "panel"}, h("p", {class: "soft"}, "Nobody yet. When a meeting has voices to name, name them there."))));
-}
 async function renderSettings(main) {
   const s = await call("settings"), ai = await call("cloud_state");
   const aiNow = ai.cloud ? ai.providers.find(p => p.id === ai.settings.provider) : null;
@@ -610,7 +597,7 @@ async function renderSettings(main) {
 }
 const CONSENT_EVENTS = {everyone_agreed: "Everyone agreed, before recording", recording_started: "Recording started", not_recorded: "You chose not to record",
   told_everyone: "Everyone was told", deleted_unconfirmed: "Deleted, never confirmed", meeting_deleted: "Meeting deleted",
-  voice_agreed: "Agreed to a saved voice", voice_deleted: "Saved voice deleted"};
+  voice_agreed: "Agreed to a saved voice (earlier version)", voice_deleted: "Saved voice deleted"};
 async function renderConsentRecord() {
   const r = await call("consent_record"), el = document.getElementById("consent-record");
   if (!el) return;
@@ -618,7 +605,7 @@ async function renderConsentRecord() {
     h("span", {class: "grow"}, (CONSENT_EVENTS[e.event] || e.event) + (e.title || e.person ? ": " + (e.title || e.person) : "")
       + (e.event === "told_everyone" ? (e.during_call ? " (during the call)" : " (after the call)") : "")), h("span", {class: "soft"}, e.user));
   el.replaceChildren(...[
-    h("p", {class: "soft small"}, "Each time you confirm that everyone agreed to be recorded, choose not to record, or confirm that someone agreed to a saved voice, a dated line with your name is added. Lines are never changed or removed, even when the meeting is deleted."),
+    h("p", {class: "soft small"}, "Each time you confirm that everyone agreed to be recorded, or choose not to record, a dated line with your name is added. Lines are never changed or removed, even when the meeting is deleted."),
     r.problem ? h("div", {class: "warn"}, "This record was changed outside MeetingScribe: " + r.problem + ".") : null,
     r.count ? h("div", {class: "panel"}, r.entries.slice(0, 50).map(line)) : h("p", {class: "soft"}, "Nothing yet."),
     r.count ? h("div", {class: "row"}, h("span", {class: "grow soft small"}, r.count + (r.count === 1 ? " entry" : " entries")), h("button", {onclick: () => call("open_consent_record")}, "Show the file")) : null].filter(Boolean));

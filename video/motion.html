@@ -354,9 +354,9 @@ body { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display"
       </div>
     </div>
     <div class="abs card" id="v-next" style="left:120px;top:680px;width:1680px;height:150px;padding:30px 40px;display:flex;align-items:center;gap:30px">
-      <span class="chip g">Next meeting</span>
+      <span class="chip g">This meeting</span>
       <span style="font-size:27px">Participants: Me, Samantha Lee, Daniel Ortiz, <b style="color:var(--green)">Ravi Kumar</b></span>
-      <span class="sub" style="font-size:22px;margin-left:auto">voice saved with their agreement, matched once there is evidence</span>
+      <span class="sub" style="font-size:22px;margin-left:auto">no voice is saved for next time</span>
     </div>
   </section>
 
@@ -990,7 +990,7 @@ scene("pipeline", (s, L, e) => {
   POP("#pl-lock", s + .3);
   const nodes = [
     ["Transcribe", "Whisper large-v3-turbo", "#2dd4bf", '<path d="M12 3v12M8 7v4M16 6v6M4 10v1M20 9v3"/><path d="M5 19h14"/>'],
-    ["Who said what", "Voiceprints · WeSpeaker", "#ff8a65", '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/><path d="M17 6c1.5 1 1.5 4 0 5M19.5 4c3 2 3 7 0 9"/>'],
+    ["Who said what", "Voices told apart · WeSpeaker", "#ff8a65", '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/><path d="M17 6c1.5 1 1.5 4 0 5M19.5 4c3 2 3 7 0 9"/>'],
     ["Work only", "Small talk removed", "#f5b543", '<path d="M4 5h16l-6 8v6l-4-2v-4z"/>'],
     ["Summarise", "Qwen 2.5 · local", "#60a5fa", '<path d="M5 5h14M5 10h14M5 15h9"/><path d="M17 15l2 2 3-4"/>'],
     ["Markdown note", "~/Documents/Meeting Notes", "#34d399", '<path d="M6 3h9l4 4v14H6z"/><path d="M9 13l2 2 4-4"/>'],
@@ -1411,7 +1411,7 @@ scene("usecases", (s, L, e) => {
 
 scene("privacy", (s, L, e) => {
   IN("#pv-mac", s + .1);
-  const items = [["Audio", "#2dd4bf"], ["Whisper", "#2dd4bf"], ["Voiceprints", "#ff8a65"], ["Qwen 2.5", "#60a5fa"], ["Work filter", "#f5b543"], ["Notes", "#34d399"]];
+  const items = [["Audio", "#2dd4bf"], ["Whisper", "#2dd4bf"], ["Speakers", "#ff8a65"], ["Qwen 2.5", "#60a5fa"], ["Work filter", "#f5b543"], ["Notes", "#34d399"]];
   items.forEach(([t, c], i) => {
     const el = html(`<div class="abs" style="left:${130 + (i % 3) * 260}px;top:${150 + Math.floor(i / 3) * 170}px;width:230px;height:130px;border-radius:18px;background:${c}18;border:1px solid ${c}66;display:grid;place-items:center;font-size:26px;font-weight:700;color:${c}">${t}</div>`);
     $("#pv-items").appendChild(el);
