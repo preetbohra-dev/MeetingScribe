@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MeetingScribe demo</title>
+<meta name="description" content="A 4-minute demo of MeetingScribe: on-device meeting notes for Teams, Zoom and Google Meet, on Mac and Windows. It asks before it records.">
+<meta property="og:title" content="MeetingScribe demo">
+<meta property="og:image" content="https://preetbohra-dev.github.io/MeetingScribe/poster.jpg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#fbfbfd;--ink:#1d1d1f;--ink-2:#4a4a50;--ink-3:#86868b;--line:rgba(0,0,0,.09);--link:#b9361f}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#0b0b0f;--ink:#f2f2f5;--ink-2:#b4b4bd;--ink-3:#7c7c86;--line:rgba(255,255,255,.09);--link:#ff8b7a}
+}
+:root[data-theme="dark"]{--bg:#0b0b0f;--ink:#f2f2f5;--ink-2:#b4b4bd;--ink-3:#7c7c86;--line:rgba(255,255,255,.09);--link:#ff8b7a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:1.0625rem/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:1040px;margin:0 auto;padding:40px 16px 56px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+.brand img{width:30px;height:30px}
+h1{font-size:clamp(1.75rem,4.5vw,2.5rem);line-height:1.1;letter-spacing:-.025em;margin:28px 0 8px}
+p{color:var(--ink-2);margin:0 0 20px;max-width:44em}
+video{display:block;width:100%;aspect-ratio:16/9;background:#0e0e10;border-radius:14px;box-shadow:0 0 0 1px var(--line)}
+.links{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:20px;font-size:.9375rem}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:.18em}
+.fine{margin-top:28px;font-size:.8125rem;color:var(--ink-3)}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><img src="icon.svg" alt="">MeetingScribe</div>
+  <h1>The 4-minute demo</h1>
+  <p>On-device meeting notes for Teams, Zoom and Google Meet, on Mac and Windows. It asks whether everyone agreed before it records, and keeps nobody&rsquo;s voice.</p>
+  <video controls playsinline preload="metadata" poster="poster.jpg">
+    <source src="demo.mp4" type="video/mp4">
+    Your browser can't play this video. <a href="demo.mp4">Download it</a> instead.
+  </video>
+  <div class="links">
+    <a href="https://github.com/preetbohra-dev/MeetingScribe">Source and install instructions on GitHub</a>
+    <a href="https://github.com/preetbohra-dev/MeetingScribe/releases/latest">Download for Mac or Windows</a>
+  </div>
+  <p class="fine">People and meetings in the video are made up. Free and open source under the GPL-3.0 licence.</p>
+</main>
+</body>
+</html>
