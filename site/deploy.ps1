@@ -38,5 +38,10 @@ try {
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $live 'supervise.ps1')
 Start-Sleep -Seconds 1
-$code = (Invoke-WebRequest "http://127.0.0.1:$Port/" -UseBasicParsing -TimeoutSec 10).StatusCode
+try {
+  $code = (Invoke-WebRequest "http://127.0.0.1:$Port/" -UseBasicParsing -TimeoutSec 10).StatusCode
+} catch [System.Net.WebException] {
+  if (-not $_.Exception.Response) { throw }
+  $code = [int]$_.Exception.Response.StatusCode # 503 while the maintenance flag is set
+}
 Write-Output "Live on :$Port (HTTP $code)"

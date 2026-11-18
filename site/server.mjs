@@ -3,12 +3,13 @@
 // demo video streams and seeks instead of downloading in one go.
 import { createServer } from "node:http";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT ?? 3070);
+const maintenanceFlag = join(dir, "..", "maintenance");
 
 // Only these files are public; everything else in the folder (this script, the
 // PowerShell helpers) stays private.
@@ -25,7 +26,16 @@ createServer(async (req, res) => {
     res.writeHead(405, { Allow: "GET, HEAD" }).end();
     return;
   }
-  const entry = files[new URL(req.url, "http://x").pathname];
+  const pathname = new URL(req.url, "http://x").pathname;
+  // A "maintenance" file next to the live site/ folder (outside it, so deploys
+  // leave it alone) puts every page behind maintenance.html until it is removed.
+  if (pathname !== "/icon.svg" && (await stat(maintenanceFlag).catch(() => null))) {
+    const page = await readFile(join(dir, "maintenance.html")).catch(() => "Down for maintenance");
+    res.writeHead(503, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Retry-After": "3600" });
+    res.end(req.method === "HEAD" ? undefined : page);
+    return;
+  }
+  const entry = files[pathname];
   if (!entry) {
     res.writeHead(404, { "Content-Type": "text/plain" }).end("Not found");
     return;
