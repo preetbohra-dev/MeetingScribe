@@ -29,11 +29,11 @@
     },
     {
       "id": "detect",
-      "min": 11,
+      "min": 14,
       "lines": [
         "MeetingScribe runs on your own computer.",
-        "When you join a call, it starts recording two tracks: your microphone, and the meeting's own audio.",
-        "And it reminds you to tell everyone on the call, then to confirm that you did."
+        "When you join a call, it first asks whether everyone agreed to be recorded. Only once you confirm does it record two tracks: your microphone, and the meeting's own audio.",
+        "And for as long as it records, a notice stays on your screen."
       ]
     },
     {
@@ -137,8 +137,8 @@
       "min": 22,
       "lines": [
         "One thing matters more than all of this: everyone on a call should know it is being recorded.",
-        "So MeetingScribe gives you a notice to paste into the chat, and writes no notes until you confirm that everyone was told.",
-        "Each confirmation is kept in a dated consent record. A recording nobody confirms is deleted after a day.",
+        "So MeetingScribe records nothing until you confirm that everyone agreed, and gives you a notice to paste into the chat.",
+        "Each confirmation is kept in a dated consent record, and the notice on your screen cannot be turned off.",
         "You can also list the meetings it must never record, and have old ones deleted automatically."
       ]
     },

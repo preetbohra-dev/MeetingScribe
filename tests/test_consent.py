@@ -118,6 +118,9 @@ def test_the_note_names_who_confirmed_and_when(cfg):
             return "## Summary\n- Fine.\n\n## Action Items\n- None identified."
     text = ms.write_note(cfg, meta, turns, {}, Words()).read_text(encoding="utf-8")
     assert "**Consent:** asha confirmed everyone was told it was recorded, at 10:02 during the call" in text
+    meta["consent"]["before_recording"] = True
+    text = ms.write_note(cfg, meta, turns, {}, Words()).read_text(encoding="utf-8")
+    assert "**Consent:** asha confirmed everyone agreed to be recorded, at 10:02, before recording started" in text
 
 
 # -- the recorder
@@ -172,17 +175,96 @@ def recorder(cfg, monkeypatch):
     return d
 
 
-def test_status_shows_whether_this_call_is_confirmed(recorder, cfg):
+def read_status(cfg):
+    return json.loads((cfg["work_dir"] / "status.json").read_text())
+
+
+def test_nothing_is_recorded_until_everyone_agreed(recorder, cfg):
+    for _ in range(3):
+        recorder.tick()
+    s = read_status(cfg)
+    assert recorder.rec is None and not list(recorder.sessions.iterdir())
+    assert (s["state"], s["app"], s["service"], s["title"]) == ("asking", "zoom", "Zoom", "Sync")
+    assert len(recorder.told) == 1 and "Nothing is recorded until you confirm" in recorder.told[0]
+    entry = ms.agree_to_record(cfg)
+    assert entry["event"] == "everyone_agreed" and entry["before_recording"] is True and entry["title"] == "Sync"
     recorder.tick()
-    s = json.loads((cfg["work_dir"] / "status.json").read_text())
-    assert s["state"] == "recording" and s["session"] == recorder.rec.dir.name and s["consented"] is False
-    ms.confirm_consent(cfg, recorder.rec.dir)
+    s = read_status(cfg)
+    assert s["state"] == "recording" and s["consented"] is True and s["session"] == recorder.rec.dir.name
+    consent = json.loads((recorder.rec.dir / "consent.json").read_text())
+    assert consent["time"] == entry["time"] and consent["meeting"] == recorder.rec.dir.name
+    events = ms.check_consent_log(cfg)[0]
+    assert [e["event"] for e in events] == ["everyone_agreed", "recording_started"]
+    assert events[1]["agreed_at"] == entry["time"] and events[1]["meeting"] == recorder.rec.dir.name
+
+
+def test_dont_record_leaves_that_call_alone(recorder, cfg):
+    recorder.tick()
+    assert ms.decline_recording(cfg)["event"] == "not_recorded"
+    for _ in range(3):
+        recorder.tick()
+    assert recorder.rec is None and read_status(cfg)["state"] == "watching"
+    assert ms.agree_to_record(cfg) is None  # nothing is being asked about any more
+    recorder.probe.mic = (False, False)  # that call ends, and the next one is asked about again
+    recorder.tick()
+    recorder.probe.mic = (True, True)
+    recorder.tick()
+    assert read_status(cfg)["state"] == "asking"
+
+
+def test_an_answer_only_counts_for_the_call_it_was_given_in(recorder, cfg):
+    assert ms.agree_to_record(cfg) is None  # no call yet
+    recorder.tick()
+    ms.agree_to_record(cfg)
+    recorder.probe.mic = (False, False)  # the call ends before the recorder acts on it
+    recorder.tick()
+    recorder.probe.mic = (True, True)
+    recorder.tick()
+    assert recorder.rec is None and read_status(cfg)["state"] == "asking"
+
+
+def test_an_answer_from_before_a_restart_is_dropped(cfg, monkeypatch):
+    monkeypatch.setattr(ms.plat, "AudioProbe", Probe)
+    (cfg["work_dir"] / "consent-answer.json").write_text(json.dumps({"app": "zoom", "agreed": {"time": "x"}}))
+    ms.Daemon(cfg)
+    assert not (cfg["work_dir"] / "consent-answer.json").exists()
+
+
+def test_pausing_stops_asking(recorder, cfg):
+    recorder.tick()
+    recorder.paused_flag.touch()
     recorder.step()
-    assert json.loads((cfg["work_dir"] / "status.json").read_text())["consented"] is True
+    assert recorder.asking is None and read_status(cfg)["state"] == "paused"
 
 
-def test_an_unconfirmed_call_is_held_not_processed(recorder):
-    recorder.tick()
+def test_the_banner_is_up_while_asking_and_recording(recorder, cfg, no_banner_window):
+    recorder.step()
+    assert len(no_banner_window.started) == 1
+    no_banner_window.started[0].returncode = 1  # closed somehow
+    recorder.banner_tries = 0
+    recorder.step()
+    assert len(no_banner_window.started) == 2  # back on screen
+    ms.agree_to_record(cfg)
+    recorder.step()
+    assert recorder.rec and len(no_banner_window.started) == 2  # the same banner carries on
+    recorder.probe.mic = (False, False)
+    recorder.last_signal = -1e9
+    recorder.step()
+    assert recorder.rec is None and no_banner_window.started[-1].returncode == -15
+
+
+def test_a_banner_that_cannot_start_is_not_retried_every_second(recorder, no_banner_window):
+    recorder.step()
+    no_banner_window.started[0].returncode = 1
+    recorder.step()
+    recorder.step()
+    assert len(no_banner_window.started) == 1
+
+
+def test_an_unconfirmed_call_is_held_not_processed(recorder, cfg):
+    """A recording without consent.json (made by an older version) is not processed."""
+    recorder.app = recorder.apps[0]
+    recorder.rec = Rec(cfg, recorder.sessions / "2026-11-08_100000", recorder.app, "Zoom", "Sync")
     d = recorder.rec.dir
     recorder.stop_recording()
     assert status(d) == "needs_consent" and recorder.queue == []
@@ -193,10 +275,11 @@ def test_an_unconfirmed_call_is_held_not_processed(recorder):
     assert status(d) == "recorded" and recorder.queue == [d]
 
 
-def test_a_call_confirmed_during_it_goes_straight_to_notes(recorder):
+def test_an_agreed_call_goes_straight_to_notes(recorder, cfg):
+    recorder.tick()
+    ms.agree_to_record(cfg)
     recorder.tick()
     d = recorder.rec.dir
-    ms.confirm_consent(recorder.cfg, d)
     recorder.stop_recording()
     assert status(d) == "recorded" and recorder.queue == [d]
 
@@ -334,3 +417,50 @@ def test_app_people_show_agreement_and_forgetting_is_recorded(api, cfg):
     assert api.person_agreed("Old") and api.people()[0]["agreed_at"]
     assert api.forget_person("Old") is True and api.forget_person("Old") is False
     assert [e["event"] for e in ms.check_consent_log(cfg)[0]] == ["voice_agreed", "voice_deleted"]
+
+
+# -- the banner
+
+
+def test_banner_asks_then_shows_the_recording(recorder, cfg):
+    import banner
+    b = banner.Api(cfg)
+    assert b.state() == {"state": "off"}  # no recorder yet
+    recorder.tick()
+    s = b.state()
+    assert (s["state"], s["service"], s["title"]) == ("asking", "Zoom", "Sync") and s["notice"] == cfg["consent_notice"]
+    assert b.agree() is True and b.agree() is False  # a second click has nothing left to answer
+    recorder.tick()
+    s = b.state()
+    assert s["state"] == "recording" and s["agreed_at"] == ms.check_consent_log(cfg)[0][0]["time"]
+
+
+def test_banner_can_decline(recorder, cfg):
+    import banner
+    recorder.tick()
+    assert banner.Api(cfg).decline() is True
+    assert banner.Api(cfg).agree() is False  # answered already
+    recorder.tick()
+    assert recorder.rec is None and banner.Api(cfg).state()["state"] == "watching"
+
+
+def test_banner_refuses_to_close_and_has_no_close_button():
+    import banner
+    assert banner.refuse() is False
+    page = banner.PAGE.lower()
+    assert "close" not in page and "hide" not in page and "minimi" not in page
+
+
+def test_app_answers_the_question_too(api, cfg, monkeypatch):
+    monkeypatch.setattr(ms.plat, "AudioProbe", Probe)
+    monkeypatch.setattr(ms, "Recording", Rec)
+    monkeypatch.setattr(ms, "meeting_window", lambda cfg, app, titles=None: ("Zoom", "Sync"))
+    monkeypatch.setattr(ms, "notify", lambda cfg, text: None)
+    d = ms.Daemon({**api.cfg, "start_after_s": 0})
+    d.pump_queue = lambda: None
+    assert api.agree_to_record() is False and api.decline_recording() is False
+    d.tick()
+    assert api.status()["state"] == "asking"
+    assert api.agree_to_record() is True
+    d.tick()
+    assert api.status()["state"] == "recording" and api.status()["consented"] is True

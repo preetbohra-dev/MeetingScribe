@@ -42,7 +42,7 @@ window.TIMELINE = {
   {
    "id": "detect",
    "start": 21.316,
-   "dur": 14.772,
+   "dur": 18.548,
    "lines": [
     {
      "t": 0.7,
@@ -51,19 +51,19 @@ window.TIMELINE = {
     },
     {
      "t": 3.445,
-     "dur": 5.547,
-     "text": "When you join a call, it starts recording two tracks: your microphone, and the meeting's own audio."
+     "dur": 10.283,
+     "text": "When you join a call, it first asks whether everyone agreed to be recorded. Only once you confirm does it record two tracks: your microphone, and the meeting's own audio."
     },
     {
-     "t": 9.412,
-     "dur": 4.16,
-     "text": "And it reminds you to tell everyone on the call, then to confirm that you did."
+     "t": 14.148,
+     "dur": 3.2,
+     "text": "And for as long as it records, a notice stays on your screen."
     }
    ]
   },
   {
    "id": "pipeline",
-   "start": 36.088,
+   "start": 39.864,
    "dur": 18.243,
    "lines": [
     {
@@ -90,7 +90,7 @@ window.TIMELINE = {
   },
   {
    "id": "note",
-   "start": 54.331,
+   "start": 58.107,
    "dur": 11,
    "lines": [
     {
@@ -107,7 +107,7 @@ window.TIMELINE = {
   },
   {
    "id": "languages",
-   "start": 65.331,
+   "start": 69.107,
    "dur": 12.432,
    "lines": [
     {
@@ -124,7 +124,7 @@ window.TIMELINE = {
   },
   {
    "id": "voices",
-   "start": 77.763,
+   "start": 81.539,
    "dur": 12.304,
    "lines": [
     {
@@ -141,7 +141,7 @@ window.TIMELINE = {
   },
   {
    "id": "templates",
-   "start": 90.067,
+   "start": 93.843,
    "dur": 15.412,
    "lines": [
     {
@@ -163,7 +163,7 @@ window.TIMELINE = {
   },
   {
    "id": "actions",
-   "start": 105.479,
+   "start": 109.255,
    "dur": 15.476,
    "lines": [
     {
@@ -185,7 +185,7 @@ window.TIMELINE = {
   },
   {
    "id": "upcoming",
-   "start": 120.955,
+   "start": 124.731,
    "dur": 13,
    "lines": [
     {
@@ -207,7 +207,7 @@ window.TIMELINE = {
   },
   {
    "id": "connectors",
-   "start": 133.955,
+   "start": 137.731,
    "dur": 14.288,
    "lines": [
     {
@@ -224,7 +224,7 @@ window.TIMELINE = {
   },
   {
    "id": "sendout",
-   "start": 148.243,
+   "start": 152.019,
    "dur": 17,
    "lines": [
     {
@@ -246,7 +246,7 @@ window.TIMELINE = {
   },
   {
    "id": "handoff",
-   "start": 165.243,
+   "start": 169.019,
    "dur": 18.825,
    "lines": [
     {
@@ -268,7 +268,7 @@ window.TIMELINE = {
   },
   {
    "id": "assistants",
-   "start": 184.068,
+   "start": 187.844,
    "dur": 16.137,
    "lines": [
     {
@@ -290,8 +290,8 @@ window.TIMELINE = {
   },
   {
    "id": "consent",
-   "start": 200.205,
-   "dur": 27.587,
+   "start": 203.981,
+   "dur": 26.477,
    "lines": [
     {
      "t": 0.7,
@@ -300,16 +300,16 @@ window.TIMELINE = {
     },
     {
      "t": 6.261,
-     "dur": 6.869,
-     "text": "So MeetingScribe gives you a notice to paste into the chat, and writes no notes until you confirm that everyone was told."
+     "dur": 6.827,
+     "text": "So MeetingScribe records nothing until you confirm that everyone agreed, and gives you a notice to paste into the chat."
     },
     {
-     "t": 13.551,
-     "dur": 7.04,
-     "text": "Each confirmation is kept in a dated consent record. A recording nobody confirms is deleted after a day."
+     "t": 13.508,
+     "dur": 5.973,
+     "text": "Each confirmation is kept in a dated consent record, and the notice on your screen cannot be turned off."
     },
     {
-     "t": 21.011,
+     "t": 19.901,
      "dur": 5.376,
      "text": "You can also list the meetings it must never record, and have old ones deleted automatically."
     }
@@ -317,7 +317,7 @@ window.TIMELINE = {
   },
   {
    "id": "privacy",
-   "start": 227.792,
+   "start": 230.459,
    "dur": 12.048,
    "lines": [
     {
@@ -334,7 +334,7 @@ window.TIMELINE = {
   },
   {
    "id": "early",
-   "start": 239.84,
+   "start": 242.507,
    "dur": 36.519,
    "lines": [
     {
@@ -366,7 +366,7 @@ window.TIMELINE = {
   },
   {
    "id": "outro",
-   "start": 276.359,
+   "start": 279.025,
    "dur": 10.171,
    "lines": [
     {
@@ -382,5 +382,5 @@ window.TIMELINE = {
    ]
   }
  ],
- "total": 286.529
+ "total": 289.196
 };

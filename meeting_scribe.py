@@ -809,6 +809,36 @@ def confirm_consent(cfg, d):
     return entry
 
 
+def ask_status(cfg):
+    """The call the recorder is asking about, from status.json, or None."""
+    s = read_json(cfg["work_dir"] / "status.json") or {}
+    return s if s.get("state") == "asking" and time.time() - s.get("time", 0) < 10 else None
+
+
+def agree_to_record(cfg):
+    """You confirm everyone in the call MeetingScribe is asking about agreed to be recorded.
+    It goes into the consent record first, and only then does the recorder start. Returns the
+    entry, or None if no call is waiting."""
+    s = ask_status(cfg)
+    if not s or (read_json(cfg["work_dir"] / "consent-answer.json") or {}).get("app") == s["app"]:
+        return None  # nothing asked, or already answered: a second click adds nothing
+    entry = log_consent(cfg, "everyone_agreed", app=s["app"], source=s["service"], title=s["title"],
+                        before_recording=True, notice=cfg["consent_notice"])
+    answer = cfg["work_dir"] / "consent-answer.json"
+    answer.write_text(json.dumps({"app": s["app"], "agreed": entry}), encoding="utf-8")
+    return entry
+
+
+def decline_recording(cfg):
+    """You don't want the call MeetingScribe is asking about recorded. Returns the entry, or None."""
+    s = ask_status(cfg)
+    if not s or (read_json(cfg["work_dir"] / "consent-answer.json") or {}).get("app") == s["app"]:
+        return None
+    entry = log_consent(cfg, "not_recorded", app=s["app"], source=s["service"], title=s["title"])
+    (cfg["work_dir"] / "consent-answer.json").write_text(json.dumps({"app": s["app"], "agreed": None}), encoding="utf-8")
+    return entry
+
+
 def sweep_unconfirmed(cfg, now=None):
     """Delete recordings nobody confirmed within CONSENT_WAIT_H of the call ending."""
     now = now or dt.datetime.now().astimezone()
@@ -869,6 +899,11 @@ class Daemon:
         self.worker = None
         self.mic_dev = self.probe.default_input_device()
         self.processing = None
+        self.asking = None  # (app, service, title): a call waiting for you to confirm everyone agreed
+        self.answer = cfg["work_dir"] / "consent-answer.json"
+        self.answer.unlink(missing_ok=True)  # an answer is only for the call it was given in
+        self.banner = None
+        self.banner_tries = 0.0
 
     def check_permissions(self):
         plat.request_permissions(self.cfg)
@@ -926,9 +961,20 @@ class Daemon:
             if not call or not self.candidate or call[0] is not self.candidate[0]:
                 self.mic_since = now if call else None
             self.candidate = call
-            if call and now - self.mic_since >= self.cfg["start_after_s"]:
-                self.start_recording(*call)
-                self.last_mic = now
+            if not call:
+                self.asking = None
+                self.answer.unlink(missing_ok=True)
+            elif now - self.mic_since >= self.cfg["start_after_s"]:
+                agreed = self.answered(call[0])
+                if agreed:
+                    self.start_recording(*call, agreed)
+                    self.last_mic = now
+                elif self.refused != call[0]["id"]:
+                    if not self.asking:
+                        log.info("%s meeting detected in %s; asking before recording", call[1], call[0]["name"])
+                        notify(self.cfg, f"{call[1]} meeting detected. Nothing is recorded until you confirm "
+                                         "that everyone on the call agreed.")
+                    self.asking = call
         else:
             mic_active, out_active = self.probe.app_states([self.app])[self.app["id"]]
             found = meeting_window(self.cfg, self.app)
@@ -961,6 +1007,37 @@ class Daemon:
 
         self.pump_queue()
         self.write_status()
+
+    def answered(self, app):
+        """The consent entry if you agreed to record this call, else None. A "don't record"
+        leaves the call alone until it ends."""
+        answer = read_json(self.answer)
+        if not answer or answer.get("app") != app["id"]:
+            return None
+        self.answer.unlink(missing_ok=True)
+        self.asking = None
+        if not answer.get("agreed"):
+            self.refused = app["id"]
+            log.info("you chose not to record this call")
+            return None
+        return answer["agreed"]
+
+    def keep_banner(self):
+        """While a call is being asked about or recorded, the banner is on screen. It has no way
+        to close, no setting turns it off, and if it ends it is started again."""
+        wanted = bool(self.rec or self.asking)
+        alive = self.banner is not None and self.banner.poll() is None
+        if wanted and not alive and time.monotonic() >= self.banner_tries:
+            if self.banner is not None:
+                log.warning("the recording banner closed (exit %s); showing it again", self.banner.returncode)
+            self.banner_tries = time.monotonic() + 3  # a banner that can't start is not retried every second
+            self.banner = self.spawn_banner()
+        elif not wanted and alive:
+            self.banner.terminate()
+            self.banner = None
+
+    def spawn_banner(self):
+        return subprocess.Popen(self_command("banner"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def allowed(self, call):
         """The call, unless it is one that must not be recorded."""
@@ -996,17 +1073,21 @@ class Daemon:
         if self.paused_flag.exists():
             if self.rec:
                 self.stop_recording()
+            self.asking = None
             self.pump_queue()
             self.write_status()
         else:
             self.tick()
+        self.keep_banner()
 
     def write_status(self):
         """status.json: what the app shows. Its age tells the app whether we are alive."""
-        r = self.rec
+        r, ask = self.rec, self.asking
         s = {"pid": os.getpid(), "time": time.time(),
-             "state": "recording" if r else "paused" if self.paused_flag.exists() else "watching",
-             "service": r.service if r else None, "title": r.meta["title"] if r else None,
+             "state": "recording" if r else "asking" if ask else "paused" if self.paused_flag.exists() else "watching",
+             "app": self.app["id"] if r else ask[0]["id"] if ask else None,
+             "service": r.service if r else ask[1] if ask else None,
+             "title": r.meta["title"] if r else ask[2] if ask else None,
              "started_at": r.meta["started_at"] if r else None,
              "session": r.dir.name if r else None,
              "consented": bool(r and (r.dir / "consent.json").exists()),
@@ -1020,16 +1101,20 @@ class Daemon:
         except OSError as e:  # the app may be reading it this instant on Windows
             log.debug("status: %s", e)
 
-    def start_recording(self, app, service, title):
+    def start_recording(self, app, service, title, agreed):
+        """Only ever called with the consent entry of your confirmation that everyone agreed."""
         sid = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        log.info("%s meeting detected in %s (%s); recording session %s", service, app["name"],
+        log.info("%s meeting in %s (%s); everyone agreed, recording session %s", service, app["name"],
                  title or "untitled", sid)
         self.app = app
         self.rec = Recording(self.cfg, self.sessions / sid, app, service, title)
+        consent = {**agreed, "meeting": sid}
+        (self.rec.dir / "consent.json").write_text(json.dumps(consent, ensure_ascii=False), encoding="utf-8")
+        log_consent(self.cfg, "recording_started", meeting=sid, title=title, source=service, agreed_at=agreed["time"])
         self.rec.start()
         self.last_signal = time.monotonic()
         notify(self.cfg, f"Recording {service} meeting{': ' + title if title else ''}. "
-                         "Tell everyone, then confirm it in MeetingScribe.")
+                         f"Everyone agreed at {dt.datetime.fromisoformat(agreed['time']):%H:%M}.")
 
     def stop_recording(self, discard=False):
         rec, self.rec, self.mic_since = self.rec, None, None
@@ -1077,6 +1162,8 @@ class Daemon:
         finally:
             if self.rec:
                 self.stop_recording()
+            if self.banner and self.banner.poll() is None:
+                self.banner.terminate()
 
 
 def run_chores(cfg):
@@ -2369,7 +2456,7 @@ def process_session(cfg, session_dir):
     meta["id"] = session_dir.name
     consent = read_json(session_dir / "consent.json")
     if consent:
-        meta["consent"] = {k: consent[k] for k in ("time", "user", "during_call")}
+        meta["consent"] = {k: consent.get(k) for k in ("time", "user", "during_call", "before_recording")}
 
     screen_path = session_dir / "screen.json"
     looks = json.loads(screen_path.read_text(encoding="utf-8")) if screen_path.exists() else []
@@ -2533,8 +2620,11 @@ def write_note(cfg, meta, turns, speakers, llm=None, dropped=None, strict=False)
               else f"recorded, transcribed and summarized on this {plat.DEVICE}  ")]
     if meta.get("consent"):
         c = meta["consent"]
-        md.append(f"**Consent:** {c['user']} confirmed everyone was told it was recorded, at "
-                  f"{dt.datetime.fromisoformat(c['time']):%H:%M} {'during' if c['during_call'] else 'after'} the call  ")
+        when = f"{dt.datetime.fromisoformat(c['time']):%H:%M}"
+        md.append(f"**Consent:** {c['user']} confirmed everyone agreed to be recorded, at {when}, before recording started  "
+                  if c.get("before_recording") else
+                  f"**Consent:** {c['user']} confirmed everyone was told it was recorded, at {when} "
+                  f"{'during' if c['during_call'] else 'after'} the call  ")
     if speakers:
         md.append("**Participants:** " + ", ".join(
             [cfg["my_name"]] + [participant_label(n, s) for n, s in speakers.items()]) + "  ")
@@ -4385,6 +4475,11 @@ def cmd_voices(cfg, args):
         print(f"  {name:30} {v['seconds']} s saved on {v['saved_at'][:10]}, {agreed}")
 
 
+def cmd_banner(cfg, args):
+    import banner
+    banner.run(cfg)
+
+
 def cmd_consent(cfg, args):
     """Confirm everyone was told about a recording, or show the consent record."""
     if args.confirm:
@@ -4871,6 +4966,7 @@ def main():
     p.add_argument("--session", default="latest", help="session id (or part of it); default latest")
     p.add_argument("--agreed", action="store_true", help="they agreed to having their voice saved; without it only the note changes")
     p.set_defaults(fn=cmd_name_speaker)
+    sub.add_parser("banner", help="the on-screen notice shown while a call is asked about or recorded").set_defaults(fn=cmd_banner)
     p = sub.add_parser("consent", help="confirm everyone was told about a recording, or show the consent record")
     p.add_argument("--confirm", action="store_true", help="everyone in the meeting was told it was recorded")
     p.add_argument("--session", default="latest", help="session id (or part of it); default latest")

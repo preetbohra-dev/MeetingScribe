@@ -265,8 +265,8 @@ async function tick() {
   statusNow = await call("status");
   const st = document.getElementById("status");
   if (!st) return;
-  const label = {recording: "Recording " + (statusNow.service || "meeting"), watching: "Watching for meetings", paused: "Paused", off: "Not running"}[statusNow.state];
-  const dotClass = statusNow.state === "recording" ? "dot rec" : statusNow.state === "watching" ? "dot ok" : "dot";
+  const label = {recording: "Recording " + (statusNow.service || "meeting"), asking: "Waiting for your answer", watching: "Watching for meetings", paused: "Paused", off: "Not running"}[statusNow.state];
+  const dotClass = statusNow.state === "recording" || statusNow.state === "asking" ? "dot rec" : statusNow.state === "watching" ? "dot ok" : "dot";
   const action = statusNow.state === "off"
     ? h("button", {class: "link small", onclick: async () => { await call("ensure_recorder"); toast("Starting…"); }}, "Start")
     : h("button", {class: "link small", onclick: async () => { await call("set_paused", statusNow.state !== "paused"); tick(); }}, statusNow.state === "paused" ? "Resume" : "Pause");
@@ -315,10 +315,21 @@ function copyButton(text, label) {
   }}, label);
 }
 function recordingNotice() {
+  const what = (statusNow.service || "Meeting") + (statusNow.title ? ": " + statusNow.title : "");
+  if (statusNow.state === "asking") {
+    const answer = async (name, said) => {
+      const ok = await call(name);
+      toast(ok ? said : "That call has ended."); lastList = ""; tick();
+    };
+    return [h("div", {class: "panel"}, h("div", {class: "row"}, h("span", {class: "dot rec"}), h("b", {class: "grow"}, what)),
+      h("p", null, "Not recording. Did everyone on the call agree to be recorded? Nothing is recorded until you say so."),
+      h("div", {class: "row wrap"}, statusNow.notice ? copyButton(statusNow.notice, "Copy a notice for the chat") : null,
+        h("button", {class: "primary", onclick: () => answer("agree_to_record", "Recording. Saved in the consent record.")}, "Everyone agreed, record"),
+        h("button", {onclick: () => answer("decline_recording", "This call won't be recorded.")}, "Don't record")))];
+  }
   if (statusNow.state !== "recording") return [];
-  if (statusNow.consented) return [h("div", {class: "panel row wrap"}, h("span", {class: "dot rec"}), h("span", {class: "grow"}, "Recording. You confirmed that everyone on the call was told."))];
-  return [h("div", {class: "panel row wrap"}, h("span", {class: "dot rec"}), h("span", {class: "grow"}, "Recording now. Tell everyone on the call, and once they know and nobody objects, confirm it here. Notes are only written after you do."),
-    statusNow.notice ? copyButton(statusNow.notice, "Copy a notice for the chat") : null, toldButton(statusNow.session))];
+  return [h("div", {class: "panel row wrap"}, h("span", {class: "dot rec"}), h("span", {class: "grow"}, "Recording " + what + "."),
+    statusNow.consented ? h("span", {class: "soft small"}, "Everyone agreed first.") : toldButton(statusNow.session))];
 }
 function toldButton(sid) {
   return h("button", {class: "primary", onclick: async () => {
@@ -587,7 +598,7 @@ async function renderSettings(main) {
     s.packaged ? field("Starting up", loginL) : null,
     field("Words to fix", h("p", {class: "soft small"}, "One per line, as heard = how to spell it."), vocab),
     h("h2", null, "Consent and keeping meetings"),
-    field("Notice for the meeting chat", h("p", {class: "soft small"}, "While recording, the Meetings page offers this to copy. MeetingScribe doesn't join the call, so people only know if you tell them. Notes are written once you confirm you did."), notice),
+    field("Notice for the meeting chat", h("p", {class: "soft small"}, "When a call starts, MeetingScribe asks whether everyone agreed to be recorded, and records nothing until you confirm. This is offered to copy into the chat, or to read out. A notice stays on your screen for as long as it records."), notice),
     field("Never record", h("p", {class: "soft small"}, "One per line. A meeting with any of these in its title is not recorded, and a recording already started is deleted."), never),
     field("Delete whole meetings after", h("div", {class: "row"}, keepAll, h("span", {class: "soft"}, "days (0 keeps them)"))),
     field("Delete only the audio after", h("div", {class: "row"}, keepAudio, h("span", {class: "soft"}, "days (0 keeps it)"))), keepWarn, saveBtn,
@@ -597,7 +608,8 @@ async function renderSettings(main) {
   renderConsentRecord();
   renderTemplates();
 }
-const CONSENT_EVENTS = {told_everyone: "Everyone was told", deleted_unconfirmed: "Deleted, never confirmed", meeting_deleted: "Meeting deleted",
+const CONSENT_EVENTS = {everyone_agreed: "Everyone agreed, before recording", recording_started: "Recording started", not_recorded: "You chose not to record",
+  told_everyone: "Everyone was told", deleted_unconfirmed: "Deleted, never confirmed", meeting_deleted: "Meeting deleted",
   voice_agreed: "Agreed to a saved voice", voice_deleted: "Saved voice deleted"};
 async function renderConsentRecord() {
   const r = await call("consent_record"), el = document.getElementById("consent-record");
@@ -606,7 +618,7 @@ async function renderConsentRecord() {
     h("span", {class: "grow"}, (CONSENT_EVENTS[e.event] || e.event) + (e.title || e.person ? ": " + (e.title || e.person) : "")
       + (e.event === "told_everyone" ? (e.during_call ? " (during the call)" : " (after the call)") : "")), h("span", {class: "soft"}, e.user));
   el.replaceChildren(...[
-    h("p", {class: "soft small"}, "Each time you confirm that people were told, or that someone agreed to a saved voice, a dated line with your name is added. Lines are never changed or removed, even when the meeting is deleted."),
+    h("p", {class: "soft small"}, "Each time you confirm that everyone agreed to be recorded, choose not to record, or confirm that someone agreed to a saved voice, a dated line with your name is added. Lines are never changed or removed, even when the meeting is deleted."),
     r.problem ? h("div", {class: "warn"}, "This record was changed outside MeetingScribe: " + r.problem + ".") : null,
     r.count ? h("div", {class: "panel"}, r.entries.slice(0, 50).map(line)) : h("p", {class: "soft"}, "Nothing yet."),
     r.count ? h("div", {class: "row"}, h("span", {class: "grow soft small"}, r.count + (r.count === 1 ? " entry" : " entries")), h("button", {onclick: () => call("open_consent_record")}, "Show the file")) : null].filter(Boolean));

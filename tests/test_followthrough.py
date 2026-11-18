@@ -484,6 +484,13 @@ def sessions(d):
     return list(d.sessions.iterdir())
 
 
+def agree(recorder):
+    """The recorder asks about the call, you confirm everyone agreed, and it records."""
+    recorder.tick()
+    assert recorder.rec is None and ms.agree_to_record(recorder.cfg)
+    recorder.tick()
+
+
 def test_a_listed_meeting_never_starts(recorder):
     recorder.window = ("Zoom", "Quarterly hr review")
     recorder.tick()
@@ -494,7 +501,7 @@ def test_a_listed_meeting_never_starts(recorder):
 def test_a_title_that_appears_late_deletes_the_recording(recorder):
     recorder.window = None
     recorder.find_call = lambda states: (recorder.apps[0], "Zoom", None)
-    recorder.tick()
+    agree(recorder)
     assert recorder.rec and sessions(recorder)
     recorder.window = ("Zoom", "HR chat")
     recorder.tick()
@@ -504,9 +511,11 @@ def test_a_title_that_appears_late_deletes_the_recording(recorder):
     assert recorder.rec is None and not sessions(recorder)
 
 
-def test_an_ordinary_meeting_records_and_reminds_about_consent(recorder):
+def test_an_ordinary_meeting_asks_first_then_records(recorder):
     recorder.tick()
-    assert recorder.rec and "Tell everyone, then confirm" in recorder.told[0]
+    assert recorder.rec is None and not sessions(recorder) and "Nothing is recorded until you confirm" in recorder.told[0]
+    agree(recorder)
+    assert recorder.rec and "Everyone agreed at" in recorder.told[-1]
 
 
 def test_after_a_refused_call_the_next_one_records(recorder):
@@ -515,7 +524,7 @@ def test_after_a_refused_call_the_next_one_records(recorder):
     recorder.probe.mic = (False, False)
     recorder.tick()
     recorder.probe.mic, recorder.window = (True, True), ("Zoom", "Sync")
-    recorder.tick()
+    agree(recorder)
     assert recorder.rec
 
 

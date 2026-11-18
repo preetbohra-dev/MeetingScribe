@@ -96,6 +96,17 @@ def steps(page, work, failed):
     if not (held / "consent.json").exists() or [(e["event"], e["meeting"], e["during_call"]) for e in told] != [("told_everyone", HELD, False)]:
         failed.append(f"consent: confirming a held meeting was not recorded: {told}")
 
+    nav("meetings")
+    (work / "state").write_text("asking")  # a call has started, and nothing is recorded yet
+    page.wait_for_selector("text=Did everyone on the call agree to be recorded?", timeout=8000)
+    page.click("button.primary:has-text('Everyone agreed, record')")
+    page.wait_for_selector("text=Saved in the consent record")
+    (work / "state").write_text("watching")
+    told = [json.loads(ln)["event"] for ln in (work / "consent-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    if told[-1:] != ["everyone_agreed"]:
+        failed.append(f"consent: agreeing before recording was not recorded: {told}")
+    page.wait_for_selector("text=Did everyone on the call agree to be recorded?", state="detached", timeout=8000)
+
     nav("upcoming")
     sweep("upcoming")
     page.locator("input[aria-label='Prepare for']").click()
@@ -124,6 +135,8 @@ def steps(page, work, failed):
         nav(name)
         if name == "settings":  # its templates arrive after the rest of the page
             page.wait_for_selector("#templates details", state="attached", timeout=20000)
+            if page.locator("#consent-record >> text=Everyone agreed, before recording: Daily stand-up").count() != 1:
+                failed.append("settings: the consent record does not show the agreement before recording")
             if page.locator("#consent-record >> text=Everyone was told: Client call").count() != 1:
                 failed.append("settings: the consent record does not show the confirmed meeting")
             if any(w in page.inner_text("#consent-record").split() for w in ("null", "undefined")):

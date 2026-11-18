@@ -339,6 +339,13 @@ class Api:
 
     # -- consent
 
+    def agree_to_record(self):
+        """Everyone on the call the recorder is asking about agreed to be recorded."""
+        return bool(ms.agree_to_record(self.cfg))
+
+    def decline_recording(self):
+        return bool(ms.decline_recording(self.cfg))
+
     def confirm_consent(self, sid):
         """You confirm everyone in this meeting was told it is being recorded."""
         e = ms.confirm_consent(self.cfg, self._session(sid))

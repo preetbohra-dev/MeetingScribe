@@ -90,7 +90,7 @@ def serve(root, port):
 
     def alive():
         while True:
-            (work / "status.json").write_text(json.dumps({"time": time.time(), "state": (work / "state").read_text() if (work / "state").exists() else "watching", "service": "Teams", "title": "Daily stand-up", "warnings": []}))
+            (work / "status.json").write_text(json.dumps({"time": time.time(), "state": (work / "state").read_text() if (work / "state").exists() else "watching", "app": "teams", "service": "Teams", "title": "Daily stand-up", "warnings": []}))
             time.sleep(1)
     threading.Thread(target=alive, daemon=True).start()
 
@@ -145,7 +145,7 @@ def capture(work, url, engine="chromium", out=SHOTS):
             page.screenshot(path=str(out / f"{name}.png"))
         page.wait_for_selector("#nav-meetings")
 
-        (work / "state").write_text("recording")
+        (work / "state").write_text("asking")
         page.wait_for_timeout(4200)
         page.wait_for_selector("text=Copy a notice for the chat")
         shot("meetings")

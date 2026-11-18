@@ -12,8 +12,9 @@ Meeting notes that write themselves, for Teams, Zoom and Google Meet, on your Ma
 ---
 
 MeetingScribe runs on your own computer. When a call starts in Microsoft Teams, Zoom or a meeting in your web browser
-(Google Meet, Teams or Zoom on the web, Webex, ...) it records it and asks you to tell everyone on the call. Once you
-confirm that you did, a few minutes after you hang up it saves a Markdown note to `Documents/Meeting Notes/` with:
+(Google Meet, Teams or Zoom on the web, Webex, ...) it asks whether everyone on the call agreed to be recorded. It
+records only after you confirm, with a notice on screen the whole time, and a few minutes after you hang up it saves a
+Markdown note to `Documents/Meeting Notes/` with:
 
 - a **summary** and **action items** with owners,
 - a **transcript** that says who said what, and asks you when it isn't sure who someone is,
@@ -229,13 +230,17 @@ short switches of a few words can stay in the surrounding language.
 
 **Consent and keeping meetings**, under **Settings**:
 
-- While recording, the Meetings page offers a notice to paste into the meeting chat, and an **Everyone was told** button.
-  MeetingScribe doesn't join the call, so people only know if you tell them.
-- Notes are only written once you confirm that everyone was told, during the call or after it. A recording nobody
-  confirms is deleted 24 hours after the call. From a terminal: `./ctl.sh consent --confirm` (latest meeting) or
-  `--session ID`.
-- The **consent record** lists every confirmation with the time, your user name and the computer, along with deleted
-  meetings and voices. Lines are never changed or removed, even when the meeting is deleted, and each one carries a hash
+- When a call starts, nothing is recorded. A notice in the top corner of the screen, above every other window, asks
+  whether everyone on the call agreed to be recorded, and shows a notice you can paste into the chat or read out.
+  **Everyone agreed, record** starts recording; **Don't record** leaves that call alone until it ends. The Meetings
+  page asks the same question. MeetingScribe doesn't join the call, so people only know if you tell them.
+- While recording, the notice says so, with the time everyone agreed. It has no close button, refuses to close, comes
+  back if it is minimized, hidden or ended, and no setting turns it off. It goes away when recording stops.
+- Notes are only written for a recording with a confirmation. One made by an earlier version without it waits for
+  **Everyone was told** and is deleted 24 hours after the call if nobody confirms. From a terminal:
+  `./ctl.sh consent --confirm` (latest meeting) or `--session ID`.
+- The **consent record** lists every confirmation with the time, your user name and the computer, when each
+  recording started, calls you chose not to record, and deleted meetings and voices. Lines are never changed or removed, even when the meeting is deleted, and each one carries a hash
   of the line before it, so an edited or deleted line is reported. It is in `consent-log.jsonl` in the app's data
   folder; `./ctl.sh consent` prints it. It shows what you confirmed, not what was said on the call, and anyone who
   can edit the file could rewrite the whole chain.
